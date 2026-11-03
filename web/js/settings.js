@@ -1,0 +1,394 @@
+// Settings: add devices (search or by IP), edit devices, rooms, scenes, display, diagnostics.
+// Text entry (API keys etc.) is easiest from a phone or laptop: open http://<panel>.local:8080
+
+import { api } from "./api.js";
+import { store, reload } from "./store.js";
+import { $, esc, icon, kindIcon, toast } from "./util.js";
+
+const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
+let stack = [];
+let brandState = {};          // per-visit state of the "brand" screen
+
+export const isSettingsOpen = () => !$("#settings").hidden;
+
+export function openSettings(view = "home", arg = null) {
+  stack = view === "home" ? [{ view: "home" }] : [{ view: "home" }, { view, arg }];
+  if (view === "scene-new") stack = [{ view: "home" }, { view: "scenes" }, { view, arg }];
+  $("#settings").hidden = false;
+  render();
+}
+
+function close() { $("#settings").hidden = true; stack = []; }
+function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; render(); $("#settings").scrollTop = 0; }
+function back() { stack.pop(); stack.length ? render() : close(); }
+
+export function refreshSettings() {
+  if (!isSettingsOpen()) return;
+  const top = stack.at(-1);
+  if (top && ["home", "devices", "scenes", "rooms"].includes(top.view)) render();
+}
+
+// ---------- rendering ----------
+function page(title, body, { closeBtn = false } = {}) {
+  $("#settings").innerHTML = `<div class="page-inner">
+    <div class="page-head">
+      <button class="icon-btn" data-back aria-label="${stack.length > 1 ? "Back" : "Close"}">${icon(stack.length > 1 ? "left" : "close")}</button>
+      <h1>${esc(title)}</h1>
+      ${closeBtn && stack.length > 1 ? `<button class="icon-btn" data-close aria-label="Close">${icon("close")}</button>` : ""}
+    </div>${body}</div>`;
+}
+
+const row = (attrs, iconName, title, sub = "", extra = "") =>
+  `<button class="row" ${attrs}>${iconName ? icon(iconName, "dim") : ""}<span class="grow">
+    <span class="title">${esc(title)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}</span>${extra}${icon("right", "dim")}</button>`;
+
+const VIEWS = {
+  home() {
+    const n = store.devices.size;
+    const attention = [...store.devices.values()].filter((d) => d.state?.online === false || d.state?.needs_pairing).length;
+    page("Settings", `
+      ${store.demo ? `<div class="note">You're in demo mode. These are pretend devices; nothing on your network is changed.</div>` : ""}
+      <div class="list">
+        ${row("data-go=add", "plus", "Add a device", "Plugs, lights and TVs on your Wi-Fi")}
+        ${row("data-go=devices", "bulb", "Devices", `${n} ${n === 1 ? "device" : "devices"}`,
+              attention ? `<span class="badge">${attention} need attention</span>` : "")}
+        ${row("data-go=scenes", "sparkle", "Scenes", `${store.scenes.length} saved`)}
+        ${row("data-go=rooms", "home", "Rooms", store.rooms.join(", ") || "None yet")}
+      </div>
+      <div class="list">
+        ${row("data-go=display", "sun", "Display and clock")}
+        ${row("data-go=diagnostics", "pulse", "Diagnostics and logs")}
+      </div>
+      <p class="group-label">Tip: typing is easier from a phone or laptop. Open this panel's address in any browser on your Wi-Fi.</p>`);
+  },
+
+  devices() {
+    const groups = [...store.rooms, ""].map((r) => {
+      const list = [...store.devices.values()].filter((d) => (r ? d.room === r : !store.rooms.includes(d.room)));
+      if (!list.length) return "";
+      return `<p class="group-label">${esc(r || "No room")}</p><div class="list">${list.map((d) => {
+        const s = d.state || {};
+        const warn = s.needs_pairing ? "Needs pairing" : s.online === false ? "Offline" : "";
+        return row(`data-go=device data-arg="${esc(d.id)}"`, kindIcon(d), d.name, d.adapter_name,
+                   warn ? `<span class="badge">${warn}</span>` : "");
+      }).join("")}</div>`;
+    }).join("");
+    page("Devices", (groups || `<div class="card"><h3>No devices yet</h3><p>Add plugs, lights and TVs from your Wi-Fi.</p></div>`) +
+      `<button class="btn primary" data-go="add">${icon("plus")}Add a device</button>`);
+  },
+
+  device(id) {
+    const d = store.devices.get(id);
+    if (!d) return back();
+    const s = d.state || {};
+    page(d.name, `
+      ${s.needs_pairing ? `<div class="note">${esc(s.error || "Needs pairing.")}</div>` : ""}
+      ${s.online === false ? `<div class="note warn">${esc(s.error || "Not responding.")}</div>` : ""}
+      <div class="card">
+        <label class="field"><span>Name</span><input id="d-name" value="${esc(d.name)}" maxlength="40"></label>
+        <label class="field"><span>Room</span><select id="d-room">
+          <option value="">No room</option>
+          ${store.rooms.map((r) => `<option ${r === d.room ? "selected" : ""}>${esc(r)}</option>`).join("")}
+        </select></label>
+        ${["plug", "switch"].includes(d.kind) ? `<label class="check"><input type="checkbox" id="d-keep" ${d.keep_on ? "checked" : ""}>
+          <span>Keep on during "All off" (for a fridge, router or aquarium)</span></label>` : ""}
+        <div class="btn-row"><button class="btn primary" data-save-device="${esc(id)}">Save</button></div>
+      </div>
+      <div class="card">
+        <h3>Connection</h3>
+        <p>${esc(d.adapter_name)}${d.meta?.model ? `, ${esc(d.meta.model)}` : ""}</p>
+        <div class="btn-row" style="margin-top:0">
+          ${d.kind === "tv" || s.needs_pairing ? `<button class="btn" data-pair="${esc(id)}">${icon("link")}Pair again</button>` : ""}
+          <button class="btn" data-refresh="${esc(id)}">${icon("search")}Check now</button>
+          <button class="btn danger" data-remove="${esc(id)}">${icon("trash")}Remove</button>
+        </div>
+      </div>`, { closeBtn: true });
+  },
+
+  add() {
+    const list = store.adapters.filter((a) => !a.hidden);
+    page("Add a device", `
+      <p class="group-label">Choose the brand. Most plugs sold as "works with Smart Life" use Tuya.</p>
+      <div class="list">${list.map((a) => row(`data-go=brand data-arg="${esc(a.id)}"`, kindIcon({ kind: a.kinds[0] }), a.name,
+        a.available ? a.brands : `Not installed on this panel (needs ${a.missing.join(", ")})`)).join("")}</div>`, { closeBtn: true });
+  },
+
+  brand(id) {
+    const a = store.adapters.find((x) => x.id === id);
+    if (!a) return back();
+    const st = brandState;
+    if (!a.available) {
+      return page(a.name, `<div class="note warn">Support for ${esc(a.name)} isn't installed. On the panel, run
+        <b>./scripts/install.sh</b> again, or <b>pip install ${esc(a.missing.join(" "))}</b>.</div>`, { closeBtn: true });
+    }
+    const needsAccount = a.account_fields.some((f) => f.required) && !a.account_set;
+    const accountCard = a.account_fields.length ? `
+      <div class="card">
+        <h3>${a.account_set ? "Account connected" : "Connect your account"}</h3>
+        <p>${esc(a.description)}</p>
+        <form data-account="${esc(id)}">
+          ${a.account_fields.map((f) => fieldHtml(f, st.account?.[f.key])).join("")}
+          <div class="btn-row"><button class="btn primary" type="submit">Save</button>
+          ${a.account_actions.map((x) => `<button class="btn" type="button" data-account-action="${esc(x.id)}">${esc(x.label)}</button>`).join("")}</div>
+          ${a.account_actions.map((x) => x.help ? `<small class="field"><small>${esc(x.help)}</small></small>` : "").join("")}
+        </form>
+      </div>` : `<p class="group-label">${esc(a.description)}</p>`;
+
+    const found = st.found;
+    const results = found ? (found.length ? `<div class="list">${found.map((f) => `
+        <div class="row">${icon(kindIcon({ kind: f.kind }), "dim")}
+          <span class="grow"><span class="title">${esc(f.name)}</span><span class="sub">${esc(f.detail)}</span></span>
+          ${f.added ? `<span class="sub">Added</span>` :
+            `<button class="btn small primary" data-add-uid="${esc(f.uid)}" data-name="${esc(f.name)}">Add</button>`}
+        </div>`).join("")}</div>` :
+      `<div class="card"><h3>Nothing found</h3><p>Make sure the devices are set up in their own app first and are on the same Wi-Fi as this panel. You can also add one by IP address.</p></div>`) : "";
+
+    page(a.name, `
+      ${accountCard}
+      ${needsAccount ? "" : `
+      <div class="card">
+        <h3>Find devices</h3>
+        <label class="field"><span>Put new devices in</span><select id="add-room">
+          <option value="">No room</option>${store.rooms.map((r) => `<option ${r === st.room ? "selected" : ""}>${esc(r)}</option>`).join("")}
+        </select></label>
+        <div class="btn-row">
+          ${a.can_discover ? `<button class="btn primary" data-discover ${st.searching ? "disabled" : ""}>${icon("search")}${st.searching ? "Searching…" : "Search my Wi-Fi"}</button>` : ""}
+          ${a.manual_fields.length ? `<button class="btn" data-manual-toggle>Add by IP address</button>` : ""}
+        </div>
+      </div>
+      ${results}
+      ${st.manual ? `<div class="card"><h3>Add by IP address</h3><form data-manual>
+          ${a.manual_fields.map((f) => fieldHtml(f)).join("")}
+          <div class="btn-row"><button class="btn primary" type="submit">Add device</button></div></form></div>` : ""}`}
+    `, { closeBtn: true });
+    if (!st.account && a.account_fields.length) {
+      st.account = {};
+      api.getAccount(id).then((v) => { st.account = v; if (stack.at(-1)?.arg === id) VIEWS.brand(id); }).catch(() => {});
+    }
+  },
+
+  scenes() {
+    page("Scenes", `
+      <p class="group-label">A scene sets several devices at once with one tap.</p>
+      ${store.scenes.length ? `<div class="list">${store.scenes.map((s) => `
+        <div class="row">${icon(SCENE_ICONS.includes(s.icon) ? s.icon : "sparkle", "dim")}
+          <span class="grow"><span class="title">${esc(s.name)}</span><span class="sub">${s.actions.length} ${s.actions.length === 1 ? "step" : "steps"}</span></span>
+          <button class="btn small danger" data-del-scene="${esc(s.id)}" aria-label="Delete ${esc(s.name)}">${icon("trash")}</button>
+        </div>`).join("")}</div>` : ""}
+      <button class="btn primary" data-go="scene-new">${icon("plus")}New scene</button>`);
+  },
+
+  "scene-new"() {
+    const devices = [...store.devices.values()].filter((d) => d.caps.includes("power"));
+    page("New scene", `
+      <form data-scene-form>
+        <div class="card">
+          <label class="field"><span>Name</span><input name="name" required maxlength="24" placeholder="Movie night"></label>
+          <span class="field"><span>Icon</span></span>
+          <div class="chips" role="radiogroup">${SCENE_ICONS.map((ic, i) => `
+            <label class="chip" style="display:grid;place-items:center;width:64px;padding:0">
+              <input type="radio" name="icon" value="${ic}" ${i === 0 ? "checked" : ""} style="position:absolute;opacity:0">${icon(ic)}</label>`).join("")}</div>
+        </div>
+        <p class="group-label">First set the devices the way you want them, then pick them here. The scene saves how each one is right now.</p>
+        <div class="list">${devices.map((d) => `
+          <label class="row check"><input type="checkbox" name="capture" value="${esc(d.id)}">
+            <span class="grow"><span class="title">${esc(d.name)}</span><span class="sub">${esc(d.room || "No room")}, ${d.state?.on ? "on" : "off"}</span></span></label>`).join("")}</div>
+        <button class="btn primary" type="submit">Save scene</button>
+      </form>`, { closeBtn: true });
+    const form = $("[data-scene-form]");
+    form.addEventListener("change", (e) => {
+      if (e.target.name === "icon") form.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", c.contains(e.target)));
+    });
+    form.querySelector(".chip")?.setAttribute("aria-pressed", "true");
+  },
+
+  rooms() {
+    page("Rooms", `
+      <div class="list">${store.rooms.map((r, i) => `
+        <div class="row"><span class="grow"><span class="title">${esc(r)}</span></span>
+          ${i > 0 ? `<button class="btn small" data-room-up="${i}" aria-label="Move ${esc(r)} up">${icon("up")}</button>` : ""}
+          <button class="btn small danger" data-room-del="${i}" aria-label="Delete ${esc(r)}">${icon("trash")}</button></div>`).join("")}</div>
+      <form class="card" data-room-add>
+        <label class="field"><span>New room</span><input name="room" maxlength="24" placeholder="Office" required></label>
+        <button class="btn primary" type="submit">Add room</button>
+      </form>`);
+  },
+
+  display() {
+    const s = store.settings;
+    const opts = [[0, "Never"], [30, "30 seconds"], [60, "1 minute"], [90, "90 seconds"], [180, "3 minutes"], [600, "10 minutes"]];
+    page("Display and clock", `
+      <form class="card" data-display>
+        <label class="field"><span>Show the night clock after</span><select name="dim_after_seconds">
+          ${opts.map(([v, l]) => `<option value="${v}" ${Number(s.dim_after_seconds) === v ? "selected" : ""}>${l}</option>`).join("")}
+        </select><small>The screen goes dark with a dim clock so it doesn't light up the room. Touch to wake.</small></label>
+        <label class="check"><input type="checkbox" name="clock_24h" ${s.clock_24h ? "checked" : ""}><span>24-hour clock</span></label>
+        <div class="btn-row"><button class="btn primary" type="submit">Save</button></div>
+      </form>`);
+  },
+
+  async diagnostics() {
+    page("Diagnostics and logs", `<div class="card" id="health"><p>Checking…</p></div>
+      <div class="btn-row" style="margin:0 0 12px">
+        <button class="btn small" data-logs="">All logs</button>
+        <button class="btn small" data-logs="WARNING">Problems only</button>
+        <a class="btn small" href="/api/v1/logs?format=text" download="homepanel-log.txt">Download log file</a>
+      </div>
+      <div class="logs" id="logs">Loading…</div>`);
+    try {
+      const h = await api.health();
+      $("#health").innerHTML = `<h3>${h.online} of ${h.devices} devices responding</h3>
+        <p>Running for ${fmtDuration(h.uptime_s)}. Brands available: ${esc(h.adapters.join(", "))}.
+        ${Object.keys(h.unavailable).length ? `<br>Not installed: ${esc(Object.keys(h.unavailable).join(", "))}.` : ""}</p>`;
+    } catch (e) { $("#health").innerHTML = `<p>${esc(e.message)}</p>`; }
+    loadLogs("");
+  },
+};
+
+function fmtDuration(s) {
+  if (s < 90) return `${Math.round(s)} seconds`;
+  if (s < 5400) return `${Math.round(s / 60)} minutes`;
+  if (s < 172800) return `${Math.round(s / 3600)} hours`;
+  return `${Math.round(s / 86400)} days`;
+}
+
+async function loadLogs(level) {
+  const el = $("#logs");
+  if (!el) return;
+  try {
+    const { logs } = await api.logs(level);
+    el.innerHTML = logs.length ? logs.slice().reverse().map((l) =>
+      `<div class="${esc(l.level)}"><span class="t">${new Date(l.time * 1000).toLocaleTimeString()}</span> ${esc(l.level)} ${esc(l.message)}</div>`).join("")
+      : "Nothing logged yet.";
+  } catch (e) { el.textContent = e.message; }
+}
+
+function fieldHtml(f, value) {
+  const v = value ?? f.default ?? "";
+  if (f.type === "select") {
+    return `<label class="field"><span>${esc(f.label)}</span><select name="${esc(f.key)}">${f.options.map((o) =>
+      `<option value="${esc(o.value)}" ${String(o.value) === String(v) ? "selected" : ""}>${esc(o.label)}</option>`).join("")}</select>
+      ${f.help ? `<small>${esc(f.help)}</small>` : ""}</label>`;
+  }
+  const type = f.type === "password" ? "password" : f.type === "number" ? "number" : "text";
+  const isMasked = f.type === "password" && v === "••••••";
+  return `<label class="field"><span>${esc(f.label)}</span>
+    <input name="${esc(f.key)}" type="${type}" value="${isMasked ? "" : esc(v)}" ${f.required && !isMasked ? "required" : ""}
+      placeholder="${esc(isMasked ? "Saved. Leave blank to keep it." : f.placeholder || "")}" autocomplete="off" spellcheck="false">
+    ${f.help ? `<small>${esc(f.help)}</small>` : ""}</label>`;
+}
+
+const formValues = (form) => Object.fromEntries(new FormData(form).entries());
+
+function render() {
+  const top = stack.at(-1);
+  if (!top) return close();
+  VIEWS[top.view]?.(top.arg);
+}
+
+// ---------- events ----------
+const root = $("#settings");
+
+root.addEventListener("click", async (e) => {
+  const t = (sel) => e.target.closest(sel);
+  if (t("[data-back]")) return back();
+  if (t("[data-close]")) return close();
+  const goEl = t("[data-go]");
+  if (goEl) return go(goEl.dataset.go, goEl.dataset.arg || null);
+
+  const top = stack.at(-1);
+  try {
+    if (t("[data-save-device]")) {
+      const id = t("[data-save-device]").dataset.saveDevice;
+      await api.updateDevice(id, { name: $("#d-name").value.trim() || "Device", room: $("#d-room").value,
+                                   keep_on: !!$("#d-keep")?.checked });
+      toast("Saved");
+      await reload();
+      return back();
+    }
+    if (t("[data-pair]")) {
+      const b = t("[data-pair]"); b.disabled = true; b.textContent = "Accept the prompt on the TV…";
+      await api.pair(b.dataset.pair); toast("Paired"); await reload(); return render();
+    }
+    if (t("[data-refresh]")) { await api.refresh(t("[data-refresh]").dataset.refresh); await reload(); toast("Checked"); return render(); }
+    if (t("[data-remove]")) {
+      const id = t("[data-remove]").dataset.remove;
+      const d = store.devices.get(id);
+      if (!confirm(`Remove ${d?.name || "this device"} from the panel? It stays set up in its own app.`)) return;
+      await api.removeDevice(id); await reload(); toast("Removed"); return back();
+    }
+    if (t("[data-discover]")) {
+      brandState.searching = true; brandState.room = $("#add-room")?.value; render();
+      try { brandState.found = (await api.discover(top.arg)).found; }
+      finally { brandState.searching = false; render(); }
+      return;
+    }
+    if (t("[data-manual-toggle]")) { brandState.manual = !brandState.manual; brandState.room = $("#add-room")?.value; return render(); }
+    if (t("[data-add-uid]")) {
+      const b = t("[data-add-uid]");
+      b.disabled = true; b.textContent = "Adding…";
+      const room = $("#add-room")?.value || "";
+      brandState.room = room;
+      const d = await api.addDevice({ adapter: top.arg, uid: b.dataset.addUid, name: b.dataset.name, room });
+      const f = brandState.found?.find((x) => x.uid === b.dataset.addUid);
+      if (f) f.added = true;
+      toast(d.pairing ? `${d.name} added. Look at the TV and accept the prompt, then tap Pair.` : `${d.name} added`, d.pairing);
+      await reload();
+      return render();
+    }
+    if (t("[data-account-action]")) {
+      const b = t("[data-account-action]"); b.disabled = true;
+      const r = await api.accountAction(top.arg, b.dataset.accountAction);
+      brandState.account = r.account; toast(r.message); await reload(); return render();
+    }
+    if (t("[data-del-scene]")) { await api.deleteScene(t("[data-del-scene]").dataset.delScene); await reload(); return render(); }
+    if (t("[data-room-del]")) {
+      const rooms = store.rooms.filter((_, i) => i !== +t("[data-room-del]").dataset.roomDel);
+      await api.setRooms(rooms); await reload(); return render();
+    }
+    if (t("[data-room-up]")) {
+      const i = +t("[data-room-up]").dataset.roomUp; const rooms = [...store.rooms];
+      [rooms[i - 1], rooms[i]] = [rooms[i], rooms[i - 1]];
+      await api.setRooms(rooms); await reload(); return render();
+    }
+    if (t("[data-logs]") !== null && t("[data-logs]")) return loadLogs(t("[data-logs]").dataset.logs);
+  } catch (err) {
+    toast(err.message, true);
+    render();
+  }
+});
+
+root.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.target;
+  const top = stack.at(-1);
+  try {
+    if (form.matches("[data-account]")) {
+      brandState.account = await api.saveAccount(top.arg, formValues(form));
+      toast("Saved"); await reload(); return render();
+    }
+    if (form.matches("[data-manual]")) {
+      const values = formValues(form);
+      const d = await api.addDevice({ adapter: top.arg, manual: values, name: values.name, room: $("#add-room")?.value || "" });
+      toast(d.pairing ? `${d.name} added. Accept the prompt on the TV, then tap Pair.` : `${d.name} added`, d.pairing);
+      await reload(); brandState.manual = false; return render();
+    }
+    if (form.matches("[data-scene-form]")) {
+      const fd = new FormData(form);
+      const capture = fd.getAll("capture");
+      if (!capture.length) return toast("Pick at least one device", true);
+      await api.saveScene({ name: fd.get("name"), icon: fd.get("icon"), capture });
+      toast("Scene saved"); await reload(); return back();
+    }
+    if (form.matches("[data-room-add]")) {
+      await api.setRooms([...store.rooms, formValues(form).room.trim()]); await reload(); return render();
+    }
+    if (form.matches("[data-display]")) {
+      const v = formValues(form);
+      await api.saveSettings({ dim_after_seconds: Number(v.dim_after_seconds), clock_24h: !!v.clock_24h });
+      toast("Saved"); await reload(); return back();
+    }
+  } catch (err) { toast(err.message, true); }
+});
+
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isSettingsOpen()) back(); });

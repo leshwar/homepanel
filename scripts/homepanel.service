@@ -1,0 +1,19 @@
+# systemd unit template — install.sh fills in __USER__, __DIR__ and __PORT__.
+[Unit]
+Description=HomePanel smart home controller
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__DIR__
+Environment=HOMEPANEL_PORT=__PORT__
+Environment=PYTHONUNBUFFERED=1
+ExecStart=__DIR__/.venv/bin/python -m app.main
+Restart=always
+RestartSec=3
+# Logs also go to the journal: journalctl -u homepanel -f
+
+[Install]
+WantedBy=multi-user.target

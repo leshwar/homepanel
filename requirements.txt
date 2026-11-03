@@ -1,0 +1,9 @@
+# Core (API + service layers)
+starlette>=0.37
+uvicorn>=0.29
+
+# Device adapters. A missing one only disables that brand.
+tinytuya>=1.13        # Tuya / Smart Life / Globe Electric
+python-kasa>=0.7      # TP-Link Kasa and Tapo
+samsungtvws>=2.6      # Samsung TVs
+aiowebostv>=0.4       # LG webOS TVs

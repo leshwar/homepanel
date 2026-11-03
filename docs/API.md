@@ -1,0 +1,104 @@
+# API reference (v1)
+
+Base URL: `http://<panel>:8080/api/v1`. JSON in, JSON out. Errors return a
+4xx/5xx status with `{"error": "message meant for people"}`.
+
+The API is brand-agnostic: callers never need to know which adapter a device uses.
+
+## Reading state
+
+| Method | Path | Returns |
+|---|---|---|
+| GET | `/state` | Everything the UI needs: `devices`, `rooms`, `scenes`, `settings`, `adapters`, `demo` |
+| GET | `/events` | Server-Sent Events stream (see below) |
+| GET | `/health` | `{ok, uptime_s, devices, online, adapters, unavailable, demo}` |
+| GET | `/logs?level=WARNING` | Last 300 log records `{time, level, logger, message}` |
+| GET | `/logs?format=text` | The full log file as a download |
+
+A device looks like:
+
+```json
+{
+  "id": "a1b2c3d4e5",
+  "adapter": "tuya",
+  "adapter_name": "Tuya / Smart Life",
+  "name": "Desk lamp",
+  "kind": "light",
+  "room": "Office",
+  "caps": ["power", "brightness", "color", "color_temp"],
+  "keep_on": false,
+  "state": {"online": true, "on": true, "brightness": 60, "color_temp": 2700, "color_mode": "temp"},
+  "meta": {"model": "...", "apps": [{"id": "...", "name": "Netflix"}], "inputs": [...]},
+  "pairing": false
+}
+```
+
+## Controlling devices
+
+`POST /devices/{id}/command` with `{"action": "...", "value": ...}`
+
+| action | value | needs capability |
+|---|---|---|
+| `power` | `true` / `false` | power |
+| `toggle` | — | power |
+| `brightness` | 1–100 | brightness |
+| `color` | `"#rrggbb"` or `{"r","g","b"}` | color |
+| `color_temp` | Kelvin, e.g. `2700` | color_temp |
+| `volume` | 0–100 | volume_level |
+| `volume_up` / `volume_down` | — | volume |
+| `mute` | `true` / `false` (omit to toggle) | mute |
+| `channel_up` / `channel_down` | — | channel |
+| `key` | `UP DOWN LEFT RIGHT OK BACK HOME MENU SOURCE PLAY PAUSE STOP REWIND FORWARD` | remote |
+| `launch_app` | app id from `meta.apps` | apps |
+| `set_input` | input id from `meta.inputs` | inputs |
+
+Returns the updated device. Example:
+
+```bash
+curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
+     -H 'Content-Type: application/json' -d '{"action":"brightness","value":40}'
+```
+
+`POST /all-off` with optional `{"room": "Kitchen"}` turns off everything that's on
+(skipping devices marked `keep_on`). Returns `{"turned_off": n}`.
+
+## Managing devices
+
+| Method | Path | Body |
+|---|---|---|
+| POST | `/adapters/{adapter}/discover` | — → `{"found": [{uid, name, kind, caps, detail, needs_pairing, added}]}` |
+| POST | `/devices` | `{"adapter", "uid"}` from discovery, **or** `{"adapter", "manual": {...fields}}`, plus optional `name`, `room` |
+| PATCH | `/devices/{id}` | any of `name`, `room`, `icon`, `kind`, `keep_on` |
+| DELETE | `/devices/{id}` | — |
+| POST | `/devices/{id}/pair` | — (retry TV pairing; accept the prompt on the TV) |
+| POST | `/devices/{id}/refresh` | — (poll now) |
+
+## Brand accounts
+
+| Method | Path | Body |
+|---|---|---|
+| GET | `/adapters/{adapter}/account` | → saved values (passwords masked as `••••••`) |
+| PUT | `/adapters/{adapter}/account` | field values; a blank password keeps the saved one |
+| POST | `/adapters/{adapter}/actions/{action}` | e.g. `hue` / `pair` |
+
+## Rooms, scenes, settings
+
+| Method | Path | Body |
+|---|---|---|
+| PUT | `/rooms` | `{"rooms": ["Living room", "Bedroom"]}` (order = display order) |
+| POST | `/scenes` | `{"name", "icon", "actions": [{device_id, action, value}]}` **or** `{"name", "icon", "capture": [device ids]}` to save devices as they are now |
+| DELETE | `/scenes/{id}` | — |
+| POST | `/scenes/{id}/run` | — → `{"ok": n, "failed": [messages]}` |
+| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit` |
+
+## Live events
+
+`GET /events` is a Server-Sent Events stream. Each message is JSON:
+
+- `{"type": "device", "device": {...}}` — one device changed
+- `{"type": "layout"}` — devices, rooms, scenes or settings changed; reload `/state`
+
+```js
+const es = new EventSource("/api/v1/events");
+es.onmessage = (m) => console.log(JSON.parse(m.data));
+```

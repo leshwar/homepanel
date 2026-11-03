@@ -1,0 +1,46 @@
+# Contributing
+
+Thanks for helping! Bug reports from real hardware are just as valuable as code.
+
+## Getting set up
+
+```bash
+git clone https://github.com/leshwar/homepanel.git
+cd homepanel
+make setup
+make dev        # http://localhost:8080 with pretend devices
+make test
+```
+
+Using Claude Code? It picks up [CLAUDE.md](CLAUDE.md) automatically, which
+describes the layers and rules below.
+
+## Where things go
+
+| I want to… | Look at |
+|---|---|
+| Support a new brand | [app/adapters/README.md](app/adapters/README.md) |
+| Change how a command is handled for every device | `app/core/service.py` (middleware) |
+| Add an API endpoint | `app/api/routes.py` + [docs/API.md](docs/API.md) |
+| Change the UI | [web/README.md](web/README.md) |
+| Change the Pi installer | [scripts/README.md](scripts/README.md) |
+
+## Workflow
+
+1. Open an issue first for bigger changes so we can agree on the approach.
+2. Create a branch: `git checkout -b add-mybrand-adapter`.
+3. Keep changes focused; update docs alongside code.
+4. `make test` and `make lint` must pass (CI runs them on every pull request).
+5. Open a pull request using the template; include screenshots for UI changes and
+   the device models you tested for adapter changes.
+
+## Reporting a bug
+
+Run `./scripts/collect-logs.sh` (or Settings → Diagnostics → Download log file)
+and attach the result to a [bug report](../../issues/new?template=bug_report.md).
+Include the device brand and model.
+
+## Code of conduct
+
+Be kind and constructive. Assume good intent, explain your reasoning, and help
+newcomers.

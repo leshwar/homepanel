@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Runtime data: contains API keys and device tokens — never commit
+data/
+logs/
+homepanel-debug-*.tar.gz
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/

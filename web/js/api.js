@@ -1,0 +1,66 @@
+// Thin client for the HomePanel REST API (see docs/API.md).
+// Every UI action goes through here, so swapping the backend never touches the UI.
+
+const BASE = "/api/v1";
+
+export class ApiError extends Error {}
+
+async function call(method, path, body) {
+  let res;
+  try {
+    res = await fetch(BASE + path, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } catch {
+    throw new ApiError("Can't reach the panel's server. Is it running?");
+  }
+  let data = null;
+  try { data = await res.json(); } catch { /* empty body */ }
+  if (!res.ok) throw new ApiError((data && data.error) || `Request failed (${res.status})`);
+  return data;
+}
+
+export const api = {
+  state: () => call("GET", "/state"),
+  health: () => call("GET", "/health"),
+  logs: (level = "") => call("GET", `/logs${level ? `?level=${level}` : ""}`),
+
+  command: (id, action, value) => call("POST", `/devices/${id}/command`, { action, value }),
+  addDevice: (body) => call("POST", "/devices", body),
+  updateDevice: (id, changes) => call("PATCH", `/devices/${id}`, changes),
+  removeDevice: (id) => call("DELETE", `/devices/${id}`),
+  pair: (id) => call("POST", `/devices/${id}/pair`),
+  refresh: (id) => call("POST", `/devices/${id}/refresh`),
+  allOff: (room) => call("POST", "/all-off", room ? { room } : {}),
+
+  discover: (adapter) => call("POST", `/adapters/${adapter}/discover`),
+  getAccount: (adapter) => call("GET", `/adapters/${adapter}/account`),
+  saveAccount: (adapter, values) => call("PUT", `/adapters/${adapter}/account`, values),
+  accountAction: (adapter, action) => call("POST", `/adapters/${adapter}/actions/${action}`),
+
+  setRooms: (rooms) => call("PUT", "/rooms", { rooms }),
+  saveScene: (scene) => call("POST", "/scenes", scene),
+  deleteScene: (id) => call("DELETE", `/scenes/${id}`),
+  runScene: (id) => call("POST", `/scenes/${id}/run`),
+  saveSettings: (s) => call("PUT", "/settings", s),
+};
+
+// Live updates. Calls onEvent(event) for each server event, onStatus(connected).
+export function connectEvents(onEvent, onStatus) {
+  let es;
+  let retry;
+  const open = () => {
+    es = new EventSource(`${BASE}/events`);
+    es.onopen = () => onStatus(true);
+    es.onmessage = (m) => { try { onEvent(JSON.parse(m.data)); } catch { /* ignore */ } };
+    es.onerror = () => {
+      onStatus(false);
+      es.close();
+      clearTimeout(retry);
+      retry = setTimeout(open, 2500);
+    };
+  };
+  open();
+}

@@ -75,7 +75,7 @@ class History:
         start = today - timedelta(days=days - 1)
         buckets = {(start + timedelta(days=i)).date().isoformat(): 0.0 for i in range(days)}
         rows = self._samples(device_id, start.timestamp())
-        for (t0, w0), (t1, _w1) in zip(rows, rows[1:]):
+        for (t0, w0), (t1, _w1) in zip(rows, rows[1:], strict=False):
             dt = t1 - t0
             if dt <= 0 or dt > MAX_GAP:
                 continue

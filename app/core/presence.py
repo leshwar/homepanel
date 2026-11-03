@@ -56,7 +56,7 @@ class Presence:
             self._anyone_home = None
             return
         seen = await asyncio.gather(*(prober(p["ip"]) for p in people))
-        for p, ok in zip(people, seen):
+        for p, ok in zip(people, seen, strict=True):
             st = self.status.setdefault(p["name"], {"home": None, "last_seen": None})
             if ok:
                 st.update(home=True, last_seen=now)

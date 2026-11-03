@@ -126,7 +126,9 @@ jobs:
 
   publish:
     name: Publish build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # "Tests included" is skipped on pushes (it's PR-only). GitHub skips jobs downstream of a
+    # skipped job unless the condition says otherwise, so check the summary result explicitly.
+    if: ${{ !cancelled() && needs.all-checks.result == 'success' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: all-checks
     runs-on: ubuntu-latest
     permissions:

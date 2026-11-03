@@ -30,7 +30,7 @@ KNOWN_APPS = [
 INPUTS = [{"id": "KEY_TV", "name": "TV"}, {"id": "KEY_HDMI1", "name": "HDMI 1"},
           {"id": "KEY_HDMI2", "name": "HDMI 2"}, {"id": "KEY_HDMI3", "name": "HDMI 3"},
           {"id": "KEY_HDMI4", "name": "HDMI 4"}]
-CAPS = [Cap.POWER, Cap.VOLUME, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.APPS, Cap.INPUTS]
+CAPS = [Cap.POWER, Cap.VOLUME, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.MEDIA, Cap.APPS, Cap.INPUTS]
 
 
 @register

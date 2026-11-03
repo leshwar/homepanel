@@ -18,6 +18,7 @@ MODULES = [
     "hue",         # Philips Hue (bridge)
     "samsung_tv",  # Samsung Tizen TVs (2016+)
     "lg_tv",       # LG webOS TVs
+    "home_assistant",  # anything an existing Home Assistant controls
 ]
 
 for _name in MODULES:

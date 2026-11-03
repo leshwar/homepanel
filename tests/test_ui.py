@@ -87,6 +87,22 @@ class UITests(unittest.TestCase):
         self.page.click("[data-go=add]")
         self.page.wait_for_selector("text=Shelly")
 
+    def test_energy_chart_for_metering_plug(self):
+        self.tile("kt-fridge").locator("[data-more]").click()
+        self.page.wait_for_selector(".bars .bar")
+        self.assertEqual(self.page.locator(".bars .bar").count(), 7)
+
+    def test_create_schedule(self):
+        self.page.click("#open-settings")
+        self.page.click("[data-go=automations]")
+        self.page.click("[data-go=automation-new]")
+        self.page.select_option("select[name=when]", "time")
+        self.page.fill("input[name=at]", "22:30")
+        self.page.select_option("select[name=do]", "all_off")
+        self.page.fill("input[name=name]", "Lights out")
+        self.page.click("[data-auto-form] button[type=submit]")
+        self.page.wait_for_selector("text=Lights out")
+
     def test_ambient_clock_wakes_without_toggling(self):
         self.page.click("#clock")
         self.page.wait_for_selector("#ambient:not([hidden])")

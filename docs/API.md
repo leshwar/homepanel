@@ -89,7 +89,47 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 | POST | `/scenes` | `{"name", "icon", "actions": [{device_id, action, value}]}` **or** `{"name", "icon", "capture": [device ids]}` to save devices as they are now |
 | DELETE | `/scenes/{id}` | — |
 | POST | `/scenes/{id}/run` | — → `{"ok": n, "failed": [messages]}` |
-| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit` |
+| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence` |
+
+## Energy
+
+`GET /devices/{id}/energy?days=7` (devices that report `power_w`) →
+
+```json
+{"days": [{"date": "2026-11-03", "kwh": 0.84}, ...], "today_kwh": 0.84, "week_kwh": 8.6,
+ "power": [{"t": 1793700000, "w": 118.2}, ...]}
+```
+
+`power` is the last 24 hours in 15-minute averages (`w` is `null` where there's no data).
+
+## Automations
+
+| Method | Path | Body |
+|---|---|---|
+| GET | `/automations` | → `{"automations": [...]}` each with `next_run` (unix time or null) |
+| POST | `/automations` | create/update (include `id` to update), see below |
+| DELETE | `/automations/{id}` | — |
+| POST | `/automations/{id}/run` | run it now |
+| GET | `/sun` | today's `sunrise` / `sunset` (unix time) once a location is set |
+| GET | `/presence` | `{"people": [{name, ip, home, last_seen}]}` |
+
+```json
+{
+  "name": "Porch light at sunset",
+  "enabled": true,
+  "when": {"type": "time", "at": "07:00", "days": [0, 1, 2, 3, 4]},
+  "do": {"type": "scene", "scene_id": "morning"}
+}
+```
+
+`when` is one of `{"type":"time","at":"HH:MM","days":[0-6, 0 = Monday]}`,
+`{"type":"sun","event":"sunset"|"sunrise","offset_min":-15}`, or
+`{"type":"presence","event":"all_away"|"someone_home"}`.
+`do` is one of `{"type":"scene","scene_id":...}`, `{"type":"all_off"}`, or
+`{"type":"command","device_id":...,"action":"power","value":true}`.
+
+Location and people are settings: `PUT /settings` with `latitude`, `longitude`,
+and `presence: [{"name": "Asha", "ip": "192.168.1.23"}]`.
 
 ## Live events
 
@@ -97,6 +137,7 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 
 - `{"type": "device", "device": {...}}` — one device changed
 - `{"type": "layout"}` — devices, rooms, scenes or settings changed; reload `/state`
+- `{"type": "automation", "name": "...", "result": "ok"}` — an automation just ran
 
 ```js
 const es = new EventSource("/api/v1/events");

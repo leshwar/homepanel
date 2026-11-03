@@ -14,6 +14,9 @@ DEFAULT_SETTINGS = {
     "dim_after_seconds": 90,      # show the ambient clock after this much idle time (0 = never)
     "temperature_unit": "F",
     "clock_24h": False,
+    "latitude": None,             # for sunrise/sunset schedules
+    "longitude": None,
+    "presence": [],               # [{"name": "Asha", "ip": "192.168.1.23"}] phones to watch
 }
 
 DEFAULT_ROOMS = ["Living room", "Bedroom", "Kitchen"]
@@ -27,7 +30,8 @@ class Store:
         self.rooms: list[str] = list(DEFAULT_ROOMS)
         self.scenes: list[dict] = []
         self.accounts: dict[str, dict] = {}
-        self.settings: dict = dict(DEFAULT_SETTINGS)
+        self.automations: list[dict] = []
+        self.settings: dict = {**DEFAULT_SETTINGS, "presence": []}
         self.load()
 
     def load(self) -> None:
@@ -38,6 +42,7 @@ class Store:
         self.rooms = data.get("rooms", self.rooms)
         self.scenes = data.get("scenes", [])
         self.accounts = data.get("accounts", {})
+        self.automations = data.get("automations", [])
         self.settings = {**DEFAULT_SETTINGS, **data.get("settings", {})}
         for d in data.get("devices", []):
             d.pop("state", None)
@@ -49,6 +54,7 @@ class Store:
             "rooms": self.rooms,
             "devices": [{k: v for k, v in asdict(d).items() if k != "state"} for d in self.devices.values()],
             "scenes": self.scenes,
+            "automations": self.automations,
             "accounts": self.accounts,
             "settings": self.settings,
         }

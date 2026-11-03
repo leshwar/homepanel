@@ -25,7 +25,7 @@ function back() { stack.pop(); stack.length ? render() : close(); }
 export function refreshSettings() {
   if (!isSettingsOpen()) return;
   const top = stack.at(-1);
-  if (top && ["home", "devices", "scenes", "rooms"].includes(top.view)) render();
+  if (top && ["home", "devices", "scenes", "rooms", "automations", "location"].includes(top.view)) render();
 }
 
 // ---------- rendering ----------
@@ -53,9 +53,13 @@ const VIEWS = {
         ${row("data-go=devices", "bulb", "Devices", `${n} ${n === 1 ? "device" : "devices"}`,
               attention ? `<span class="badge">${attention} need attention</span>` : "")}
         ${row("data-go=scenes", "sparkle", "Scenes", `${store.scenes.length} saved`)}
+        ${row("data-go=automations", "clock", "Schedules and automations",
+              `${store.automations.filter((a) => a.enabled).length} active`)}
         ${row("data-go=rooms", "home", "Rooms", store.rooms.join(", ") || "None yet")}
       </div>
       <div class="list">
+        ${row("data-go=location", "users", "Location and presence",
+              store.settings.latitude != null ? `${store.presence.length} ${store.presence.length === 1 ? "person" : "people"} watched` : "Set your location for sunrise and sunset")}
         ${row("data-go=display", "sun", "Display and clock")}
         ${row("data-go=diagnostics", "pulse", "Diagnostics and logs")}
       </div>
@@ -214,6 +218,117 @@ const VIEWS = {
       </form>`);
   },
 
+  automations() {
+    const items = store.automations;
+    page("Schedules and automations", `
+      <p class="group-label">Run a scene or switch things on and off by themselves.</p>
+      ${items.length ? `<div class="list">${items.map((a) => `
+        <div class="row">
+          <label class="check" style="min-height:0"><input type="checkbox" data-auto-toggle="${esc(a.id)}" ${a.enabled ? "checked" : ""}
+            aria-label="${a.enabled ? "Turn off" : "Turn on"} ${esc(a.name)}"></label>
+          <span class="grow"><span class="title">${esc(a.name)}</span>
+            <span class="sub">${esc(whenText(a))}${a.last_result && !String(a.last_result).startsWith("ok") ? `. Last run: ${esc(a.last_result)}` : ""}</span></span>
+          <button class="btn small" data-auto-run="${esc(a.id)}">Run now</button>
+          <button class="btn small danger" data-auto-del="${esc(a.id)}" aria-label="Delete ${esc(a.name)}">${icon("trash")}</button>
+        </div>`).join("")}</div>` : ""}
+      <button class="btn primary" data-go="automation-new">${icon("plus")}New automation</button>`);
+  },
+
+  "automation-new"() {
+    const plugsAndLights = [...store.devices.values()].filter((d) => d.caps.includes("power"));
+    const hasLoc = store.settings.latitude != null;
+    const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    page("New automation", `
+      <form data-auto-form>
+        <div class="card">
+          <h3>When</h3>
+          <label class="field"><span>Trigger</span><select name="when">
+            <option value="time">At a time of day</option>
+            <option value="sunset" ${hasLoc ? "" : "disabled"}>At sunset${hasLoc ? "" : " (set your location first)"}</option>
+            <option value="sunrise" ${hasLoc ? "" : "disabled"}>At sunrise${hasLoc ? "" : " (set your location first)"}</option>
+            <option value="all_away">When everyone leaves home</option>
+            <option value="someone_home">When someone comes home</option>
+          </select></label>
+          <div data-show="time">
+            <label class="field"><span>Time</span><input type="time" name="at" value="07:00"></label>
+            <div class="chips" role="group" aria-label="Days">${days.map((d, i) => `
+              <label class="chip day"><input type="checkbox" name="days" value="${i}" checked>${d}</label>`).join("")}</div>
+          </div>
+          <div data-show="sun" hidden>
+            <label class="field"><span>Offset</span><select name="offset_min">
+              ${[[-60, "1 hour before"], [-30, "30 minutes before"], [-15, "15 minutes before"], [0, "Exactly then"],
+                 [15, "15 minutes after"], [30, "30 minutes after"], [60, "1 hour after"]].map(([v, l]) =>
+                `<option value="${v}" ${v === 0 ? "selected" : ""}>${l}</option>`).join("")}
+            </select></label>
+          </div>
+          <div data-show="presence" hidden>
+            <p>${store.presence.length ? `Watching ${store.presence.map((p) => esc(p.name)).join(", ")}.` :
+              `Add people's phones first in Location and presence.`}</p>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Do</h3>
+          <label class="field"><span>Action</span><select name="do">
+            ${store.scenes.map((sc) => `<option value="scene:${esc(sc.id)}">Run scene: ${esc(sc.name)}</option>`).join("")}
+            <option value="all_off">Turn everything off</option>
+            <option value="device">Turn a device on or off</option>
+          </select></label>
+          <div data-show="device" hidden>
+            <label class="field"><span>Device</span><select name="device_id">
+              ${plugsAndLights.map((d) => `<option value="${esc(d.id)}">${esc(d.name)}${d.room ? ` (${esc(d.room)})` : ""}</option>`).join("")}
+            </select></label>
+            <label class="field"><span>Turn it</span><select name="value"><option value="on">On</option><option value="off">Off</option></select></label>
+          </div>
+        </div>
+        <div class="card">
+          <label class="field"><span>Name (optional)</span><input name="name" maxlength="40" placeholder="Made for you if left blank"></label>
+          <button class="btn primary" type="submit">Save automation</button>
+        </div>
+      </form>`, { closeBtn: true });
+    const form = $("[data-auto-form]");
+    const sync = () => {
+      const w = form.when.value, d = form.do.value;
+      form.querySelector('[data-show="time"]').hidden = w !== "time";
+      form.querySelector('[data-show="sun"]').hidden = !["sunset", "sunrise"].includes(w);
+      form.querySelector('[data-show="presence"]').hidden = !["all_away", "someone_home"].includes(w);
+      form.querySelector('[data-show="device"]').hidden = d !== "device";
+      form.querySelectorAll(".chip.day").forEach((c) => c.setAttribute("aria-pressed", c.querySelector("input").checked));
+    };
+    form.addEventListener("change", sync);
+    sync();
+  },
+
+  async location() {
+    const s = store.settings;
+    page("Location and presence", `
+      <form class="card" data-location>
+        <h3>Your location</h3>
+        <p>Used only to work out sunrise and sunset times on this panel. In Google Maps, long-press your home to see its coordinates.</p>
+        <label class="field"><span>Latitude</span><input name="latitude" inputmode="decimal" value="${s.latitude ?? ""}" placeholder="47.61"></label>
+        <label class="field"><span>Longitude</span><input name="longitude" inputmode="decimal" value="${s.longitude ?? ""}" placeholder="-122.33"></label>
+        <p id="sun-today"></p>
+        <div class="btn-row"><button class="btn primary" type="submit">Save location</button></div>
+      </form>
+      <div class="card">
+        <h3>People</h3>
+        <p>The panel checks whether each person's phone is on the home Wi-Fi. Give each phone a fixed IP address in your router. Someone counts as away after about 10 minutes without their phone.</p>
+        ${store.presence.length ? `<div class="list" style="margin-bottom:14px">${store.presence.map((p, i) => `
+          <div class="row"><span class="grow"><span class="title">${esc(p.name)}</span>
+            <span class="sub">${esc(p.ip)}, ${p.home == null ? "checking…" : p.home ? "home" : "away"}</span></span>
+            <button class="btn small danger" data-person-del="${i}" aria-label="Remove ${esc(p.name)}">${icon("trash")}</button></div>`).join("")}</div>` : ""}
+        <form data-person-add>
+          <label class="field"><span>Name</span><input name="name" maxlength="24" required placeholder="Asha"></label>
+          <label class="field"><span>Phone's IP address</span><input name="ip" required placeholder="192.168.1.23" inputmode="decimal"></label>
+          <button class="btn" type="submit">${icon("plus")}Add person</button>
+        </form>
+      </div>`);
+    try {
+      const sun = await api.sun();
+      const fmt = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+      if (sun.sunrise && $("#sun-today")) $("#sun-today").textContent = `Today: sunrise ${fmt(sun.sunrise)}, sunset ${fmt(sun.sunset)}.`;
+    } catch { /* location not set */ }
+  },
+
   display() {
     const s = store.settings;
     const opts = [[0, "Never"], [30, "30 seconds"], [60, "1 minute"], [90, "90 seconds"], [180, "3 minutes"], [600, "10 minutes"]];
@@ -244,6 +359,14 @@ const VIEWS = {
     loadLogs("");
   },
 };
+
+function whenText(a) {
+  const w = a.when;
+  const next = a.next_run ? new Date(a.next_run * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : "";
+  if (!a.enabled) return "Paused";
+  if (w.type === "presence") return w.event === "all_away" ? "When everyone leaves" : "When someone comes home";
+  return next ? `Next: ${next}` : "No upcoming run";
+}
 
 function fmtDuration(s) {
   if (s < 90) return `${Math.round(s)} seconds`;
@@ -341,6 +464,16 @@ root.addEventListener("click", async (e) => {
       const r = await api.accountAction(top.arg, b.dataset.accountAction);
       brandState.account = r.account; toast(r.message); await reload(); return render();
     }
+    if (t("[data-auto-run]")) { const r = await api.runAutomation(t("[data-auto-run]").dataset.autoRun); toast(`${r.name}: ${r.last_result}`); await reload(); return render(); }
+    if (t("[data-auto-del]")) { await api.deleteAutomation(t("[data-auto-del]").dataset.autoDel); await reload(); return render(); }
+    if (t("[data-auto-toggle]")) {
+      const a = store.automations.find((x) => x.id === t("[data-auto-toggle]").dataset.autoToggle);
+      await api.saveAutomation({ ...a, enabled: t("[data-auto-toggle]").checked }); await reload(); return render();
+    }
+    if (t("[data-person-del]")) {
+      const people = store.settings.presence.filter((_, i) => i !== +t("[data-person-del]").dataset.personDel);
+      await api.saveSettings({ presence: people }); await reload(); return render();
+    }
     if (t("[data-del-scene]")) { await api.deleteScene(t("[data-del-scene]").dataset.delScene); await reload(); return render(); }
     if (t("[data-room-del]")) {
       const rooms = store.rooms.filter((_, i) => i !== +t("[data-room-del]").dataset.roomDel);
@@ -379,6 +512,30 @@ root.addEventListener("submit", async (e) => {
       if (!capture.length) return toast("Pick at least one device", true);
       await api.saveScene({ name: fd.get("name"), icon: fd.get("icon"), capture });
       toast("Scene saved"); await reload(); return back();
+    }
+    if (form.matches("[data-auto-form]")) {
+      const fd = new FormData(form);
+      const w = fd.get("when");
+      const when = w === "time" ? { type: "time", at: fd.get("at"), days: fd.getAll("days").map(Number) }
+        : (w === "sunset" || w === "sunrise") ? { type: "sun", event: w, offset_min: Number(fd.get("offset_min")) }
+        : { type: "presence", event: w };
+      const d = fd.get("do");
+      const doIt = d.startsWith("scene:") ? { type: "scene", scene_id: d.slice(6) }
+        : d === "all_off" ? { type: "all_off" }
+        : { type: "command", device_id: fd.get("device_id"), action: "power", value: fd.get("value") === "on" };
+      if (when.type === "time" && !when.days.length) return toast("Pick at least one day", true);
+      await api.saveAutomation({ name: fd.get("name"), when, do: doIt, enabled: true });
+      toast("Automation saved"); await reload(); return back();
+    }
+    if (form.matches("[data-location]")) {
+      const v = formValues(form);
+      await api.saveSettings({ latitude: v.latitude.trim() || null, longitude: v.longitude.trim() || null });
+      toast("Location saved"); await reload(); return render();
+    }
+    if (form.matches("[data-person-add]")) {
+      const v = formValues(form);
+      await api.saveSettings({ presence: [...(store.settings.presence || []), { name: v.name.trim(), ip: v.ip.trim() }] });
+      toast(`Watching ${v.name.trim()}'s phone`); await reload(); return render();
     }
     if (form.matches("[data-room-add]")) {
       await api.setRooms([...store.rooms, formValues(form).room.trim()]); await reload(); return render();

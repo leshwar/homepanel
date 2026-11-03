@@ -83,6 +83,26 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertIsInstance(logs["logs"], list)
 
+    def test_energy_and_automations(self):
+        status, e = self.call("GET", "/devices/kt-fridge/energy")
+        self.assertEqual((status, len(e["days"])), (200, 7))
+        status, a = self.call("POST", "/automations", {"when": {"type": "time", "at": "21:15", "days": [5, 6]},
+                                                       "do": {"type": "all_off"}})
+        self.assertEqual(status, 200)
+        self.assertEqual(a["name"], "All off at 21:15")
+        status, err = self.call("POST", "/automations", {"when": {"type": "time", "at": "nope"}, "do": {"type": "all_off"}})
+        self.assertEqual(status, 400)
+        status, listing = self.call("GET", "/automations")
+        self.assertIn(a["id"], [x["id"] for x in listing["automations"]])
+        status, _ = self.call("POST", f"/automations/{a['id']}/run")
+        self.assertEqual(status, 200)
+        status, _ = self.call("DELETE", f"/automations/{a['id']}")
+        self.assertEqual(status, 200)
+        status, sun = self.call("GET", "/sun")
+        self.assertEqual(status, 200)
+        status, err = self.call("PUT", "/settings", {"latitude": "200"})
+        self.assertEqual(status, 400)
+
     def test_ui_served(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=5) as r:
             self.assertIn(b"HomePanel", r.read())

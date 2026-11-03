@@ -181,6 +181,55 @@ async def put_settings(request):
     return _svc(request).update_settings(await _body(request))
 
 
+# --- energy, automations, presence ---------------------------------------------------
+
+@handle_errors
+async def device_energy(request):
+    days = int(request.query_params.get("days", 7))
+    return await _svc(request).energy(request.path_params["id"], days)
+
+
+@handle_errors
+async def list_automations(request):
+    return {"automations": _svc(request).automations.list()}
+
+
+@handle_errors
+async def save_automation(request):
+    return _svc(request).automations.save(await _body(request))
+
+
+@handle_errors
+async def delete_automation(request):
+    _svc(request).automations.delete(request.path_params["id"])
+    return {"ok": True}
+
+
+@handle_errors
+async def run_automation(request):
+    return await _svc(request).automations.run_now(request.path_params["id"])
+
+
+@handle_errors
+async def get_presence(request):
+    return {"people": _svc(request).presence.snapshot()}
+
+
+@handle_errors
+async def get_sun(request):
+    from datetime import datetime
+    from ..core.sun import sun_event
+    s = _svc(request).store.settings
+    if s.get("latitude") is None or s.get("longitude") is None:
+        return {"sunrise": None, "sunset": None}
+    today = datetime.now().astimezone().date()
+    out = {}
+    for ev in ("sunrise", "sunset"):
+        t = sun_event(today, s["latitude"], s["longitude"], ev)
+        out[ev] = t.timestamp() if t else None
+    return out
+
+
 # --- diagnostics -------------------------------------------------------------------
 
 @handle_errors
@@ -233,4 +282,11 @@ routes = [
     Route("/api/v1/scenes/{id}", delete_scene, methods=["DELETE"]),
     Route("/api/v1/scenes/{id}/run", run_scene, methods=["POST"]),
     Route("/api/v1/settings", put_settings, methods=["PUT"]),
+    Route("/api/v1/devices/{id}/energy", device_energy),
+    Route("/api/v1/automations", list_automations, methods=["GET"]),
+    Route("/api/v1/automations", save_automation, methods=["POST"]),
+    Route("/api/v1/automations/{id}", delete_automation, methods=["DELETE"]),
+    Route("/api/v1/automations/{id}/run", run_automation, methods=["POST"]),
+    Route("/api/v1/presence", get_presence),
+    Route("/api/v1/sun", get_sun),
 ]

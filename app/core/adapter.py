@@ -52,6 +52,7 @@ class Cap:
     MUTE = "mute"
     CHANNEL = "channel"        # channel_up / channel_down
     REMOTE = "remote"          # navigation keys (see Key)
+    MEDIA = "media"            # play / pause / stop / forward / rewind keys only
     APPS = "apps"              # launch_app
     INPUTS = "inputs"          # set_input
 
@@ -95,6 +96,7 @@ class Key:
 
     ALL = (UP, DOWN, LEFT, RIGHT, OK, BACK, HOME, MENU, SOURCE,
            PLAY, PAUSE, STOP, REWIND, FORWARD)
+    MEDIA = (PLAY, PAUSE, STOP, REWIND, FORWARD)   # allowed with Cap.MEDIA alone
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +148,7 @@ class Found:
     caps: list[str] = field(default_factory=list)
     detail: str = ""         # e.g. "192.168.1.40 · H5083"
     needs_pairing: bool = False
+    room: str = ""           # suggested room, if the source knows one (e.g. a Home Assistant area)
 
     def to_dict(self) -> dict:
         d = dict(self.__dict__)

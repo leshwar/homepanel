@@ -93,6 +93,30 @@ Volume shows as +/− buttons (Samsung doesn't report the exact level).
    Settings → General → Devices → TV Management → **Quick Start+**, and
    Settings → General → Network → **Turn on via Wi-Fi** (menu names vary by year).
 
+## Home Assistant
+
+Already running Home Assistant? You can add its devices here:
+
+1. In Home Assistant: click your name (bottom left) → **Security** → **Long-lived
+   access tokens** → **Create token**. Copy it (it's shown once).
+2. HomePanel: Add a device → **Home Assistant** → enter the address
+   (e.g. `http://homeassistant.local:8123`) and the token → **Save** → **Search my Wi-Fi**.
+
+Lights, switches, fans and media players appear, already sorted into your Home
+Assistant areas. TVs added this way get volume, inputs and play/pause; for the
+full D-pad remote, add Samsung/LG TVs directly with their own adapters.
+
+## Schedules, sunset and "everyone left"
+
+- **Location** (Settings → Location and presence): enter latitude and longitude
+  for sunrise/sunset schedules. They're used only on the panel to calculate times.
+- **People**: add each person's name and their phone's IP address (reserve a
+  fixed IP for each phone in your router). Someone counts as away after about
+  10 minutes without their phone on the Wi-Fi.
+- **Automations** (Settings → Schedules and automations): pick *when* (time,
+  sunrise/sunset, everyone leaves, someone comes home) and *what* (a scene,
+  all off, or one device on/off).
+
 ## Give devices fixed IP addresses (recommended)
 
 In your router's settings, reserve an IP address ("DHCP reservation") for each

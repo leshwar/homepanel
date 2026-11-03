@@ -7,7 +7,7 @@ import random
 from ..core.adapter import Action, Cap, Device, DeviceAdapter, Found, Kind, register
 
 LIGHT_CAPS = [Cap.POWER, Cap.BRIGHTNESS, Cap.COLOR, Cap.COLOR_TEMP]
-TV_CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.APPS, Cap.INPUTS]
+TV_CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.MEDIA, Cap.APPS, Cap.INPUTS]
 
 DEMO = [
     ("lr-ceiling", "Ceiling light", Kind.LIGHT, "Living room", [Cap.POWER, Cap.BRIGHTNESS, Cap.COLOR_TEMP],
@@ -29,6 +29,8 @@ DEMO = [
     ("kt-kettle", "Kettle plug", Kind.PLUG, "Kitchen", [Cap.POWER], {"on": False}),
     ("kt-fridge", "Fridge plug", Kind.PLUG, "Kitchen", [Cap.POWER], {"on": True}),
 ]
+
+WATTS = {"lr-plug": (6.8, 8.0), "bd-fan": (34, 42), "kt-kettle": (1450, 1550), "kt-fridge": (95, 130)}
 
 APPS = [{"id": "netflix", "name": "Netflix"}, {"id": "youtube", "name": "YouTube"},
         {"id": "prime", "name": "Prime Video"}, {"id": "disney", "name": "Disney+"},
@@ -64,7 +66,11 @@ class DemoAdapter(DeviceAdapter):
         await asyncio.sleep(0.02)
         if device.kind == Kind.TV and not device.meta:
             device.meta = {"apps": APPS, "inputs": INPUTS, "model": "Demo TV"}
-        return dict(self._state.setdefault(device.config["_uid"], {"on": False}))
+        state = dict(self._state.setdefault(device.config["_uid"], {"on": False}))
+        if device.config["_uid"] in WATTS:          # these demo plugs measure power
+            lo, hi = WATTS[device.config["_uid"]]
+            state["power_w"] = round(random.uniform(lo, hi), 1) if state.get("on") else 0.0
+        return state
 
     async def command(self, device: Device, action: str, value=None):
         await asyncio.sleep(random.uniform(0.03, 0.12))   # feel like a real network

@@ -214,6 +214,11 @@ function setupLive() {
   connectEvents((ev) => {
     if (ev.type === "device") upsertDevice(ev.device);
     else if (ev.type === "layout") reload().catch(() => {});
+    else if (ev.type === "automation") {
+      const ok = String(ev.result).startsWith("ok");
+      toast(ok ? `${ev.name}: done` : `${ev.name}: ${ev.result}`, !ok);
+      reload().catch(() => {});
+    }
   }, (connected) => {
     $("#conn").hidden = connected;
     if (connected) reload().catch(() => {});

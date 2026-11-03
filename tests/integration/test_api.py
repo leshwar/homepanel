@@ -1,45 +1,24 @@
-"""API-layer tests: start the real server on a free port and call it over HTTP."""
+"""Integration tests for the API layer: the real server in demo mode, called over HTTP."""
 import json
 import shutil
-import socket
 import tempfile
-import threading
-import time
 import unittest
 import urllib.error
 import urllib.request
 
-import uvicorn
-
-from app.main import create_app
-
-
-def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+from tests.helpers import DemoServer
 
 
 class ApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp()
-        cls.port = _free_port()
-        config = uvicorn.Config(create_app(cls.dir, demo=True), host="127.0.0.1", port=cls.port, log_config=None)
-        cls.server = uvicorn.Server(config)
-        cls.thread = threading.Thread(target=cls.server.run, daemon=True)
-        cls.thread.start()
-        for _ in range(100):
-            if cls.server.started:
-                break
-            time.sleep(0.05)
+        cls.server = DemoServer(cls.dir).start()
+        cls.port = cls.server.port
 
     @classmethod
     def tearDownClass(cls):
-        cls.server.should_exit = True
-        cls.thread.join(5)
+        cls.server.stop()
         shutil.rmtree(cls.dir, ignore_errors=True)
 
     def call(self, method, path, body=None):
@@ -82,6 +61,26 @@ class ApiTests(unittest.TestCase):
         status, logs = self.call("GET", "/logs")
         self.assertEqual(status, 200)
         self.assertIsInstance(logs["logs"], list)
+
+    def test_energy_and_automations(self):
+        status, e = self.call("GET", "/devices/kt-fridge/energy")
+        self.assertEqual((status, len(e["days"])), (200, 7))
+        status, a = self.call("POST", "/automations", {"when": {"type": "time", "at": "21:15", "days": [5, 6]},
+                                                       "do": {"type": "all_off"}})
+        self.assertEqual(status, 200)
+        self.assertEqual(a["name"], "All off at 21:15")
+        status, err = self.call("POST", "/automations", {"when": {"type": "time", "at": "nope"}, "do": {"type": "all_off"}})
+        self.assertEqual(status, 400)
+        status, listing = self.call("GET", "/automations")
+        self.assertIn(a["id"], [x["id"] for x in listing["automations"]])
+        status, _ = self.call("POST", f"/automations/{a['id']}/run")
+        self.assertEqual(status, 200)
+        status, _ = self.call("DELETE", f"/automations/{a['id']}")
+        self.assertEqual(status, 200)
+        status, sun = self.call("GET", "/sun")
+        self.assertEqual(status, 200)
+        status, err = self.call("PUT", "/settings", {"latitude": "200"})
+        self.assertEqual(status, 400)
 
     def test_ui_served(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=5) as r:

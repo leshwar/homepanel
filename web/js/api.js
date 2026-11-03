@@ -45,6 +45,13 @@ export const api = {
   deleteScene: (id) => call("DELETE", `/scenes/${id}`),
   runScene: (id) => call("POST", `/scenes/${id}/run`),
   saveSettings: (s) => call("PUT", "/settings", s),
+
+  energy: (id, days = 7) => call("GET", `/devices/${id}/energy?days=${days}`),
+  saveAutomation: (a) => call("POST", "/automations", a),
+  deleteAutomation: (id) => call("DELETE", `/automations/${id}`),
+  runAutomation: (id) => call("POST", `/automations/${id}/run`),
+  presence: () => call("GET", "/presence"),
+  sun: () => call("GET", "/sun"),
 };
 
 // Live updates. Calls onEvent(event) for each server event, onStatus(connected).

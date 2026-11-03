@@ -1,22 +1,20 @@
-"""Browser tests for the touch UI (skipped unless Playwright is installed).
+"""Integration tests for the touch UI in a real browser (skipped unless Playwright is installed).
 
     pip install playwright && playwright install chromium
 """
+import os
 import shutil
 import tempfile
-import threading
-import time
 import unittest
 
 try:
     from playwright.sync_api import sync_playwright
 except ImportError:  # pragma: no cover
+    if os.environ.get("REQUIRE_UI_TESTS"):   # CI sets this so UI tests can never be skipped silently
+        raise
     sync_playwright = None
 
-import uvicorn
-
-from app.main import create_app
-from tests.test_api import _free_port
+from tests.helpers import DemoServer
 
 
 @unittest.skipIf(sync_playwright is None, "playwright not installed")
@@ -24,27 +22,23 @@ class UITests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp()
-        cls.port = _free_port()
-        cls.server = uvicorn.Server(uvicorn.Config(create_app(cls.dir, demo=True), host="127.0.0.1",
-                                                   port=cls.port, log_config=None))
-        cls.thread = threading.Thread(target=cls.server.run, daemon=True)
-        cls.thread.start()
-        while not cls.server.started:
-            time.sleep(0.05)
+        cls.server = DemoServer(cls.dir).start()
+        cls.port = cls.server.port
         cls.pw = sync_playwright().start()
         try:
             cls.browser = cls.pw.chromium.launch()
         except Exception as e:  # browser binaries not downloaded
             cls.pw.stop()
-            cls.server.should_exit = True
+            cls.server.stop()
+            if os.environ.get("REQUIRE_UI_TESTS"):
+                raise
             raise unittest.SkipTest(f"chromium not available: {e}")
 
     @classmethod
     def tearDownClass(cls):
         cls.browser.close()
         cls.pw.stop()
-        cls.server.should_exit = True
-        cls.thread.join(5)
+        cls.server.stop()
         shutil.rmtree(cls.dir, ignore_errors=True)
 
     def setUp(self):
@@ -86,6 +80,22 @@ class UITests(unittest.TestCase):
         self.page.click("[data-back]")
         self.page.click("[data-go=add]")
         self.page.wait_for_selector("text=Shelly")
+
+    def test_energy_chart_for_metering_plug(self):
+        self.tile("kt-fridge").locator("[data-more]").click()
+        self.page.wait_for_selector(".bars .bar")
+        self.assertEqual(self.page.locator(".bars .bar").count(), 7)
+
+    def test_create_schedule(self):
+        self.page.click("#open-settings")
+        self.page.click("[data-go=automations]")
+        self.page.click("[data-go=automation-new]")
+        self.page.select_option("select[name=when]", "time")
+        self.page.fill("input[name=at]", "22:30")
+        self.page.select_option("select[name=do]", "all_off")
+        self.page.fill("input[name=name]", "Lights out")
+        self.page.click("[data-auto-form] button[type=submit]")
+        self.page.wait_for_selector("text=Lights out")
 
     def test_ambient_clock_wakes_without_toggling(self):
         self.page.click("#clock")

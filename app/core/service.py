@@ -22,7 +22,10 @@ from typing import Any, Awaitable, Callable
 
 from .adapter import (ADAPTERS, Action, AdapterError, Cap, Device, DeviceAdapter, Found,
                       Key, PairingRequired, missing_requirements)
+from .automations import Automations
+from .history import History
 from .net import parse_color
+from .presence import Presence
 from .store import Store
 
 log = logging.getLogger("homepanel")
@@ -51,11 +54,16 @@ Middleware = Callable[[CommandContext, Callable[[CommandContext], Awaitable[dict
 async def mw_validate(ctx: CommandContext, call_next):
     if ctx.action not in Action.ALL:
         raise AdapterError(f"Unknown action '{ctx.action}'")
+    if ctx.action == Action.KEY:
+        if ctx.value not in Key.ALL:
+            raise AdapterError(f"Unknown remote key '{ctx.value}'")
+        media_ok = ctx.value in Key.MEDIA and Cap.MEDIA in ctx.device.caps
+        if Cap.REMOTE not in ctx.device.caps and not media_ok:
+            raise AdapterError(f"{ctx.device.name} can't do '{ctx.value}'")
+        return await call_next(ctx)
     needed = Action.REQUIRES.get(ctx.action)
     if needed and needed not in ctx.device.caps:
         raise AdapterError(f"{ctx.device.name} can't do '{ctx.action}'")
-    if ctx.action == Action.KEY and ctx.value not in Key.ALL:
-        raise AdapterError(f"Unknown remote key '{ctx.value}'")
     return await call_next(ctx)
 
 
@@ -91,7 +99,7 @@ async def mw_log(ctx: CommandContext, call_next):
 
 async def mw_timeout_retry(ctx: CommandContext, call_next):
     last: Exception | None = None
-    for attempt in range(2):
+    for _attempt in range(2):
         try:
             return await asyncio.wait_for(call_next(ctx), COMMAND_TIMEOUT)
         except (AdapterError, ValueError):
@@ -121,6 +129,10 @@ class HomeService:
         self._failures: dict[str, int] = {}
         self._found: dict[tuple[str, str], Found] = {}
         self._middleware: list[Middleware] = [mw_validate, mw_normalize, mw_log, mw_timeout_retry]
+        self.history = History(os.path.join(data_dir, "demo-history.db" if demo else "history.db"))
+        self.automations = Automations(self)
+        self.presence = Presence(lambda: self.store.settings.get("presence") or [], self.automations.on_presence)
+        self._background: list[asyncio.Task] = []
 
     # --- middleware ---------------------------------------------------------
     def use(self, middleware: Middleware, index: int | None = None) -> None:
@@ -155,12 +167,17 @@ class HomeService:
             self.adapters[aid] = inst
         if self.demo and not self.store.devices:
             await self._seed_demo()
+        if self.demo and not self.history.has_data():
+            await asyncio.to_thread(self._seed_demo_history)
+        await asyncio.to_thread(self.history.prune)
         for d in self.store.devices.values():
             d.state = {"online": None}
             self._start_poller(d)
+        self._background = [asyncio.create_task(self.automations.run()),
+                            asyncio.create_task(self.presence.run())]
 
     async def stop(self) -> None:
-        for t in self._pollers.values():
+        for t in [*self._pollers.values(), *self._background]:
             t.cancel()
         for a in self.adapters.values():
             try:
@@ -221,6 +238,8 @@ class HomeService:
             "scenes": self.store.scenes,
             "settings": self.store.settings,
             "adapters": [self.adapter_meta(a) for a in ADAPTERS if not ADAPTERS[a].hidden or self.demo],
+            "automations": self.automations.list(),
+            "presence": self.presence.snapshot(),
             "demo": self.demo,
         }
 
@@ -301,8 +320,14 @@ class HomeService:
             self._failures[d.id] = n
             if n >= OFFLINE_AFTER_FAILURES or before.get("online") is None:
                 d.state = {**before, "online": False, "error": _friendly(e)}
+        if d.state.get("power_w") is not None and d.state.get("online"):
+            await asyncio.to_thread(self.history.record, d.id, d.state["power_w"])
         if d.state != before:
             self._publish_device(d)
+
+    async def energy(self, device_id: str, days: int = 7) -> dict:
+        self.get(device_id)
+        return await self.history.summary(device_id, max(1, min(31, days)))
 
     # --- discovery & adding -------------------------------------------------
     async def discover(self, adapter_id: str) -> list[dict]:
@@ -333,6 +358,7 @@ class HomeService:
         for d in self.store.devices.values():
             if d.adapter == adapter_id and d.config.get("_uid") == f.uid:
                 raise AdapterError(f"Already added as '{d.name}'.")
+        room = room or f.room
         d = Device(id=uuid.uuid4().hex[:10], adapter=adapter_id, name=(name or f.name).strip(),
                    kind=f.kind, room=room, config={**f.config, "_uid": f.uid}, caps=list(f.caps))
         self.store.devices[d.id] = d
@@ -393,6 +419,8 @@ class HomeService:
                 pass
         for s in self.store.scenes:
             s["actions"] = [x for x in s["actions"] if x["device_id"] != device_id]
+        self.store.automations = [a for a in self.store.automations if a["do"].get("device_id") != device_id]
+        await asyncio.to_thread(self.history.forget, device_id)
         self.store.save()
         self._publish_layout()
 
@@ -498,7 +526,25 @@ class HomeService:
         return {"ok": len(results) - len(failed), "failed": failed}
 
     def update_settings(self, changes: dict) -> dict:
-        self.store.settings.update({k: v for k, v in changes.items() if k in self.store.settings})
+        changes = {k: v for k, v in changes.items() if k in self.store.settings}
+        for key, lo, hi in (("latitude", -90, 90), ("longitude", -180, 180)):
+            if key in changes and changes[key] not in (None, ""):
+                try:
+                    v = float(changes[key])
+                    assert lo <= v <= hi
+                except Exception:
+                    raise AdapterError(f"{key.title()} should be a number between {lo} and {hi}.")
+                changes[key] = round(v, 4)
+            elif key in changes:
+                changes[key] = None
+        if "presence" in changes:
+            people = []
+            for p in changes["presence"] or []:
+                name, ip = str(p.get("name", "")).strip(), str(p.get("ip", "")).strip()
+                if name and ip:
+                    people.append({"name": name[:24], "ip": ip})
+            changes["presence"] = people
+        self.store.settings.update(changes)
         self.store.save()
         self._publish_layout()
         return self.store.settings
@@ -528,7 +574,32 @@ class HomeService:
                 {"device_id": "lr-tv", "action": "power", "value": False},
                 {"device_id": "bd-lamp", "action": "brightness", "value": 10}]},
         ]
+        self.store.automations = [
+            {"id": "wake", "name": "Good morning on weekdays", "enabled": True,
+             "when": {"type": "time", "at": "07:00", "days": [0, 1, 2, 3, 4]},
+             "do": {"type": "scene", "scene_id": "morning"}},
+            {"id": "away", "name": "All off when everyone leaves", "enabled": True,
+             "when": {"type": "presence", "event": "all_away"}, "do": {"type": "all_off"}},
+        ]
         self.store.save()
+
+    def _seed_demo_history(self) -> None:
+        """Seven days of believable power readings so the energy chart has something to show."""
+        import math
+        import random
+        rng = random.Random(42)
+        now = time.time()
+        rows = []
+        for i in range(7 * 24 * 12):                      # every 5 minutes
+            ts = now - i * 300
+            hour = time.localtime(ts).tm_hour + time.localtime(ts).tm_min / 60
+            fridge = 118 + rng.uniform(-6, 6) if (ts // 60) % 45 < 20 else 3.2
+            speaker = 7.4 + rng.uniform(-0.5, 0.5) if 17 <= hour < 23 else 0.6
+            kettle = 1500.0 if (6.95 <= hour < 7.05 or 18.95 <= hour < 19.05) else 0.0
+            fan = 38 + 4 * math.sin(i) if (hour >= 22 or hour < 7) else 0.0
+            for did, w in (("kt-fridge", fridge), ("lr-plug", speaker), ("kt-kettle", kettle), ("bd-fan", fan)):
+                rows.append((did, ts, round(w, 1)))
+        self.history.bulk_insert(rows)
 
 
 def _friendly(e: Exception) -> str:

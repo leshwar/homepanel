@@ -9,6 +9,10 @@ app/
 │   ├── adapter.py     the DeviceAdapter interface + shared vocabulary (Kind, Cap, Action, Key)
 │   ├── service.py     HomeService: registry, polling, commands + middleware, scenes, events
 │   ├── store.py       saves devices/rooms/scenes/accounts/settings to data/homepanel.json
+│   ├── automations.py schedules: time of day, sunrise/sunset, presence → scene / all off / command
+│   ├── sun.py         sunrise/sunset calculation (no internet)
+│   ├── presence.py    who's home, by checking family phones on the Wi-Fi
+│   ├── history.py     power samples and kWh per day (SQLite in data/history.db)
 │   ├── net.py         dependency-free HTTP, UDP, SSDP, Wake-on-LAN and colour helpers
 │   └── logs.py        console + rotating file (logs/) + in-memory buffer for the UI
 └── adapters/          one module per brand — see adapters/README.md

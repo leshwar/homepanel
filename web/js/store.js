@@ -10,6 +10,8 @@ export const store = {
   scenes: [],
   settings: {},
   adapters: [],
+  automations: [],
+  presence: [],
   demo: false,
   room: storage.get("room", "all"),
   busy: new Set(),
@@ -25,6 +27,8 @@ export function applySnapshot(s) {
   store.scenes = s.scenes;
   store.settings = s.settings;
   store.adapters = s.adapters;
+  store.automations = s.automations || [];
+  store.presence = s.presence || [];
   store.demo = s.demo;
   if (store.room !== "all" && !store.rooms.includes(store.room)) store.room = "all";
   emit("all");

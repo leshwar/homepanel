@@ -18,7 +18,7 @@ BUTTONS = {Key.UP: "UP", Key.DOWN: "DOWN", Key.LEFT: "LEFT", Key.RIGHT: "RIGHT",
            Key.BACK: "BACK", Key.HOME: "HOME", Key.MENU: "MENU", Key.SOURCE: "INPUT_HUB",
            Key.PLAY: "PLAY", Key.PAUSE: "PAUSE", Key.STOP: "STOP", Key.REWIND: "REWIND",
            Key.FORWARD: "FASTFORWARD"}
-CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.APPS, Cap.INPUTS]
+CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.MEDIA, Cap.APPS, Cap.INPUTS]
 
 
 def _tv(client, name, default=None):
@@ -102,7 +102,7 @@ class LGTVAdapter(DeviceAdapter):
             await self._drop(device)
             raise PairingRequired(f"Accept the prompt on the TV, then choose Pair again. ({e})")
         device.config["mac"] = device.config.get("mac") or mac_from_arp(ip) or ""
-        info = _tv(c, "system_info") or {}
+        info = getattr(getattr(c, "tv_info", None), "system", None) or _tv(c, "system_info") or {}
         if isinstance(info, dict) and info.get("modelName"):
             device.meta["model"] = info["modelName"]
         self._update_meta(device, c)
@@ -114,7 +114,8 @@ class LGTVAdapter(DeviceAdapter):
             device.meta["apps"] = sorted(({"id": k, "name": v.get("title", k)} for k, v in apps.items()
                                           if not v.get("systemApp")), key=lambda a: a["name"].lower())
         if inputs:
-            device.meta["inputs"] = [{"id": k, "name": v.get("label", k)} for k, v in inputs.items()]
+            device.meta["inputs"] = [{"id": v.get("id", k), "name": v.get("label", k), "app_id": v.get("appId")}
+                                     for k, v in inputs.items()]
 
     async def forget(self, device):
         await self._drop(device)
@@ -128,8 +129,10 @@ class LGTVAdapter(DeviceAdapter):
         if not device.meta.get("apps"):
             self._update_meta(device, c)
         app = _tv(c, "current_app_id")
+        # an input (HDMI 1 …) shows up as the "current app" with the input's appId
+        current_input = next((i["id"] for i in device.meta.get("inputs", []) if i.get("app_id") and i["app_id"] == app), None)
         return {"on": bool(_tv(c, "is_on", True)), "volume": _tv(c, "volume"),
-                "muted": bool(_tv(c, "muted", False)), "app": app}
+                "muted": bool(_tv(c, "muted", False)), "app": None if current_input else app, "input": current_input}
 
     async def command(self, device: Device, action: str, value=None):
         if action == Action.POWER and value:
@@ -164,13 +167,18 @@ class LGTVAdapter(DeviceAdapter):
             elif action == Action.CHANNEL_DOWN:
                 await c.channel_down()
             elif action == Action.KEY:
-                await c.button(BUTTONS[value])
+                media = {Key.PLAY: "play", Key.PAUSE: "pause", Key.STOP: "stop",
+                         Key.FORWARD: "fast_forward", Key.REWIND: "rewind"}   # same calls Home Assistant uses
+                if value in media and hasattr(c, media[value]):
+                    await getattr(c, media[value])()
+                else:
+                    await c.button(BUTTONS[value])
             elif action == Action.LAUNCH_APP:
                 await c.launch_app(value)
                 return {"app": value}
             elif action == Action.SET_INPUT:
                 await c.set_input(value)
-                return {"app": value}
+                return {"input": value, "app": None}
             else:
                 raise AdapterError("Not supported")
         except (ConnectionError, OSError):

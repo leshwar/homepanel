@@ -75,7 +75,7 @@ function render() {
       body += `<div class="section-label"><span>Color</span></div><div class="swatches">${COLORS.map((c) =>
         `<button class="swatch" style="background:${c}" data-color="${c}" aria-pressed="${on && s.color_mode === "color" && cur === c}" aria-label="Color ${c}"></button>`).join("")}</div>`;
     }
-    if (s.power_w != null) body += `<div class="section-label"><span>Using now</span><b>${s.power_w} W</b></div>`;
+    if (s.power_w != null) body += `<div class="section-label"><span>Energy</span></div><div id="energy">${energyHtml(d, s)}</div>`;
   }
 
   $("#sheet").innerHTML = `
@@ -89,6 +89,7 @@ function render() {
     <div class="meta-line"><span>${esc(d.room || "No room")}. ${esc(d.adapter_name)}${d.meta?.model ? `, ${esc(d.meta.model)}` : ""}</span>
       <button class="link" data-edit>Edit device</button></div>`;
 
+  if (s.power_w != null) loadEnergy(d.id);
   const bri = $("#bri");
   if (bri) attachSlider(bri, (v, final) => {
     $("#bri-val").textContent = `${v}%`;
@@ -102,6 +103,39 @@ function render() {
   });
 }
 
+// ---------- energy ----------
+let energy = { id: null, at: 0, data: null };
+
+function energyHtml(d, s) {
+  const e = energy.id === d.id ? energy.data : null;
+  const stats = `<div class="energy-stats">
+      <div><b>${s.power_w} W</b><span>Using now</span></div>
+      ${e ? `<div><b>${e.today_kwh.toFixed(2)}</b><span>kWh today</span></div>
+             <div><b>${e.week_kwh.toFixed(1)}</b><span>kWh this week</span></div>` : ""}
+    </div>`;
+  if (!e) return stats;
+  const max = Math.max(...e.days.map((x) => x.kwh), 0.001);
+  const bars = e.days.map((x, i) => {
+    const day = new Date(x.date + "T12:00:00").toLocaleDateString([], { weekday: "short" });
+    return `<div class="bar ${i === e.days.length - 1 ? "today" : ""}" title="${x.kwh} kWh">
+      <i style="height:${Math.max(2, (x.kwh / max) * 100)}%"></i><span>${i === e.days.length - 1 ? "Today" : day}</span></div>`;
+  }).join("");
+  return stats + `<div class="bars" role="img" aria-label="Energy per day for the last 7 days">${bars}</div>`;
+}
+
+async function loadEnergy(id) {
+  if (energy.id === id && Date.now() - energy.at < 60_000) return;
+  energy = { id, at: Date.now(), data: energy.id === id ? energy.data : null };
+  try {
+    const data = await api.energy(id);
+    if (energy.id !== id) return;
+    energy.data = data;
+    const d = store.devices.get(id);
+    const el = $("#energy");
+    if (d && el && currentId === id) el.innerHTML = energyHtml(d, d.state || {});
+  } catch { /* history is optional */ }
+}
+
 const sendLive = throttle((id, v) => api.command(id, "brightness", v).catch(() => {}), 350);
 
 function tvBody(d) {
@@ -111,30 +145,32 @@ function tvBody(d) {
   const apps = d.meta?.apps || [];
   const inputs = d.meta?.inputs || [];
   const has = (c) => d.caps.includes(c);
+  const nav = has("remote");
+  const media = has("media") || nav;
   return `
-    <div class="remote">
-      <div class="rocker">
+    ${nav || has("volume") ? `<div class="remote">
+      ${has("volume") ? `<div class="rocker">
         <button data-act="volume_up" aria-label="Volume up">${icon("plus")}</button><span>VOL</span>
         <button data-act="volume_down" aria-label="Volume down">${icon("minus")}</button>
-      </div>
-      <div class="dpad" role="group" aria-label="Navigation">
+      </div>` : "<div></div>"}
+      ${nav ? `<div class="dpad" role="group" aria-label="Navigation">
         <button class="up" data-key="UP" aria-label="Up">${icon("up")}</button>
         <button class="left" data-key="LEFT" aria-label="Left">${icon("left")}</button>
         <button class="ok" data-key="OK">OK</button>
         <button class="right" data-key="RIGHT" aria-label="Right">${icon("right")}</button>
         <button class="down" data-key="DOWN" aria-label="Down">${icon("down")}</button>
-      </div>
+      </div>` : "<div></div>"}
       ${has("channel") ? `<div class="rocker">
         <button data-act="channel_up" aria-label="Channel up">${icon("up")}</button><span>CH</span>
         <button data-act="channel_down" aria-label="Channel down">${icon("down")}</button>
       </div>` : "<div></div>"}
-    </div>
+    </div>` : ""}
     <div class="remote-row">
-      <button class="round" data-key="BACK" aria-label="Back">${icon("back")}</button>
-      <button class="round" data-key="HOME" aria-label="Home">${icon("home")}</button>
-      <button class="round ${s.muted ? "active" : ""}" data-mute aria-label="Mute" aria-pressed="${!!s.muted}">${icon(s.muted ? "mute" : "vol")}</button>
-      <button class="round" data-key="PLAY" aria-label="Play">${icon("play")}</button>
-      <button class="round" data-key="PAUSE" aria-label="Pause">${icon("pause")}</button>
+      ${nav ? `<button class="round" data-key="BACK" aria-label="Back">${icon("back")}</button>
+      <button class="round" data-key="HOME" aria-label="Home">${icon("home")}</button>` : ""}
+      ${has("mute") ? `<button class="round ${s.muted ? "active" : ""}" data-mute aria-label="Mute" aria-pressed="${!!s.muted}">${icon(s.muted ? "mute" : "vol")}</button>` : ""}
+      ${media ? `<button class="round" data-key="PLAY" aria-label="Play">${icon("play")}</button>
+      <button class="round" data-key="PAUSE" aria-label="Pause">${icon("pause")}</button>` : ""}
     </div>
     ${has("volume_level") && s.volume != null ? `
       <div class="section-label"><span>Volume</span><b id="vol-val">${s.volume}</b></div>

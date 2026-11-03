@@ -16,6 +16,7 @@ adapter declares.
 | `hue.py` | Philips Hue via bridge | local HTTP | — |
 | `samsung_tv.py` | Samsung Tizen TVs | local WebSocket + REST, Wake-on-LAN | samsungtvws |
 | `lg_tv.py` | LG webOS TVs | local WebSocket, Wake-on-LAN | aiowebostv |
+| `home_assistant.py` | Anything an existing Home Assistant controls | Home Assistant REST API | — |
 
 `shelly.py` is the simplest complete example — copy it.
 
@@ -86,7 +87,10 @@ class MyBrandAdapter(DeviceAdapter):
 
 `on`, `brightness` (1–100), `color` `{r,g,b}`, `color_temp` (Kelvin),
 `color_mode` (`"color"` or `"temp"`), `volume` (0–100), `muted`, `app`,
-`input`, `power_w`. Put lists of TV apps/inputs in `device.meta["apps"]` /
+`input`, `power_w` (watts — recorded automatically for the energy chart).
+
+Media players without a full remote can declare `Cap.MEDIA` instead of
+`Cap.REMOTE`: the UI then shows play/pause but no D-pad. Put lists of TV apps/inputs in `device.meta["apps"]` /
 `["inputs"]` as `[{id, name}]`.
 
 ### Writing good error messages

@@ -27,12 +27,29 @@ describes the layers and rules below.
 
 ## Workflow
 
+`main` is protected: every change, including the owner's, goes through a pull
+request, and CI must pass. Pull requests from anyone other than the owner also
+need the owner's approval. Details: [docs/CI_AND_BRANCH_RULES.md](docs/CI_AND_BRANCH_RULES.md).
+
 1. Open an issue first for bigger changes so we can agree on the approach.
 2. Create a branch: `git checkout -b add-mybrand-adapter`.
-3. Keep changes focused; update docs alongside code.
-4. `make test` and `make lint` must pass (CI runs them on every pull request).
-5. Open a pull request using the template; include screenshots for UI changes and
-   the device models you tested for adapter changes.
+3. Write the change **with tests in both folders** (below). Update docs alongside code.
+4. Run `make lint`, `make test-unit`, `make test-integration` and `make check-tests`.
+5. Push and open a pull request using the template; include screenshots for UI
+   changes and the device models you tested for adapter changes.
+6. CI runs lint, unit tests, integration tests and a Docker build. When it's green
+   and approved, the owner merges. Merging to `main` publishes a new Docker image.
+
+## Tests (required)
+
+A pull request that changes anything under `app/` or `web/` is rejected unless
+it also adds or changes:
+
+- a **unit test** in `tests/unit/` (logic only, no network), **and**
+- an **integration test** in `tests/integration/` (real server, simulated devices, or the UI in a browser).
+
+Docs-only and script-only changes don't need tests. See [tests/README.md](tests/README.md)
+for what goes where.
 
 ## Reporting a bug
 

@@ -30,7 +30,7 @@ KNOWN_APPS = [
 INPUTS = [{"id": "KEY_TV", "name": "TV"}, {"id": "KEY_HDMI1", "name": "HDMI 1"},
           {"id": "KEY_HDMI2", "name": "HDMI 2"}, {"id": "KEY_HDMI3", "name": "HDMI 3"},
           {"id": "KEY_HDMI4", "name": "HDMI 4"}]
-CAPS = [Cap.POWER, Cap.VOLUME, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.APPS, Cap.INPUTS]
+CAPS = [Cap.POWER, Cap.VOLUME, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.MEDIA, Cap.APPS, Cap.INPUTS]
 
 
 @register
@@ -105,7 +105,7 @@ class SamsungTVAdapter(DeviceAdapter):
             await asyncio.to_thread(self._remote(device).send_key, key)
         except Exception as e:
             self._drop(device)
-            if "unauthorized" in str(e).lower() or "ms.channel.unauthorized" in str(e):
+            if type(e).__name__ == "UnauthorizedError" or "unauthorized" in str(e).lower():
                 raise PairingRequired("The TV hasn't allowed this panel yet. Choose Pair and press Allow on the TV.")
             raise ConnectionError(f"TV didn't accept the command: {e}")
 

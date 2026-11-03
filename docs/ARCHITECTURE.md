@@ -21,8 +21,12 @@ how many device brands are added underneath.
 ├──────────────────────────────────────────────────────────────┤
 │ app/adapters/*.py   One adapter per brand/protocol           │
 │   tuya · govee · kasa · shelly · wiz · hue · samsung_tv ·    │
-│   lg_tv · demo                                               │
+│   lg_tv · home_assistant · demo                              │
 └──────────────────────────────────────────────────────────────┘
+        app/core/automations.py: schedules (time, sunrise/sunset, presence) → scenes/commands
+        app/core/sun.py: sunrise/sunset maths (offline)
+        app/core/presence.py: who's home, from phones on the Wi-Fi
+        app/core/history.py: power samples → kWh per day (SQLite, data/history.db)
         app/core/net.py: shared HTTP/UDP/SSDP/Wake-on-LAN/color helpers
         app/core/store.py: JSON persistence (data/homepanel.json)
         app/core/logs.py: console + rotating file + in-memory log buffer
@@ -101,10 +105,16 @@ come back masked. `data/` and `logs/` are git-ignored.
 - **Libraries are optional** — each adapter declares `requires`; if a library
   is missing only that brand is disabled and Settings says how to install it.
 
-## Future directions
+## Automations, presence and energy
 
-- **Matter adapter** talking to [matterjs-server](https://github.com/matter-js) (the
-  successor of python-matter-server), for the growing number of Matter devices.
-- **Home Assistant adapter** — control anything Home Assistant supports while
-  keeping this UI.
-- Schedules / automations (time-based scenes) as a service-layer feature.
+These are service-layer features, so they work for every brand automatically:
+
+- `Automations` checks every 15 s whether a time or sunrise/sunset target has
+  passed (within a 2-minute window, so a restart doesn't skip it) and runs the
+  scene or command through `HomeService` — same middleware, logs and retries as a tap.
+- `Presence` probes each person's phone every 30 s and raises `all_away` /
+  `someone_home` after a 10-minute grace period; automations listen for those.
+- `History` stores one power sample per minute per metering plug and integrates
+  them into kWh per day.
+
+See [ROADMAP.md](ROADMAP.md) for what's next (Matter, more adapters, UI ideas).

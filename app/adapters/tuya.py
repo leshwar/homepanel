@@ -114,8 +114,8 @@ class TuyaAdapter(DeviceAdapter):
     def _lan_scan(self) -> dict:
         import tinytuya
         try:
-            res = tinytuya.deviceScan(verbose=False, maxretry=8, color=False, poll=False)
-        except TypeError:
+            res = tinytuya.deviceScan(verbose=False, scantime=8, color=False, poll=False)
+        except TypeError:   # older tinytuya releases
             res = tinytuya.deviceScan(False, 8)
         out = {}
         for v in (res or {}).values():

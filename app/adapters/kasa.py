@@ -30,7 +30,7 @@ class KasaAdapter(DeviceAdapter):
 
     async def discover(self, timeout=6.0):
         from kasa import Discover
-        devices = await Discover.discover(timeout=5, **self._creds())
+        devices = await Discover.discover(discovery_timeout=5, **self._creds())
         found = []
         for ip, dev in devices.items():
             try:

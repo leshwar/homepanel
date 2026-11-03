@@ -15,4 +15,4 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "B"]
-ignore = ["E501", "B008", "B904", "E731", "E701", "E702"]
+ignore = ["E501", "B008", "B904", "E731", "E701", "E702", "B027"]  # B027: optional adapter hooks are intentionally empty

@@ -99,7 +99,7 @@ async def mw_log(ctx: CommandContext, call_next):
 
 async def mw_timeout_retry(ctx: CommandContext, call_next):
     last: Exception | None = None
-    for attempt in range(2):
+    for _attempt in range(2):
         try:
             return await asyncio.wait_for(call_next(ctx), COMMAND_TIMEOUT)
         except (AdapterError, ValueError):

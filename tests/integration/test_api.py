@@ -1,45 +1,24 @@
-"""API-layer tests: start the real server on a free port and call it over HTTP."""
+"""Integration tests for the API layer: the real server in demo mode, called over HTTP."""
 import json
 import shutil
-import socket
 import tempfile
-import threading
-import time
 import unittest
 import urllib.error
 import urllib.request
 
-import uvicorn
-
-from app.main import create_app
-
-
-def _free_port() -> int:
-    s = socket.socket()
-    s.bind(("127.0.0.1", 0))
-    port = s.getsockname()[1]
-    s.close()
-    return port
+from tests.helpers import DemoServer
 
 
 class ApiTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.dir = tempfile.mkdtemp()
-        cls.port = _free_port()
-        config = uvicorn.Config(create_app(cls.dir, demo=True), host="127.0.0.1", port=cls.port, log_config=None)
-        cls.server = uvicorn.Server(config)
-        cls.thread = threading.Thread(target=cls.server.run, daemon=True)
-        cls.thread.start()
-        for _ in range(100):
-            if cls.server.started:
-                break
-            time.sleep(0.05)
+        cls.server = DemoServer(cls.dir).start()
+        cls.port = cls.server.port
 
     @classmethod
     def tearDownClass(cls):
-        cls.server.should_exit = True
-        cls.thread.join(5)
+        cls.server.stop()
         shutil.rmtree(cls.dir, ignore_errors=True)
 
     def call(self, method, path, body=None):

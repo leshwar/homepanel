@@ -1,16 +1,44 @@
 # tests/
 
-Run everything with `make test` (pytest) or, with no extra tools installed,
-`python -m unittest discover -s tests -t .`
+Two suites, in two folders. CI runs both on every pull request, and a pull
+request that changes product code (`app/`, `web/`) **must add or change a test
+in each folder** or it's rejected (see `scripts/ci/check_tests_included.py`).
+
+```bash
+make test-unit          # fast, no network or browser
+make test-integration   # real server, simulated devices, real browser
+make test               # both
+python -m unittest discover -s tests -t .   # both, without pytest
+```
+
+## tests/unit/ — logic in isolation
+
+No sockets, servers or browsers. Milliseconds per test.
 
 | File | Covers |
 |---|---|
-| `test_service.py` | Service layer: middleware pipeline (validate, normalize, retry), commands, All off with `keep_on`, scenes (capture + run), adding devices, persistence and file permissions, events, secret masking. Includes a fake adapter showing a new brand plugs in without other changes. |
-| `test_adapters.py` | Contract checks for every adapter's metadata, TV key mappings, Tuya colour maths, Govee capability parsing, colour helpers, the built-in HTTP client, and the Shelly adapter end-to-end against a simulated device. |
-| `test_api.py` | Starts the real server in demo mode and calls the HTTP API: state has no secrets, commands and error codes, scenes, health, logs, static UI. |
-| `test_features.py` | Sunrise/sunset maths, energy integration, presence events, schedules (fire once, day/window rules, validation, presence → all off), and the Home Assistant adapter against a simulated Home Assistant. |
-| `test_ui.py` | Drives the touch UI in headless Chromium (Playwright): tap toggles, TV opens the remote, brightness slider, rooms, add flow, night clock, energy chart, creating a schedule. Skipped if Playwright isn't installed (`pip install playwright && playwright install chromium`). |
+| `test_service.py` | Service layer: middleware (validate, normalize, retry), commands, All off with `keep_on`, scenes, adding devices, persistence and file permissions, events, secret masking. Includes a fake adapter proving a new brand plugs in without other changes. |
+| `test_adapters.py` | Every adapter's metadata contract, TV key mappings, Tuya color maths, Govee capability parsing, color helpers. |
+| `test_automations_energy.py` | Sunrise/sunset maths, energy integration, presence events, schedules (fire once, day/window rules, validation, presence → all off), demo energy history. |
+| `test_ci_policy.py` | The "tests included" pull-request rule itself. |
 
-No test needs real devices or the internet. When you add an adapter, add a test
-that runs it against a small fake server or fake library (see
-`test_shelly_adapter_end_to_end`).
+## tests/integration/ — parts working together for real
+
+| File | Covers |
+|---|---|
+| `test_api.py` | The real server (demo mode) called over HTTP: state has no secrets, commands and error codes, scenes, automations, energy, settings validation, health, logs, static UI. |
+| `test_fake_devices.py` | Real adapters over real sockets against simulated devices: the built-in HTTP client, a Shelly Gen2 plug, and Home Assistant. |
+| `test_ui.py` | The touch UI in headless Chromium (Playwright): tap toggles, TV opens the remote, brightness slider, rooms, add flow, night clock, energy chart, creating a schedule. Skipped locally if Playwright isn't installed; **required in CI**. |
+
+Shared helpers (free port, running the demo server) live in `tests/helpers.py`.
+
+## Writing tests for a change
+
+- **New adapter:** unit tests for parsing/maths in `tests/unit/test_adapters.py`;
+  an integration test that runs the adapter against a small fake device server in
+  `tests/integration/test_fake_devices.py` (copy the Shelly or Home Assistant example).
+- **Service / API change:** unit test against `HomeService` directly; integration
+  test through the HTTP API in `test_api.py`.
+- **UI change:** integration test in `test_ui.py` that taps through the flow.
+
+No test may need real devices or the internet.

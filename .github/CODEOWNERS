@@ -1,0 +1,4 @@
+# Every change needs approval from the project owner.
+# With "Require review from Code Owners" on in the main branch ruleset, only
+# @leshwar's approval counts; the owner merges own PRs via the ruleset bypass.
+*       @leshwar

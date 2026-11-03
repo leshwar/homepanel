@@ -142,9 +142,14 @@ New brands, fixes and UI ideas are welcome. Start with [CONTRIBUTING.md](CONTRIB
 If you use Claude Code, the project conventions are in [CLAUDE.md](CLAUDE.md).
 
 ```bash
-make test     # 52 tests: service, adapters, automations, API, and browser UI
+make test-unit          # logic tests (no network)
+make test-integration   # real server, simulated devices, browser UI
 make lint
 ```
+
+Every pull request runs lint, unit tests, integration tests and a Docker build;
+pull requests that change code must include both kinds of tests. Merges to
+`main` publish a Docker image for the Pi. See [docs/CI_AND_BRANCH_RULES.md](docs/CI_AND_BRANCH_RULES.md).
 
 ## Status
 

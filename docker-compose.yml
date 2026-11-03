@@ -1,7 +1,8 @@
 # HomePanel with Docker.
 #
-#   docker compose up -d                       # real devices (Raspberry Pi / Linux)
-#   docker compose --profile demo up demo      # pretend devices on http://localhost:8081 (any OS, incl. macOS)
+#   docker compose up -d homepanel             # real devices: Raspberry Pi / Linux, or a Mac with
+#                                              # Docker Desktop host networking on (see docs/DOCKER.md)
+#   docker compose --profile demo up demo      # pretend devices on http://localhost:8081 (any OS)
 #
 # Settings, device keys and logs live in ./data on the host.
 services:

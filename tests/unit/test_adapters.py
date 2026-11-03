@@ -1,11 +1,9 @@
-"""Contract tests every adapter must pass, plus protocol helpers that need no hardware."""
-import asyncio
-import json
+"""Unit tests: every adapter's contract and the protocol maths that need no network."""
 import tempfile
 import unittest
 
 import app.adapters  # noqa: F401  registers every adapter
-from app.core.adapter import ADAPTERS, Action, AdapterError, Cap, Device, DeviceAdapter, Field, Kind, missing_requirements
+from app.core.adapter import ADAPTERS, AdapterError, Cap, Device, DeviceAdapter, Field, Kind, missing_requirements
 from app.core import net
 
 
@@ -94,57 +92,6 @@ class NetHelpers(unittest.TestCase):
 
     def test_dechunk(self):
         self.assertEqual(net._dechunk(b"4\r\nWiki\r\n5\r\npedia\r\n0\r\n\r\n"), b"Wikipedia")
-
-
-class HttpClientAgainstLocalServer(unittest.IsolatedAsyncioTestCase):
-    """The dependency-free HTTP client talking to a tiny local server (mimics a Shelly)."""
-
-    async def test_get_and_post_json(self):
-        async def handle(reader, writer):
-            req = await reader.readuntil(b"\r\n\r\n")
-            line = req.split(b"\r\n")[0].decode()
-            body = json.dumps({"seen": line, "ison": True}).encode()
-            writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: "
-                         + str(len(body)).encode() + b"\r\n\r\n" + body)
-            await writer.drain()
-            writer.close()
-
-        server = await asyncio.start_server(handle, "127.0.0.1", 0)
-        port = server.sockets[0].getsockname()[1]
-        async with server:
-            res = await net.http("GET", f"http://127.0.0.1:{port}/relay/0?turn=on")
-            self.assertEqual(res["seen"], "GET /relay/0?turn=on HTTP/1.1")
-            self.assertTrue(res["ison"])
-
-    async def test_shelly_adapter_end_to_end(self):
-        """Run the real Shelly adapter against a fake Gen2 device."""
-        state = {"output": False}
-
-        async def handle(reader, writer):
-            req = (await reader.readuntil(b"\r\n\r\n")).decode()
-            path = req.split(" ")[1]
-            if path.startswith("/rpc/Switch.Set"):
-                state["output"] = "on=true" in path
-                payload = {"was_on": not state["output"]}
-            elif path.startswith("/rpc/Switch.GetStatus"):
-                payload = {"output": state["output"], "apower": 12.34}
-            else:
-                payload = {"gen": 2, "app": "PlugUS"}
-            body = json.dumps(payload).encode()
-            writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
-            await writer.drain()
-            writer.close()
-
-        from app.adapters.shelly import ShellyAdapter
-        server = await asyncio.start_server(handle, "127.0.0.1", 0)
-        port = server.sockets[0].getsockname()[1]
-        async with server:
-            a = ShellyAdapter({}, tempfile.mkdtemp())
-            dev = Device(id="s1", adapter="shelly", name="Plug", kind=Kind.PLUG, caps=[Cap.POWER],
-                         config={"ip": f"127.0.0.1:{port}", "gen": 2, "channel": 0})
-            await a.command(dev, Action.POWER, True)
-            st = await a.refresh(dev)
-            self.assertEqual(st, {"on": True, "power_w": 12.3})
 
 
 if __name__ == "__main__":

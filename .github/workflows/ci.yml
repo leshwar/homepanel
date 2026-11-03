@@ -1,47 +1,174 @@
+# CI/CD for HomePanel.
+#
+# On every pull request:   lint → unit tests → integration tests → Docker build + smoke test
+#                          + "tests included" rule (code changes need unit AND integration tests)
+# On every push to main:   the same checks, then publish the Docker image (amd64 + arm64 for
+#                          Raspberry Pi) to ghcr.io and attach a source build artifact.
+#
+# Branch protection should require the single check "All checks passed" (see docs/CI_AND_BRANCH_RULES.md).
 name: CI
 
 on:
+  pull_request:
   push:
     branches: [main]
-  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  test:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install ruff
+      - name: Python
+        run: ruff check app tests scripts
+      - name: Shell scripts
+        run: bash -n scripts/*.sh
+
+  tests-included:
+    name: Tests included
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Code changes must come with unit and integration tests
+        run: python scripts/ci/check_tests_included.py --base "origin/${{ github.base_ref }}"
+
+  unit:
+    name: Unit tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.11", "3.13"]
+        python-version: ["3.11", "3.13"]   # 3.11 = Raspberry Pi OS Bookworm, 3.13 = Trixie
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-      - name: Install
-        run: |
-          pip install -r requirements-dev.txt
-          playwright install --with-deps chromium
-      - name: Lint
-        run: ruff check app tests
-      - name: Test
-        run: pytest -v
-      - name: Check shell scripts
-        run: bash -n scripts/*.sh
+      - run: pip install -r requirements-dev.txt
+      - run: pytest tests/unit -v
 
-  docker:
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    env:
+      REQUIRE_UI_TESTS: "1"    # browser tests must run here, not be skipped
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: playwright install --with-deps chromium
+      - run: pytest tests/integration -v
+      - name: Keep logs and screenshots if something failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-logs
+          path: |
+            logs/
+            test-results/
+          if-no-files-found: ignore
+
+  build:
+    name: Build (Docker)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build image
         run: docker build -t homepanel:ci .
-      - name: Start in demo mode and check health
+      - name: Start in demo mode and check it works
         run: |
           docker run -d --name hp -p 8080:8080 -e HOMEPANEL_DATA=/tmp/demo -e HOMEPANEL_LOGS=/tmp/demo/logs \
             homepanel:ci python -m app.main --demo
-          for i in $(seq 1 30); do curl -fs http://localhost:8080/api/v1/health && break; sleep 1; done
-          curl -fs http://localhost:8080/api/v1/health | python3 -c "import json,sys; h=json.load(sys.stdin); assert h['ok'] and h['devices'] > 0; print('adapters:', h['adapters'], 'missing:', h['unavailable'])"
-          curl -fs -X POST http://localhost:8080/api/v1/devices/lr-lamp/command -H 'Content-Type: application/json' -d '{"action":"toggle"}' > /dev/null
-          docker logs hp | tail -20
-      - name: All device libraries install and import in the image
+          for i in $(seq 1 30); do curl -fs http://localhost:8080/api/v1/health >/dev/null && break; sleep 1; done
+          curl -fs http://localhost:8080/api/v1/health | python3 -c "import json,sys; h=json.load(sys.stdin); assert h['ok'] and h['devices'] > 0 and not h['unavailable'], h; print('adapters:', h['adapters'])"
+          curl -fs -X POST http://localhost:8080/api/v1/devices/lr-lamp/command -H 'Content-Type: application/json' -d '{"action":"toggle"}' >/dev/null
+          curl -fs http://localhost:8080/ | grep -q HomePanel
+      - name: Container logs
+        if: always()
+        run: docker logs hp 2>&1 | tail -40 || true
+
+  all-checks:
+    name: All checks passed
+    if: always()
+    needs: [lint, tests-included, unit, integration, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarise
         run: |
-          docker run --rm homepanel:ci python -c "import tinytuya, kasa, samsungtvws, aiowebostv; print('tinytuya', tinytuya.__version__)"
+          echo '${{ toJSON(needs) }}' | python3 -c "
+          import json, sys
+          needs = json.load(sys.stdin)
+          bad = {k: v['result'] for k, v in needs.items() if v['result'] not in ('success', 'skipped')}
+          for k, v in needs.items(): print(f'{k:16} {v[\"result\"]}')
+          sys.exit(f'Failed: {bad}' if bad else 0)"
+
+  publish:
+    name: Publish build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: all-checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Image name
+        id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Build and push (amd64 + arm64 for Raspberry Pi)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ steps.img.outputs.name }}:latest
+            ${{ steps.img.outputs.name }}:sha-${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Source build artifact
+        run: git archive --format=tar.gz --prefix=homepanel/ -o homepanel-${{ github.sha }}.tar.gz HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homepanel-${{ github.sha }}
+          path: homepanel-${{ github.sha }}.tar.gz
+      - name: Summary
+        run: |
+          {
+            echo "### Published"
+            echo "- Image: \`${{ steps.img.outputs.name }}:latest\` and \`:sha-${{ github.sha }}\` (amd64, arm64)"
+            echo "- Source archive attached to this run"
+          } >> "$GITHUB_STEP_SUMMARY"

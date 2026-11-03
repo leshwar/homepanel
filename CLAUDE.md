@@ -9,7 +9,10 @@ plain-JS web UI). Read `docs/ARCHITECTURE.md` before larger changes.
 make setup      # .venv + dev dependencies (+ Playwright Chromium)
 make dev        # run with pretend devices: http://localhost:8080
 make run        # run against real devices on this Wi-Fi
-make test       # all tests (must pass before every commit)
+make test-unit         # tests/unit: logic only, no network
+make test-integration  # tests/integration: real server, fake devices, browser UI
+make test       # both (must pass before every commit)
+make check-tests  # PR rule: app/ or web/ changes need a unit AND an integration test
 make lint       # ruff
 make docker-demo  # demo in Docker → http://localhost:8081 (CI also builds and smoke-tests the image)
 python -m unittest discover -s tests -t .    # tests without pytest
@@ -29,6 +32,14 @@ Logs: `logs/homepanel.log` (run with `--debug` for detail). In the UI: Settings 
 - User-facing errors: `AdapterError("what happened and what to do")` in plain language.
 - `web/js/api.js` is the only UI file that calls the server.
 - No build step for the UI; no new frontend frameworks or CDN dependencies (the Pi may be offline).
+
+## Pull requests and tests
+
+- Never push to `main`; work on a branch and open a PR. CI must be green.
+- Every change to `app/` or `web/` must add/update a test in **both** `tests/unit/`
+  and `tests/integration/` — CI rejects the PR otherwise. See `tests/README.md`.
+- Tests must not need real devices or the internet; simulate devices with a small
+  local server (see `tests/integration/test_fake_devices.py`).
 
 ## Adding a brand
 

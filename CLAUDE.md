@@ -11,6 +11,7 @@ make dev        # run with pretend devices: http://localhost:8080
 make run        # run against real devices on this Wi-Fi
 make test       # all tests (must pass before every commit)
 make lint       # ruff
+make docker-demo  # demo in Docker → http://localhost:8081 (CI also builds and smoke-tests the image)
 python -m unittest discover -s tests -t .    # tests without pytest
 ```
 

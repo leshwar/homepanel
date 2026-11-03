@@ -4,7 +4,7 @@ PY ?= python3
 VENV := .venv
 BIN := $(VENV)/bin
 
-.PHONY: help setup dev run test test-ui lint logs debug-bundle clean
+.PHONY: help setup dev run test test-ui lint logs debug-bundle clean docker-demo docker-up docker-logs
 
 help:            ## Show this help
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-13s %s\n", $$1, $$2}'
@@ -35,6 +35,15 @@ logs:            ## Follow the log file
 
 debug-bundle:    ## Make a .tar.gz of logs + system info for a bug report
 	./scripts/collect-logs.sh
+
+docker-demo:     ## Pretend devices in Docker → http://localhost:8081 (any OS)
+	docker compose --profile demo up --build demo
+
+docker-up:       ## Real devices in Docker (Linux / Raspberry Pi; uses host networking)
+	docker compose up -d --build homepanel
+
+docker-logs:     ## Follow the Docker container's logs
+	docker compose logs -f homepanel
 
 clean:           ## Remove caches (keeps your data/ and logs/)
 	find . -name __pycache__ -prune -exec rm -rf {} +

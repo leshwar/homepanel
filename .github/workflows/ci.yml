@@ -27,3 +27,21 @@ jobs:
         run: pytest -v
       - name: Check shell scripts
         run: bash -n scripts/*.sh
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t homepanel:ci .
+      - name: Start in demo mode and check health
+        run: |
+          docker run -d --name hp -p 8080:8080 -e HOMEPANEL_DATA=/tmp/demo -e HOMEPANEL_LOGS=/tmp/demo/logs \
+            homepanel:ci python -m app.main --demo
+          for i in $(seq 1 30); do curl -fs http://localhost:8080/api/v1/health && break; sleep 1; done
+          curl -fs http://localhost:8080/api/v1/health | python3 -c "import json,sys; h=json.load(sys.stdin); assert h['ok'] and h['devices'] > 0; print('adapters:', h['adapters'], 'missing:', h['unavailable'])"
+          curl -fs -X POST http://localhost:8080/api/v1/devices/lr-lamp/command -H 'Content-Type: application/json' -d '{"action":"toggle"}' > /dev/null
+          docker logs hp | tail -20
+      - name: All device libraries install and import in the image
+        run: |
+          docker run --rm homepanel:ci python -c "import tinytuya, kasa, samsungtvws, aiowebostv; print('tinytuya', tinytuya.__version__)"

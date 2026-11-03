@@ -1,0 +1,31 @@
+# HomePanel with Docker.
+#
+#   docker compose up -d                       # real devices (Raspberry Pi / Linux)
+#   docker compose --profile demo up demo      # pretend devices on http://localhost:8081 (any OS, incl. macOS)
+#
+# Settings, device keys and logs live in ./data on the host.
+services:
+  homepanel:
+    build: .
+    image: homepanel:local
+    container_name: homepanel
+    # Host networking lets the panel find devices with broadcast/multicast
+    # (Search, TV discovery, Govee LAN, WiZ). Works on Linux / Raspberry Pi.
+    network_mode: host
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=${TZ:-America/Los_Angeles}
+    restart: unless-stopped
+
+  demo:
+    profiles: ["demo"]
+    build: .
+    image: homepanel:local
+    command: ["python", "-m", "app.main", "--demo", "--debug"]
+    ports:
+      - "8081:8080"
+    environment:
+      - TZ=${TZ:-America/Los_Angeles}
+      - HOMEPANEL_DATA=/tmp/demo
+      - HOMEPANEL_LOGS=/tmp/demo/logs

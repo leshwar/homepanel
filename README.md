@@ -94,6 +94,10 @@ is easier there).
 
 Server-only (no screen): `./scripts/install.sh --no-kiosk`.
 
+Prefer Docker? `docker compose up -d --build` runs the server (host networking,
+so device search works on the Pi). Try it on any computer with
+`make docker-demo`. Details and Mac caveats: [docs/DOCKER.md](docs/DOCKER.md).
+
 ## Logs and debugging
 
 | What | Where |

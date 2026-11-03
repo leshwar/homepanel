@@ -105,7 +105,7 @@ class SamsungTVAdapter(DeviceAdapter):
             await asyncio.to_thread(self._remote(device).send_key, key)
         except Exception as e:
             self._drop(device)
-            if "unauthorized" in str(e).lower() or "ms.channel.unauthorized" in str(e):
+            if type(e).__name__ == "UnauthorizedError" or "unauthorized" in str(e).lower():
                 raise PairingRequired("The TV hasn't allowed this panel yet. Choose Pair and press Allow on the TV.")
             raise ConnectionError(f"TV didn't accept the command: {e}")
 

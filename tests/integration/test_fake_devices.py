@@ -106,6 +106,64 @@ class ScanFallbackOverRealSockets(unittest.IsolatedAsyncioTestCase):
                          [("Living Room TV", "127.0.0.1", "AA:BB:CC:00:11:22")])
 
 
+class SearchAllOffersNoDuplicateTV(unittest.IsolatedAsyncioTestCase):
+    """The real LG adapter and HomeService against a fake webOS TV on 127.0.0.1. A TV saved
+    from an SSDP search must stay "added" when a later search only finds it by the port scan
+    (the multicast reply was missed), and adding it again must be refused."""
+    UUID = "uuid:14704f92-0000-0000-0000-000000000001"
+
+    async def asyncSetUp(self):
+        from app.adapters import lg_tv
+        from app.core.service import HomeService
+
+        async def handle(reader, writer):
+            try:
+                await reader.readuntil(b"\r\n\r\n")
+            except asyncio.IncompleteReadError:          # the port scan connects and hangs up
+                writer.close()
+                return
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 11\r\n\r\nHello world")
+            await writer.drain()
+            writer.close()
+
+        try:
+            self.server = await asyncio.start_server(handle, "127.0.0.1", 3000)   # webOS answers on :3000
+        except OSError:
+            self.skipTest("port 3000 is busy on this machine")
+        self.lg_tv, self.ssdp_hits = lg_tv, []
+
+        async def ssdp(*a, **k):
+            return self.ssdp_hits
+        self.saved = (lg_tv.ssdp_search, lg_tv.local_subnet_hosts)
+        lg_tv.ssdp_search, lg_tv.local_subnet_hosts = ssdp, (lambda: ["127.0.0.1"])
+        self.dir = tempfile.mkdtemp()
+        self.svc = HomeService(self.dir)
+        self.svc.adapters = {"lg_tv": lg_tv.LGTVAdapter({}, self.dir)}
+        # saved by an earlier version from an SSDP search: uid is the uuid, MAC not learned yet
+        self.svc.store.devices["tv"] = Device(id="tv", adapter="lg_tv", name="Living room TV", kind=Kind.TV,
+                                              config={"ip": "127.0.0.1", "mac": "", "_uid": self.UUID})
+
+    async def asyncTearDown(self):
+        self.lg_tv.ssdp_search, self.lg_tv.local_subnet_hosts = self.saved
+        self.server.close()
+        await self.server.wait_closed()
+
+    async def test_tv_is_never_offered_twice(self):
+        self.ssdp_hits = [{"ip": "127.0.0.1", "usn": f"{self.UUID}::urn:lge-com:service:webos-second-screen:1"}]
+        r = await self.svc.discover_all()
+        self.assertEqual([(f["adapter"], f["added"]) for f in r["found"]], [("lg_tv", True)])
+
+        self.ssdp_hits = []                                 # multicast reply missed: found by the port scan
+        r = await self.svc.discover_all()
+        [tv] = r["found"]
+        self.assertIn("network scan", tv["detail"])
+        self.assertTrue(tv["added"])
+        self.assertTrue(all("config" not in f and "aliases" not in f for f in r["found"]))
+        with self.assertRaisesRegex(AdapterError, "Already added as 'Living room TV'"):
+            await self.svc.add_device("lg_tv", uid=tv["uid"])
+        self.assertEqual(list(self.svc.store.devices), ["tv"])
+
+
 class FakeHA:
     TOKEN = "test-token"
 

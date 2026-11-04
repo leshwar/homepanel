@@ -76,7 +76,8 @@ class MyBrandAdapter(DeviceAdapter):
 |---|---|---|
 | `refresh(device) -> dict` | yes | Current state. Raise `OSError`/`ConnectionError` if unreachable; the service marks it offline after 2 failures. |
 | `command(device, action, value) -> dict` | yes | `action` is already validated and normalized (toggle is converted to power; numbers are clamped; colours are `{r,g,b}`). Return the changed state keys. |
-| `discover() -> list[Found]` | for Search | `uid` must be stable (MAC or device ID) to prevent duplicates. Put secrets in `config` — they never reach the browser. |
+| `discover() -> list[Found]` | for Search | `uid` must be stable (MAC or device ID) to prevent duplicates — the **same** however the device was found (e.g. SSDP and a port-scan fallback must agree). If you change how a uid is made, list the old form in `Found.aliases` so devices saved earlier still match. Put secrets in `config` — they never reach the browser. As a safety net, a result at the same `config["ip"]` as a saved device of the same brand also counts as added (unless several devices share that address, or both know a `mac` and they differ). |
+| `known_ids(device) -> set[str]` | optional | Every id a saved device may turn up under (default: its uid and aliases). Override to add ids learned later, e.g. a MAC learned after pairing (see `lg_tv.py`). |
 | `from_manual(values) -> Found` | for "Add by IP" | Validate and raise `AdapterError` with a clear message. |
 | `setup(device)` | optional | First connection. Raise `PairingRequired` if the person must approve something (TV prompts). You may update `device.config`, `device.caps`, `device.meta`. |
 | `start()` / `stop()` | optional | Open/close shared sockets (see `govee.py`). |

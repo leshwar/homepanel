@@ -52,6 +52,22 @@ export const api = {
   runAutomation: (id) => call("POST", `/automations/${id}/run`),
   presence: () => call("GET", "/presence"),
   sun: () => call("GET", "/sun"),
+
+  photos: () => call("GET", "/photos"),
+  deletePhoto: (id) => call("DELETE", `/photos/${encodeURIComponent(id)}`),
+  // One photo per request; the body is the file itself (no multipart needed).
+  uploadPhoto: async (file) => {
+    let res;
+    try {
+      res = await fetch(`${BASE}/photos?name=${encodeURIComponent(file.name || "photo")}`, {
+        method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+    } catch {
+      throw new ApiError("Can't reach the panel's server. Is it running?");
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok) throw new ApiError((data && data.error) || `Upload failed (${res.status})`);
+    return data;
+  },
 };
 
 // Live updates. Calls onEvent(event) for each server event, onStatus(connected).

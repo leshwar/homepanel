@@ -131,6 +131,24 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 Location and people are settings: `PUT /settings` with `latitude`, `longitude`,
 and `presence: [{"name": "Asha", "ip": "192.168.1.23"}]`.
 
+## Photo frame
+
+| Method | Path | Body / result |
+|---|---|---|
+| GET | `/photos` | `{"photos": [{id, name, size, added, url}]}` newest first |
+| POST | `/photos?name=IMG_1.jpg` | the image file itself as the body (`Content-Type: image/*`), one per request, max 30 MB; returns the stored photo |
+| DELETE | `/photos/{id}` | — |
+| GET | `/photos/{id}/image` | the image |
+
+Photos are stored in `data/photos/`, rotated upright, resized to 2560 px on the
+long side and saved without metadata (no GPS). Settings: `idle_screen`
+(`clock`/`photos`), `frame_seconds`, `frame_shuffle`, `frame_clock`, `frame_night_clock`.
+
+```bash
+curl -X POST "http://homepanel.local:8080/api/v1/photos?name=beach.jpg" \
+     -H "Content-Type: image/jpeg" --data-binary @beach.jpg
+```
+
 ## Live events
 
 `GET /events` is a Server-Sent Events stream. Each message is JSON:

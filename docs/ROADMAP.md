@@ -26,6 +26,21 @@ on (or open) an issue before starting so work isn't duplicated.
 - Sonos volume and play/pause.
 - Yeelight, LIFX, Nanoleaf (all have local APIs).
 
+## Photo frame sources
+
+Photos are uploaded from a browser or copied into `data/photos/` today. Possible
+additional sources, each as its own module next to `app/core/photos.py`:
+
+- **Google Photos (Picker API).** Since March 31, 2025 Google no longer lets apps
+  read a library or albums; apps can only receive photos the person picks in
+  Google's own picker. A "Pick from Google Photos" button could open the picker on
+  a phone and copy the chosen photos to the panel. Needs a Google Cloud project
+  with OAuth set up.
+- **Immich** (self-hosted Google Photos alternative) — has an API with albums, so
+  a live "show this album" source is possible.
+- **A USB stick**: show photos from a stick plugged into the Pi.
+- **Shared folder** (Nextcloud / SMB) synced to `data/photos/`.
+
 ## UI
 
 - Drag to reorder tiles; pin favourites to the top.

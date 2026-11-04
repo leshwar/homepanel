@@ -14,6 +14,11 @@ DEFAULT_SETTINGS = {
     "dim_after_seconds": 90,      # show the ambient clock after this much idle time (0 = never)
     "temperature_unit": "F",
     "clock_24h": False,
+    "idle_screen": "clock",       # what to show when idle: "clock" (dim night clock) or "photos"
+    "frame_seconds": 15,          # photo frame: seconds per photo
+    "frame_shuffle": True,
+    "frame_clock": True,          # small clock over the photos
+    "frame_night_clock": True,    # 10 PM–7 AM show the dim clock instead of bright photos
     "latitude": None,             # for sunrise/sunset schedules
     "longitude": None,
     "presence": [],               # [{"name": "Asha", "ip": "192.168.1.23"}] phones to watch

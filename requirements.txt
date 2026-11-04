@@ -10,3 +10,4 @@ tinytuya>=1.13        # Tuya / Smart Life / Globe Electric
 python-kasa>=0.7      # TP-Link Kasa and Tapo
 samsungtvws>=2.6      # Samsung TVs
 aiowebostv>=0.4       # LG webOS TVs
+cryptography>=41      # LG sound bars (AES); tinytuya and python-kasa need it too

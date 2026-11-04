@@ -21,7 +21,7 @@ how many device brands are added underneath.
 ├──────────────────────────────────────────────────────────────┤
 │ app/adapters/*.py   One adapter per brand/protocol           │
 │   tuya · govee · kasa · shelly · wiz · hue · samsung_tv ·    │
-│   lg_tv · home_assistant · demo                              │
+│   lg_tv · lg_soundbar · home_assistant · demo                │
 └──────────────────────────────────────────────────────────────┘
         app/core/automations.py: schedules (time, sunrise/sunset, presence) → scenes/commands
         app/core/sun.py: sunrise/sunset maths (offline)
@@ -38,11 +38,11 @@ Every device is described the same way, whatever the brand:
 
 | Concept | Values | Defined in |
 |---|---|---|
-| **Kind** — what it is | `light`, `plug`, `switch`, `tv`, `fan`, `other` | `Kind` |
-| **Capabilities** — what it can do | `power`, `brightness`, `color`, `color_temp`, `volume`, `volume_level`, `mute`, `channel`, `remote`, `apps`, `inputs` | `Cap` |
-| **Actions** — commands you can send | `power`, `toggle`, `brightness`, `color`, `color_temp`, `volume`, `volume_up/down`, `mute`, `channel_up/down`, `key`, `launch_app`, `set_input` | `Action` |
+| **Kind** — what it is | `light`, `plug`, `switch`, `tv`, `fan`, `speaker`, `other` | `Kind` |
+| **Capabilities** — what it can do | `power`, `brightness`, `color`, `color_temp`, `volume`, `volume_level`, `mute`, `channel`, `remote`, `media`, `apps`, `inputs`, `sound_mode` | `Cap` |
+| **Actions** — commands you can send | `power`, `toggle`, `brightness`, `color`, `color_temp`, `volume`, `volume_up/down`, `mute`, `channel_up/down`, `key`, `launch_app`, `set_input`, `set_sound_mode` | `Action` |
 | **Keys** — remote buttons | `UP DOWN LEFT RIGHT OK BACK HOME MENU SOURCE PLAY PAUSE STOP REWIND FORWARD` | `Key` |
-| **State** — current status | `online`, `on`, `brightness` (0-100), `color` `{r,g,b}`, `color_temp` (K), `color_mode`, `volume`, `muted`, `app`, `input`, `power_w` | free-form dict |
+| **State** — current status | `online`, `on`, `brightness` (0-100), `color` `{r,g,b}`, `color_temp` (K), `color_mode`, `volume`, `muted`, `app`, `input`, `sound_mode`, `power_w` | free-form dict |
 
 The UI draws controls purely from capabilities: a device with `brightness`
 gets a slider; one with `remote` gets a D-pad. A new brand gets the full UI

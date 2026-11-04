@@ -3,7 +3,7 @@
 
 import { api, connectEvents } from "./api.js";
 import { store, onChange, emit, reload, upsertDevice, command, setRoom, devicesIn } from "./store.js";
-import { $, esc, icon, kindIcon, glow, glowVar, statusText, toast } from "./util.js";
+import { $, esc, icon, isMedia, kindIcon, glow, glowVar, statusText, toast } from "./util.js";
 import { openDevice, refreshSheet, closeSheet, isSheetOpen } from "./sheet.js";
 import { openSettings, isSettingsOpen, refreshSettings } from "./settings.js";
 import { applyTransparency } from "./glass.js";
@@ -55,9 +55,9 @@ function tileHtml(d) {
   const on = !!s.on && s.online !== false;
   const offline = s.online === false || s.needs_pairing;
   const level = d.kind === "light" && s.brightness ? Math.max(0.15, s.brightness / 100) : 1;
-  const cls = ["tile", on && "on", offline && "offline", store.busy.has(d.id) && "busy", d.kind === "tv" && "wide"]
+  const cls = ["tile", on && "on", offline && "offline", store.busy.has(d.id) && "busy", isMedia(d) && "wide"]
     .filter(Boolean).join(" ");
-  const tvControls = d.kind === "tv" && on ? `
+  const tvControls = isMedia(d) && on ? `
       <div class="tile-tv-ctl">
         <button data-act="volume_down" aria-label="Volume down">${icon("minus")}</button>
         <button data-act="volume_up" aria-label="Volume up">${icon("plus")}</button>
@@ -101,7 +101,7 @@ function renderGrid() {
   grid.innerHTML = html;
 }
 
-const KIND_ORDER = { tv: 0, light: 1, switch: 2, fan: 3, plug: 4, other: 5 };
+const KIND_ORDER = { tv: 0, speaker: 1, light: 2, switch: 3, fan: 4, plug: 5, other: 6 };
 const sortDevices = (list) => list.sort((a, b) => (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9) || a.name.localeCompare(b.name));
 
 function updateTile(id) {
@@ -174,7 +174,7 @@ function setupGrid() {
     if (e.target.closest("[data-more]")) return openDevice(d.id);
     const act = e.target.closest("[data-act]");
     if (act) return command(d.id, act.dataset.act);
-    if (d.kind === "tv") return openDevice(d.id);   // never toggle a TV by accident
+    if (isMedia(d)) return openDevice(d.id);   // never toggle a TV or sound bar by accident
     toggle(d);
   });
   grid.addEventListener("keydown", (e) => {

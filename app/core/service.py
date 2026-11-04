@@ -67,6 +67,10 @@ async def mw_validate(ctx: CommandContext, call_next):
         if Cap.REMOTE not in ctx.device.caps and not media_ok:
             raise AdapterError(f"{ctx.device.name} can't do '{ctx.value}'")
         return await call_next(ctx)
+    if ctx.action in Action.OPTIONS:
+        ids = {str(o.get("id")) for o in ctx.device.meta.get(Action.OPTIONS[ctx.action], [])}
+        if str(ctx.value) not in ids:
+            raise AdapterError(f"{ctx.device.name} doesn't have the option '{ctx.value}'")
     needed = Action.REQUIRES.get(ctx.action)
     if needed and needed not in ctx.device.caps:
         raise AdapterError(f"{ctx.device.name} can't do '{ctx.action}'")

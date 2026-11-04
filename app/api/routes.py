@@ -141,6 +141,11 @@ async def discover(request):
 
 
 @handle_errors
+async def discover_all(request):
+    return await _svc(request).discover_all()
+
+
+@handle_errors
 async def get_account(request):
     return _svc(request).account_public(request.path_params["adapter"])
 
@@ -316,6 +321,7 @@ routes = [
     Route("/api/v1/devices/{id}/pair", pair_device, methods=["POST"]),
     Route("/api/v1/devices/{id}/refresh", refresh_device, methods=["POST"]),
     Route("/api/v1/all-off", all_off, methods=["POST"]),
+    Route("/api/v1/discover", discover_all, methods=["POST"]),
     Route("/api/v1/adapters/{adapter}/discover", discover, methods=["POST"]),
     Route("/api/v1/adapters/{adapter}/account", get_account, methods=["GET"]),
     Route("/api/v1/adapters/{adapter}/account", put_account, methods=["PUT"]),

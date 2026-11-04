@@ -232,8 +232,8 @@ label.field { display: block; margin: 0 0 14px; }
 .row + .row { border-top: 1px solid var(--line); }
 button.row:active { background: var(--slate); }
 .row .grow { flex: 1; min-width: 0; }
-.row .title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row .sub { color: var(--haze); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .title { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row .sub { display: block; color: var(--haze); font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row .i.dim { color: var(--haze); }
 .row .badge { color: var(--ember); font-size: 14px; }
 .group-label { color: var(--haze); font-size: 15px; margin: 6px 4px 10px; }

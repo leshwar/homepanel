@@ -10,6 +10,7 @@ import { openFrame } from "./photoframe.js";
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
 let brandState = {};          // per-visit state of the "brand" screen
+let searchAll = {};           // per-visit state of "Search all brands" on the "add" screen
 
 export const isSettingsOpen = () => !$("#settings").hidden;
 
@@ -21,7 +22,7 @@ export function openSettings(view = "home", arg = null) {
 }
 
 function close() { $("#settings").hidden = true; stack = []; }
-function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; render(); $("#settings").scrollTop = 0; }
+function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; if (view === "add") searchAll = {}; render(); $("#settings").scrollTop = 0; }
 function back() { stack.pop(); stack.length ? render() : close(); }
 
 export function refreshSettings() {
@@ -43,6 +44,25 @@ function page(title, body, { closeBtn = false } = {}) {
 const row = (attrs, iconName, title, sub = "", extra = "") =>
   `<button class="row" ${attrs}>${iconName ? icon(iconName, "dim") : ""}<span class="grow">
     <span class="title">${esc(title)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}</span>${extra}${icon("right", "dim")}</button>`;
+
+function searchAllResults(r) {
+  const found = r.found.length ? `<div class="list" data-search-all-results>${r.found.map((f) => `
+      <div class="row">${icon(kindIcon({ kind: f.kind }), "dim")}
+        <span class="grow"><span class="title">${esc(f.name)}</span><span class="sub">${esc(f.adapter_name)}${f.detail ? ` · ${esc(f.detail)}` : ""}</span></span>
+        ${f.added ? `<span class="sub">Added</span>` :
+          `<button class="btn small primary" data-add-found="${esc(f.uid)}" data-adapter="${esc(f.adapter)}" data-name="${esc(f.name)}">Add</button>`}
+      </div>`).join("")}</div>` :
+    `<div class="card"><h3>Nothing found</h3>${store.inContainer
+      ? `<p>The panel is running inside Docker, which can't see your Wi-Fi on a Mac or Windows PC, so search can't find devices.
+           Add the device by IP address instead, or run the panel without Docker (make run).</p>`
+      : `<p>Make sure the devices are set up in their own app first and are on the same Wi-Fi as this panel.
+           If they still don't show up, choose the brand below and add them by IP address.</p>`}</div>`;
+  const extra = [
+    ...r.needs_account.map((b) => row(`data-go=brand data-arg="${esc(b.adapter)}"`, "link", b.adapter_name, "Not searched. Connect your account first.")),
+    ...r.failed.map((b) => row(`data-go=brand data-arg="${esc(b.adapter)}"`, "wifi-off", b.adapter_name, b.error)),
+  ];
+  return found + (extra.length ? `<div class="list" data-search-all-skipped>${extra.join("")}</div>` : "");
+}
 
 const VIEWS = {
   home() {
@@ -119,8 +139,19 @@ const VIEWS = {
 
   add() {
     const list = store.adapters.filter((a) => !a.hidden);
+    const st = searchAll;
     page("Add a device", `
-      <p class="group-label">Choose the brand. Most plugs sold as "works with Smart Life" use Tuya.</p>
+      <div class="card" data-search-all-card>
+        <h3>Search all brands</h3>
+        <p>Look for every plug, light and TV on your Wi-Fi at once. This can take up to half a minute.</p>
+        <label class="field"><span>Put new devices in</span><select id="add-room">
+          <option value="">No room</option>${store.rooms.map((r) => `<option ${r === st.room ? "selected" : ""}>${esc(r)}</option>`).join("")}
+        </select></label>
+        <div class="btn-row"><button class="btn primary" data-discover-all ${st.searching ? "disabled" : ""}>
+          ${icon("search")}${st.searching ? "Searching all brands…" : st.result ? "Search again" : "Search all brands"}</button></div>
+      </div>
+      ${st.result ? searchAllResults(st.result) : ""}
+      <p class="group-label">Or choose the brand. Most plugs sold as "works with Smart Life" use Tuya.</p>
       <div class="list">${list.map((a) => row(`data-go=brand data-arg="${esc(a.id)}"`, kindIcon({ kind: a.kinds[0] }), a.name,
         a.available ? a.brands : `Not installed on this panel (needs ${a.missing.join(", ")})`)).join("")}</div>`, { closeBtn: true });
   },
@@ -524,6 +555,24 @@ root.addEventListener("click", async (e) => {
       const d = store.devices.get(id);
       if (!confirm(`Remove ${d?.name || "this device"} from the panel? It stays set up in its own app.`)) return;
       await api.removeDevice(id); await reload(); toast("Removed"); return back();
+    }
+    if (t("[data-discover-all]")) {
+      searchAll.searching = true; searchAll.room = $("#add-room")?.value; render();
+      try { searchAll.result = await api.discoverAll(); }
+      finally { searchAll.searching = false; if (stack.at(-1)?.view === "add") render(); }
+      return;
+    }
+    if (t("[data-add-found]")) {
+      const b = t("[data-add-found]");
+      b.disabled = true; b.textContent = "Adding…";
+      const room = $("#add-room")?.value || "";
+      searchAll.room = room;
+      const d = await api.addDevice({ adapter: b.dataset.adapter, uid: b.dataset.addFound, name: b.dataset.name, room });
+      const f = searchAll.result?.found.find((x) => x.adapter === b.dataset.adapter && x.uid === b.dataset.addFound);
+      if (f) f.added = true;
+      toast(d.pairing ? `${d.name} added. Look at the TV and accept the prompt, then tap Pair.` : `${d.name} added`, d.pairing);
+      await reload();
+      return render();
     }
     if (t("[data-discover]")) {
       brandState.searching = true; brandState.room = $("#add-room")?.value; render();

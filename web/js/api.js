@@ -36,6 +36,7 @@ export const api = {
   allOff: (room) => call("POST", "/all-off", room ? { room } : {}),
 
   mapUrl: (id, rev = 0) => `${BASE}/devices/${encodeURIComponent(id)}/map?v=${encodeURIComponent(rev)}`,
+  discoverAll: () => call("POST", "/discover"),
   discover: (adapter) => call("POST", `/adapters/${adapter}/discover`),
   getAccount: (adapter) => call("GET", `/adapters/${adapter}/account`),
   saveAccount: (adapter, values) => call("PUT", `/adapters/${adapter}/account`, values),

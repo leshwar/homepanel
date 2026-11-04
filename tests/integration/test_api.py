@@ -78,6 +78,21 @@ class ApiTests(unittest.TestCase):
         status, _ = self.call("GET", "/devices/lr-plug/map")
         self.assertEqual(status, 400)
 
+    def test_search_all_brands_and_add_a_result(self):
+        status, _ = self.call("DELETE", "/devices/bd-fan")
+        self.assertIn(status, (200, 204))
+        status, r = self.call("POST", "/discover")
+        self.assertEqual(status, 200)
+        self.assertIn("demo", r["searched"])          # other test suites may register extra pretend brands
+        self.assertEqual(r["failed"], [])
+        fan = next(f for f in r["found"] if f["uid"] == "bd-fan")
+        self.assertEqual((fan["adapter"], fan["added"]), ("demo", False))
+        self.assertTrue(all("config" not in f for f in r["found"]))
+        status, d = self.call("POST", "/devices", {"adapter": fan["adapter"], "uid": fan["uid"], "room": "Bedroom"})
+        self.assertEqual((status, d["name"]), (200, "Fan plug"))
+        _, r = self.call("POST", "/discover")
+        self.assertTrue(next(f for f in r["found"] if f["uid"] == "bd-fan")["added"])
+
     def test_health_and_logs(self):
         status, h = self.call("GET", "/health")
         self.assertTrue(h["ok"])

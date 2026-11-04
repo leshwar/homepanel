@@ -35,6 +35,7 @@ export const api = {
   refresh: (id) => call("POST", `/devices/${id}/refresh`),
   allOff: (room) => call("POST", "/all-off", room ? { room } : {}),
 
+  discoverAll: () => call("POST", "/discover"),
   discover: (adapter) => call("POST", `/adapters/${adapter}/discover`),
   getAccount: (adapter) => call("GET", `/adapters/${adapter}/account`),
   saveAccount: (adapter, values) => call("PUT", `/adapters/${adapter}/account`, values),

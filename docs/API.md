@@ -67,6 +67,7 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 
 | Method | Path | Body |
 |---|---|---|
+| POST | `/discover` | — → `{"found": [{adapter, adapter_name, uid, name, kind, caps, detail, needs_pairing, added}], "searched": [adapter ids], "failed": [{adapter, adapter_name, error}], "needs_account": [{adapter, adapter_name}]}`. Searches every brand at once; brands that need an account first are listed, not searched. Add a result with `POST /devices` `{"adapter", "uid"}`. |
 | POST | `/adapters/{adapter}/discover` | — → `{"found": [{uid, name, kind, caps, detail, needs_pairing, added}]}` |
 | POST | `/devices` | `{"adapter", "uid"}` from discovery, **or** `{"adapter", "manual": {...fields}}`, plus optional `name`, `room` |
 | PATCH | `/devices/{id}` | any of `name`, `room`, `icon`, `kind`, `keep_on` |

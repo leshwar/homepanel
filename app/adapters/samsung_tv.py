@@ -13,7 +13,8 @@ import os
 
 from ..core.adapter import (Action, AdapterError, Cap, Device, DeviceAdapter, Field, Found, Key,
                             Kind, PairingRequired, register)
-from ..core.net import http, local_subnet_hosts, mac_from_arp, port_open, scan_ports, ssdp_search, wake_on_lan
+from ..core.net import (http, local_subnet_hosts, mac_from_arp, normalize_mac, port_open, scan_ports, ssdp_search,
+                        wake_on_lan)
 
 KEYS = {Key.UP: "KEY_UP", Key.DOWN: "KEY_DOWN", Key.LEFT: "KEY_LEFT", Key.RIGHT: "KEY_RIGHT",
         Key.OK: "KEY_ENTER", Key.BACK: "KEY_RETURN", Key.HOME: "KEY_HOME", Key.MENU: "KEY_MENU",
@@ -72,17 +73,30 @@ class SamsungTVAdapter(DeviceAdapter):
             if not isinstance(info, dict) or "device" not in info:
                 continue
             dev = info.get("device", {})
-            found.append(Found(adapter=self.id, uid=(dev.get("wifiMac") or dev.get("id") or ip).upper(),
+            # Both paths read the TV's own API, so the uid doesn't depend on how it was found.
+            mac, uuid = normalize_mac(dev.get("wifiMac")), dev.get("id") or ""
+            uid = mac or (uuid or ip).upper()
+            legacy = (dev.get("wifiMac") or uuid or ip).upper()     # the uid older versions saved
+            config = {"ip": ip, "mac": mac or dev.get("wifiMac", ""), "model": dev.get("modelName", "")}
+            if uuid:
+                config["uuid"] = uuid
+            found.append(Found(adapter=self.id, uid=uid,
                                name=dev.get("name") or info.get("name") or "Samsung TV", kind=Kind.TV, caps=CAPS,
-                               config={"ip": ip, "mac": dev.get("wifiMac", ""), "model": dev.get("modelName", "")},
-                               detail=f"{ip} · {dev.get('modelName', '')}", needs_pairing=True))
+                               config=config, detail=f"{ip} · {dev.get('modelName', '')}", needs_pairing=True,
+                               aliases=sorted({legacy, uuid.upper()} - {uid, ""})))
         return found
 
     def from_manual(self, values):
         if not values.get("ip"):
             raise AdapterError("IP address is required.")
-        return Found(adapter=self.id, uid=values["ip"], name=values.get("name") or "Samsung TV", kind=Kind.TV,
-                     caps=CAPS, config={"ip": values["ip"], "mac": values.get("mac", "")}, needs_pairing=True)
+        mac = normalize_mac(values.get("mac"))
+        return Found(adapter=self.id, uid=mac or values["ip"], name=values.get("name") or "Samsung TV", kind=Kind.TV,
+                     caps=CAPS, config={"ip": values["ip"], "mac": mac or values.get("mac", "")}, needs_pairing=True,
+                     aliases=[values["ip"]] if mac else [])
+
+    def known_ids(self, device: Device) -> set[str]:
+        extra = {normalize_mac(device.config.get("mac")), (device.config.get("uuid") or "").upper()}
+        return super().known_ids(device) | {i for i in extra if i}
 
     # --- connection -----------------------------------------------------------
     def _token_file(self, device: Device) -> str:

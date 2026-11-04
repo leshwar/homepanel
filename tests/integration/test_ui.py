@@ -166,6 +166,19 @@ class UITests(unittest.TestCase):
         self.page.click("[data-arg=shelly]")          # a brand with no extra libraries, so always available
         self.page.wait_for_selector("text=You're in demo mode")
 
+    def test_search_all_brands_from_add_screen(self):
+        self.page.click("#open-settings")
+        self.page.click("[data-go=add]")
+        self.page.click("[data-discover-all]")
+        self.page.wait_for_selector("[data-search-all-results] .row")
+        rows = self.page.locator("[data-search-all-results] .row")
+        self.assertGreaterEqual(rows.count(), 10)
+        self.assertIn("Demo devices", rows.first.inner_text())
+        self.page.wait_for_selector("text=Search again")
+        btn = self.page.locator("[data-discover-all]").bounding_box()
+        self.assertGreaterEqual(btn["height"], 48)                  # touch target
+        self.assertEqual(self.errors, [])
+
     def test_ambient_clock_wakes_without_toggling(self):
         self.page.click("#clock")
         self.page.wait_for_selector("#ambient:not([hidden])")

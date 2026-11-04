@@ -1,6 +1,7 @@
 // Home screen: clock, scenes, room tabs and the device grid. Also wires up live
 // updates and the idle ambient clock.
 
+import { roomGroups, OTHER } from "./store.js";   // room tabs
 import { api, connectEvents } from "./api.js";
 import { store, onChange, emit, reload, upsertDevice, command, setRoom, devicesIn } from "./store.js";
 import { $, esc, icon, kindIcon, glow, glowVar, statusText, toast } from "./util.js";
@@ -8,7 +9,6 @@ import { openDevice, refreshSheet, closeSheet, isSheetOpen } from "./sheet.js";
 import { openSettings, isSettingsOpen, refreshSettings } from "./settings.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame, isFrameOpen } from "./photoframe.js";
-import { roomGroups, OTHER } from "./store.js";   // room tabs
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 

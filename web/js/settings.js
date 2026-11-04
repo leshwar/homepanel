@@ -4,6 +4,7 @@
 import { api } from "./api.js";
 import { store, reload } from "./store.js";
 import { $, esc, icon, kindIcon, toast } from "./util.js";
+import { applyTransparency } from "./glass.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
@@ -338,6 +339,17 @@ const VIEWS = {
           ${opts.map(([v, l]) => `<option value="${v}" ${Number(s.dim_after_seconds) === v ? "selected" : ""}>${l}</option>`).join("")}
         </select><small>The screen goes dark with a dim clock so it doesn't light up the room. Touch to wake.</small></label>
         <label class="check"><input type="checkbox" name="clock_24h" ${s.clock_24h ? "checked" : ""}><span>24-hour clock</span></label>
+        <span class="field"><span>Background</span></span>
+        <div class="bg-choices" role="radiogroup" aria-label="Background">
+          ${[["ocean", "Ocean"], ["aurora", "Aurora"], ["night", "Night"]].map(([v, l]) => `
+            <label class="bg-choice"><input type="radio" name="background" value="${v}" ${(s.background || "ocean") === v ? "checked" : ""}>
+              <span class="bg-swatch ${v}"></span><span>${l}</span></label>`).join("")}
+        </div>
+        <label class="field"><span>Glass transparency <b id="glass-val">${s.glass_transparency ?? 45}%</b></span>
+          <input class="glass-range" type="range" name="glass_transparency" min="0" max="100" step="5" value="${s.glass_transparency ?? 45}">
+          <small>Lower is more solid and easier to read; higher shows more of the background.</small></label>
+        <label class="check"><input type="checkbox" name="glass_effect" ${s.glass_effect !== false ? "checked" : ""}>
+          <span>Frosted blur (turn off if the screen feels slow)</span></label>
         <div class="btn-row"><button class="btn primary" type="submit">Save</button></div>
       </form>`);
   },
@@ -542,10 +554,25 @@ root.addEventListener("submit", async (e) => {
     }
     if (form.matches("[data-display]")) {
       const v = formValues(form);
-      await api.saveSettings({ dim_after_seconds: Number(v.dim_after_seconds), clock_24h: !!v.clock_24h });
+      await api.saveSettings({ dim_after_seconds: Number(v.dim_after_seconds), clock_24h: !!v.clock_24h,
+                               glass_effect: !!v.glass_effect, background: v.background,
+                               glass_transparency: Number(v.glass_transparency) });
       toast("Saved"); await reload(); return back();
     }
   } catch (err) { toast(err.message, true); }
+});
+
+// Live preview of background and glass changes before saving
+root.addEventListener("input", (e) => {
+  const el = e.target;
+  if (!el.closest("[data-display]")) return;
+  if (el.name === "glass_transparency") {
+    applyTransparency(el.value);
+    const label = $("#glass-val");
+    if (label) label.textContent = `${el.value}%`;
+  }
+  if (el.name === "background") document.documentElement.dataset.bg = el.value;
+  if (el.name === "glass_effect") document.documentElement.classList.toggle("glass", el.checked);
 });
 
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isSettingsOpen()) back(); });

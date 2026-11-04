@@ -14,6 +14,9 @@ DEFAULT_SETTINGS = {
     "dim_after_seconds": 90,      # show the ambient clock after this much idle time (0 = never)
     "temperature_unit": "F",
     "clock_24h": False,
+    "glass_effect": True,         # frosted-glass blur; turn off if a slow screen feels sluggish
+    "glass_transparency": 45,     # 0 = solid tiles, 100 = almost clear glass
+    "background": "ocean",        # ocean | aurora | night
     "latitude": None,             # for sunrise/sunset schedules
     "longitude": None,
     "presence": [],               # [{"name": "Asha", "ip": "192.168.1.23"}] phones to watch

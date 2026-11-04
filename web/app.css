@@ -25,7 +25,8 @@
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-html, body { margin: 0; height: 100%; background: var(--night); color: var(--paper); }
+html, body { margin: 0; height: 100%; color: var(--paper); }
+html { background: var(--night); }   /* body stays transparent so the background scene shows */
 body {
   font-family: var(--font); font-size: 17px; line-height: 1.4;
   -webkit-font-smoothing: antialiased; overscroll-behavior: none;
@@ -267,4 +268,92 @@ button.row:active { background: var(--slate); }
   .clock-time { font-size: 48px; }
   .top { margin-bottom: 14px; }
   .tile { min-height: 136px; }
+}
+
+/* =====================================================================
+   Backgrounds and glass
+   The page sits on a background scene (html[data-bg]); tiles, sheets and
+   buttons are frosted glass over it. --glass-alpha (from the "Glass
+   transparency" setting) sets how much of the scene shows through, and
+   html.glass turns the blur on (it can be turned off on slow screens).
+   ===================================================================== */
+:root { --glass-alpha: .54; --glass-blur: 0px; }
+html.glass { --glass-blur: 22px; }
+
+.backdrop { position: fixed; inset: 0; z-index: -1; overflow: hidden; background: var(--night);
+            --shape-hi: #e9efff; --shape-mid: #7f9cff; --shape-lo: #1a2f9c; }
+.backdrop .bg-shapes { position: absolute; inset: 0; width: 100%; height: 100%; }
+.room-light { position: absolute; inset: 0; pointer-events: none; transition: background 1.2s ease;
+  background: radial-gradient(80% 55% at 50% 0%, rgb(var(--room-glow, 150 166 255) / calc(.06 + var(--warmth, 0) * .26)), transparent 72%); }
+
+html[data-bg="ocean"] .backdrop {
+  background:
+    radial-gradient(110% 70% at 18% 0%, #3d68ff 0%, transparent 58%),
+    radial-gradient(90% 70% at 100% 72%, #2443dc 0%, transparent 60%),
+    linear-gradient(165deg, #122a88 0%, #1a3cc0 46%, #0b1a5e 100%);
+  --shape-hi: #f1f4ff; --shape-mid: #8aa6ff; --shape-lo: #1b31a8;
+}
+html[data-bg="aurora"] .backdrop {
+  background:
+    radial-gradient(100% 70% at 8% 6%, #1fa595 0%, transparent 56%),
+    radial-gradient(100% 80% at 100% 92%, #6d3fd8 0%, transparent 62%),
+    linear-gradient(160deg, #0d2f40 0%, #1a1650 100%);
+  --shape-hi: #ecfffa; --shape-mid: #7fdcc9; --shape-lo: #3b2b94;
+}
+html[data-bg="night"] .backdrop .bg-shapes { display: none; }
+
+/* lighter secondary text on the colored backgrounds */
+html[data-bg="ocean"], html[data-bg="aurora"] { --haze: #c3cbe8; }
+html[data-bg="ocean"] .clock-time, html[data-bg="aurora"] .clock-time { text-shadow: 0 2px 24px rgb(0 0 30 / .35); }
+
+/* --- glass surfaces --- */
+.tile, .scene, .btn-alloff, .icon-btn, .rocker, .dpad, .round, .chip, .list, .card, .btn:not(.primary) {
+  background-color: rgb(12 18 40 / var(--glass-alpha));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+}
+.tile, .scene, .btn-alloff, .icon-btn, .list, .card {
+  border: 1px solid rgb(255 255 255 / .09);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .12), 0 14px 34px rgb(0 4 30 / .22);
+}
+.tile { background-image: linear-gradient(160deg, rgb(255 255 255 / .07), rgb(255 255 255 / 0) 55%); }
+.tile.on { background-color: rgb(24 32 62 / min(.95, calc(var(--glass-alpha) + .06))); }
+.tile-icon { background: rgb(255 255 255 / .08); }
+.tile-more:active, .tile-tv-ctl button:active { background: rgb(255 255 255 / .14); }
+.tile-tv-ctl button { background: rgb(255 255 255 / .09); }
+.dpad .ok { background: rgb(255 255 255 / .08); }
+.room:not([aria-pressed="true"]) { background: rgb(12 18 40 / calc(var(--glass-alpha) * .6)); }
+.room { margin-right: 4px; }
+
+.sheet {
+  background-color: rgb(10 16 38 / min(.96, calc(var(--glass-alpha) + .26)));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.4)) saturate(160%);
+  backdrop-filter: blur(calc(var(--glass-blur) * 1.4)) saturate(160%);
+  border: 1px solid rgb(255 255 255 / .10); border-bottom: 0;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / .14), 0 -20px 60px rgb(0 4 30 / .35);
+}
+.page {
+  background-color: rgb(8 12 30 / min(.94, calc(var(--glass-alpha) + .3)));
+  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.4));
+  backdrop-filter: blur(calc(var(--glass-blur) * 1.4));
+}
+.page-head { background: transparent; }
+.slider { background: rgb(0 0 20 / .35); box-shadow: inset 0 1px 3px rgb(0 0 0 / .3); }
+.field input, .field select { background: rgb(0 0 20 / .35); border-color: rgb(255 255 255 / .12); }
+.scrim { background: rgb(0 4 20 / .45); }
+
+/* Display settings: background choices */
+.bg-choices { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.bg-choice { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; }
+.bg-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.bg-swatch { width: 96px; height: 64px; border-radius: 14px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .15); }
+.bg-choice input:checked + .bg-swatch { box-shadow: 0 0 0 3px var(--paper); }
+.bg-choice input:focus-visible + .bg-swatch { outline: 3px solid var(--indigo); outline-offset: 3px; }
+.bg-swatch.ocean { background: linear-gradient(165deg, #2a50f0, #0b1a5e); }
+.bg-swatch.aurora { background: linear-gradient(160deg, #1fa595, #6d3fd8); }
+.bg-swatch.night { background: #151a22; }
+input[type="range"].glass-range { width: 100%; height: 44px; accent-color: var(--paper); }
+
+@media (prefers-reduced-transparency: reduce) {
+  :root { --glass-alpha: .92 !important; --glass-blur: 0px !important; }
 }

@@ -11,6 +11,7 @@ web/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
     ├── store.js    client state, optimistic commands, change notifications
     ├── util.js     escaping, icons, colors/glow, status text, toasts, storage
+    ├── glass.js    glass transparency → CSS variable
     ├── app.js      home screen: clock, scenes, rooms, device grid, idle night clock
     ├── sheet.js    bottom sheet: light controls and the TV remote
     └── settings.js settings pages: add devices, edit, rooms, scenes, display, diagnostics
@@ -18,9 +19,14 @@ web/
 
 ## Design
 
-- **Dark room, lit devices.** The page is dark slate; a device that is on gives
-  off light — lamps glow in their real color, plugs in jade, TVs in indigo.
-  That glow is the one bold element; everything else stays quiet.
+- **Glass over a scene.** A static background (`.backdrop` in `index.html`:
+  gradients plus soft SVG shapes; Ocean, Aurora or Night via `html[data-bg]`) sits
+  behind frosted-glass tiles, sheets and buttons. Settings → Display has the
+  background, a **Glass transparency** slider (sets `--glass-alpha`, see `js/glass.js`)
+  and a **Frosted blur** switch (`html.glass`) for slow screens.
+- **Lit devices.** A device that is on gives off light: lamps glow in their real
+  color, plugs in jade, TVs in indigo, and the background's top glow takes on the
+  color of the lights that are on (`--room-glow`, `--warmth`).
 - **Touch targets ≥ 48 px**, big sliders, no hover-only features.
 - **Tap = do the obvious thing** (toggle). Long-press or the arrow = full controls.
   TVs open the remote on tap so they're never switched off by accident.

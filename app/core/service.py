@@ -31,6 +31,7 @@ from .store import Store
 log = logging.getLogger("homepanel")
 
 COMMAND_TIMEOUT = 10.0
+BACKGROUNDS = ("ocean", "aurora", "night")
 REFRESH_TIMEOUT = 8.0
 OFFLINE_AFTER_FAILURES = 2
 
@@ -537,6 +538,16 @@ class HomeService:
                 changes[key] = round(v, 4)
             elif key in changes:
                 changes[key] = None
+        if "background" in changes and changes["background"] not in BACKGROUNDS:
+            raise AdapterError(f"Background should be one of: {', '.join(BACKGROUNDS)}.")
+        if "glass_transparency" in changes:
+            try:
+                changes["glass_transparency"] = max(0, min(100, int(float(changes["glass_transparency"]))))
+            except (TypeError, ValueError):
+                raise AdapterError("Glass transparency should be a number from 0 to 100.")
+        for key in ("glass_effect", "clock_24h"):
+            if key in changes:
+                changes[key] = changes[key] in (True, 1, "1", "true", "on")
         if "presence" in changes:
             people = []
             for p in changes["presence"] or []:

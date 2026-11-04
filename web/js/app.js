@@ -3,9 +3,10 @@
 
 import { api, connectEvents } from "./api.js";
 import { store, onChange, emit, reload, upsertDevice, command, setRoom, devicesIn } from "./store.js";
-import { $, esc, icon, kindIcon, glowVar, statusText, toast } from "./util.js";
+import { $, esc, icon, kindIcon, glow, glowVar, statusText, toast } from "./util.js";
 import { openDevice, refreshSheet, closeSheet, isSheetOpen } from "./sheet.js";
 import { openSettings, isSettingsOpen, refreshSettings } from "./settings.js";
+import { applyTransparency } from "./glass.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 
@@ -112,7 +113,24 @@ function updateTile(id) {
   old.replaceWith(tmp.firstElementChild);
 }
 
+// The backdrop behind the glass takes on the color of the lights that are on,
+// so the whole screen gets warmer as the room does.
+function renderAmbience() {
+  const root = document.documentElement;
+  root.classList.toggle("glass", store.settings.glass_effect !== false);
+  root.dataset.bg = store.settings.background || "ocean";
+  applyTransparency(store.settings.glass_transparency ?? 45);
+  const lit = [...store.devices.values()].filter((d) => d.kind === "light" && d.state?.on && d.state?.online !== false);
+  const warmth = Math.min(1, lit.length / 4);
+  const avg = lit.length
+    ? [0, 1, 2].map((i) => Math.round(lit.reduce((sum, d) => sum + glow(d)[i], 0) / lit.length))
+    : [150, 166, 255];
+  root.style.setProperty("--room-glow", avg.join(" "));
+  root.style.setProperty("--warmth", warmth.toFixed(2));
+}
+
 function renderAll() {
+  renderAmbience();
   renderClock();
   renderScenes();
   renderRooms();
@@ -228,6 +246,7 @@ function setupLive() {
 onChange((what, id) => {
   if (what === "device") {
     updateTile(id);
+    renderAmbience();
     refreshSheet(id);
     renderRooms();
   } else if (what === "room") {

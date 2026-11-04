@@ -9,6 +9,47 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23151a22'/%3E%3Ccircle cx='16' cy='14' r='6' fill='%23f2b35b'/%3E%3Crect x='13' y='21' width='6' height='3' rx='1' fill='%23ede7dc'/%3E%3C/svg%3E">
 </head>
 <body>
+  <!-- Background scene behind the glass tiles: soft floating shapes, colored by the
+       chosen background (Settings → Display). Static, so it costs nothing to keep on screen. -->
+  <div class="backdrop" aria-hidden="true">
+    <svg class="bg-shapes" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <radialGradient id="sh-ball" cx="34%" cy="28%" r="75%">
+          <stop offset="0" style="stop-color:var(--shape-hi)"/>
+          <stop offset=".55" style="stop-color:var(--shape-mid)"/>
+          <stop offset="1" style="stop-color:var(--shape-lo)"/>
+        </radialGradient>
+        <linearGradient id="sh-bar" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" style="stop-color:var(--shape-hi)"/>
+          <stop offset=".6" style="stop-color:var(--shape-mid)"/>
+          <stop offset="1" style="stop-color:var(--shape-lo)"/>
+        </linearGradient>
+        <linearGradient id="sh-ring" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" style="stop-color:var(--shape-hi)"/>
+          <stop offset="1" style="stop-color:var(--shape-lo)"/>
+        </linearGradient>
+        <filter id="far" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
+        <filter id="mid" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter>
+      </defs>
+      <!-- far: big and blurred -->
+      <ellipse cx="860" cy="860" rx="190" ry="120" fill="url(#sh-ball)" filter="url(#far)" opacity=".55"/>
+      <rect x="40" y="700" width="230" height="230" rx="60" fill="url(#sh-bar)" filter="url(#far)" opacity=".45"
+            transform="rotate(-18 155 815)"/>
+      <circle cx="170" cy="180" r="110" fill="none" stroke="url(#sh-ring)" stroke-width="34" filter="url(#far)" opacity=".4"/>
+      <!-- middle distance -->
+      <rect x="690" y="330" width="250" height="78" rx="39" fill="url(#sh-bar)" filter="url(#mid)" opacity=".7"
+            transform="rotate(32 815 369)"/>
+      <ellipse cx="520" cy="560" rx="62" ry="38" fill="url(#sh-ball)" filter="url(#mid)" opacity=".75"
+               transform="rotate(-12 520 560)"/>
+      <circle cx="300" cy="470" r="46" fill="none" stroke="url(#sh-ring)" stroke-width="14" filter="url(#mid)" opacity=".6"/>
+      <!-- near: small and sharp -->
+      <ellipse cx="640" cy="170" rx="34" ry="22" fill="url(#sh-ball)" opacity=".9" transform="rotate(14 640 170)"/>
+      <rect x="400" y="300" width="70" height="22" rx="11" fill="url(#sh-bar)" opacity=".8" transform="rotate(-25 435 311)"/>
+      <circle cx="905" cy="560" r="16" fill="url(#sh-ball)" opacity=".85"/>
+      <circle cx="90" cy="420" r="10" fill="url(#sh-ball)" opacity=".8"/>
+    </svg>
+    <div class="room-light"></div>
+  </div>
   <div id="app" class="app">
     <header class="top">
       <button class="clock" id="clock" aria-label="Show ambient clock">

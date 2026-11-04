@@ -29,6 +29,21 @@ WEB_DIR = os.path.join(ROOT, "web")
 log = logging.getLogger("homepanel")
 
 
+def ui_cache_header(path: str) -> str | None:
+    """Cache policy for the touch UI's own files.
+
+    "no-cache" means "check with the server before reusing" (cheap: an ETag check
+    on the home network). Without it a browser can keep an old or half-loaded
+    copy of app.css / app.js, e.g. the kiosk after an update, or a browser that
+    opened the page while the server was still starting.
+    """
+    if path.startswith("/api/"):
+        return None                      # API responses set their own headers
+    if path == "/" or path.endswith((".html", ".css", ".js", ".svg", ".json")):
+        return "no-cache"
+    return None
+
+
 class RequestLog(BaseHTTPMiddleware):
     """Logs every API call with its status and duration (skips the long-lived event stream)."""
 
@@ -36,6 +51,9 @@ class RequestLog(BaseHTTPMiddleware):
         start = time.monotonic()
         response = await call_next(request)
         path = request.url.path
+        cache = ui_cache_header(path)
+        if cache and "cache-control" not in response.headers:
+            response.headers["Cache-Control"] = cache
         if path.startswith("/api/") and not path.endswith("/events"):
             ms = (time.monotonic() - start) * 1000
             lvl = logging.WARNING if response.status_code >= 400 else logging.DEBUG

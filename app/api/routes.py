@@ -20,6 +20,7 @@ from ..core.adapter import AdapterError
 from ..core import logs as logmod
 from ..core.logs import ring
 from ..core.photos import MAX_UPLOAD_BYTES, PhotoError
+from ..core.net import in_container
 from ..core.service import HomeService
 
 log = logging.getLogger("homepanel.api")
@@ -290,7 +291,8 @@ async def health(request):
     devices = list(svc.store.devices.values())
     return {"ok": True, "time": time.time(), "uptime_s": round(time.time() - request.app.state.started, 1),
             "devices": len(devices), "online": sum(1 for d in devices if d.state.get("online")),
-            "adapters": sorted(svc.adapters), "unavailable": svc.unavailable, "demo": svc.demo}
+            "adapters": sorted(svc.adapters), "unavailable": svc.unavailable, "demo": svc.demo,
+            "in_container": in_container()}
 
 
 routes = [

@@ -1,12 +1,14 @@
 """Integration tests for the API layer: the real server in demo mode, called over HTTP."""
 import json
+import os
 import shutil
+import sys
 import tempfile
 import unittest
 import urllib.error
 import urllib.request
 
-from tests.helpers import DemoServer
+from tests.helpers import DemoServer, FakeWeatherSource
 
 
 class ApiTests(unittest.TestCase):
@@ -67,6 +69,30 @@ class ApiTests(unittest.TestCase):
         status, res = self.call("POST", "/all-off", {"room": "Living room"})
         self.assertEqual(status, 200)
 
+    def test_robot_vacuum_commands(self):
+        status, d = self.call("POST", "/devices/lr-vacuum/command", {"action": "clean", "value": "start"})
+        self.assertEqual((status, d["state"]["activity"]), (200, "cleaning"))
+        status, d = self.call("POST", "/devices/lr-vacuum/command", {"action": "dock"})
+        self.assertEqual((status, d["state"]["activity"]), (200, "returning"))
+        status, err = self.call("POST", "/devices/lr-vacuum/command", {"action": "clean", "value": "turbo"})
+        self.assertEqual(status, 400)
+        self.assertIn("cleaning command", err["error"])
+        status, _ = self.call("POST", "/devices/lr-plug/command", {"action": "dock"})
+        self.assertEqual(status, 400)
+
+    def test_vacuum_rooms_suction_and_map(self):
+        status, d = self.call("POST", "/devices/lr-vacuum/command", {"action": "clean_rooms", "value": [2]})
+        self.assertEqual((status, d["state"]["activity"]), (200, "cleaning"))
+        self.assertEqual([r["name"] for r in d["meta"]["rooms"]][:2], ["Living room", "Kitchen"])
+        status, err = self.call("POST", "/devices/lr-vacuum/command", {"action": "set_suction", "value": "turbo"})
+        self.assertEqual(status, 400)
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/v1/devices/lr-vacuum/map", timeout=5) as r:
+            self.assertEqual(r.headers["Content-Type"].split(";")[0], "image/svg+xml")
+            self.assertIn("default-src 'none'", r.headers["Content-Security-Policy"])   # can't run scripts
+            self.assertTrue(r.read().startswith(b"<svg"))
+        status, _ = self.call("GET", "/devices/lr-plug/map")
+        self.assertEqual(status, 400)
+
     def test_search_all_brands_and_add_a_result(self):
         status, _ = self.call("DELETE", "/devices/bd-fan")
         self.assertIn(status, (200, 204))
@@ -85,6 +111,10 @@ class ApiTests(unittest.TestCase):
     def test_health_and_logs(self):
         status, h = self.call("GET", "/health")
         self.assertTrue(h["ok"])
+        self.assertIn("unsupported", h)
+        if sys.version_info[:2] != (3, 14):        # e.g. CI and Docker: the vacuum brand needs 3.14
+            self.assertIn("Needs Python 3.14", h["unsupported"]["ecovacs"])
+            self.assertNotIn("ecovacs", h["unavailable"])        # "not for this Python", not "not installed"
         self.assertIn("in_container", h)
         self.assertIn("demo", h["adapters"])
         status, logs = self.call("GET", "/logs")
@@ -118,6 +148,37 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("Background", err["error"])
         self.call("PUT", "/settings", {"background": "ocean", "glass_transparency": 45})
+
+    def test_clock_face_setting(self):
+        status, s = self.call("PUT", "/settings", {"clock_face": "words"})
+        self.assertEqual((status, s["clock_face"]), (200, "words"))
+        status, err = self.call("PUT", "/settings", {"clock_face": "sundial"})
+        self.assertEqual(status, 400)
+        self.assertIn("Clock face", err["error"])
+        self.call("PUT", "/settings", {"clock_face": "digital"})
+
+    def test_weather_from_source_and_hidden_without_it(self):
+        status, w = self.call("GET", "/weather")
+        self.assertEqual((status, w["available"]), (200, False))      # off until the user opts in
+        source = FakeWeatherSource(temperature=21.4, code=0)
+        os.environ["HOMEPANEL_WEATHER_URL"] = source.url
+        try:
+            self.call("PUT", "/settings", {"latitude": 47.61, "longitude": -122.33, "weather_enabled": True,
+                                           "temperature_unit": "C"})
+            status, w = self.call("GET", "/weather")
+            self.assertEqual((status, w["available"], w["temperature"], w["unit"], w["condition"]),
+                             (200, True, 21, "C", "clear"))
+            self.assertIn("latitude=47.61", source.requests[0])
+            self.call("GET", "/weather")
+            self.assertEqual(len(source.requests), 1)                  # cached
+            source.stop()
+            os.environ["HOMEPANEL_WEATHER_URL"] = source.url.replace("/v1", "/gone/v1")   # new source, unreachable
+            status, w = self.call("GET", "/weather")
+            self.assertEqual((status, w["available"]), (200, False))   # no error, just no weather
+        finally:
+            os.environ.pop("HOMEPANEL_WEATHER_URL", None)
+            self.call("PUT", "/settings", {"latitude": None, "longitude": None, "weather_enabled": False,
+                                           "temperature_unit": "F"})
 
     def _upload(self, data: bytes, content_type="image/png"):
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/v1/photos?name=test.png", data=data,

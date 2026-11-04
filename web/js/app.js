@@ -4,11 +4,12 @@
 import { roomGroups, OTHER } from "./store.js";   // room tabs
 import { api, connectEvents } from "./api.js";
 import { store, onChange, emit, reload, upsertDevice, command, setRoom, devicesIn } from "./store.js";
-import { $, esc, icon, kindIcon, glow, glowVar, statusText, toast } from "./util.js";
+import { $, esc, icon, isMedia, kindIcon, glow, glowVar, statusText, toast } from "./util.js";
 import { openDevice, refreshSheet, closeSheet, isSheetOpen } from "./sheet.js";
 import { openSettings, isSettingsOpen, refreshSettings } from "./settings.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame, isFrameOpen } from "./photoframe.js";
+import { renderAmbient } from "./clockfaces.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 
@@ -21,9 +22,7 @@ function renderClock() {
   const date = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
   $("#clock-time").textContent = time;
   $("#clock-sub").textContent = date;
-  $("#ambient-time").textContent = time;
-  const on = [...store.devices.values()].filter((d) => d.state?.on && d.kind === "light").length;
-  $("#ambient-sub").textContent = on ? `${date}. ${on} ${on === 1 ? "light is" : "lights are"} on.` : date;
+  renderAmbient(now);
 }
 
 // ---------- scenes ----------
@@ -139,9 +138,9 @@ function tileHtml(d) {
   const on = !!s.on && s.online !== false;
   const offline = s.online === false || s.needs_pairing;
   const level = d.kind === "light" && s.brightness ? Math.max(0.15, s.brightness / 100) : 1;
-  const cls = ["tile", on && "on", offline && "offline", store.busy.has(d.id) && "busy", d.kind === "tv" && "wide"]
+  const cls = ["tile", on && "on", offline && "offline", store.busy.has(d.id) && "busy", isMedia(d) && "wide"]
     .filter(Boolean).join(" ");
-  const tvControls = d.kind === "tv" && on ? `
+  const tvControls = isMedia(d) && on ? `
       <div class="tile-tv-ctl">
         <button data-act="volume_down" aria-label="Volume down">${icon("minus")}</button>
         <button data-act="volume_up" aria-label="Volume up">${icon("plus")}</button>
@@ -177,7 +176,7 @@ function renderGrid() {
   grid.innerHTML = html;
 }
 
-const KIND_ORDER = { tv: 0, light: 1, switch: 2, fan: 3, plug: 4, other: 5 };
+const KIND_ORDER = { tv: 0, speaker: 1, light: 2, switch: 3, fan: 4, plug: 5, vacuum: 6, other: 7 };
 const sortDevices = (list) => list.sort((a, b) => (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9) || a.name.localeCompare(b.name));
 
 function updateTile(id) {
@@ -274,7 +273,7 @@ function setupGrid() {
     if (e.target.closest("[data-more]")) return openDevice(d.id);
     const act = e.target.closest("[data-act]");
     if (act) return command(d.id, act.dataset.act);
-    if (d.kind === "tv") return openDevice(d.id);   // never toggle a TV by accident
+    if (isMedia(d) || !d.caps.includes("power")) return openDevice(d.id);   // never toggle a TV or sound bar by accident; vacuums have no on/off
     toggle(d);
   });
   grid.addEventListener("keydown", (e) => {
@@ -322,7 +321,7 @@ function setupChrome() {
 
 // ---------- idle ambient clock ----------
 let lastActivity = Date.now();
-function showAmbient() { closeSheet(); $("#ambient").hidden = false; }
+function showAmbient() { closeSheet(); $("#ambient").hidden = false; renderAmbient(); }
 function setupIdle() {
   const wake = () => { lastActivity = Date.now(); };
   ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, wake, { capture: true }));

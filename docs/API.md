@@ -51,6 +51,18 @@ A device looks like:
 | `key` | `UP DOWN LEFT RIGHT OK BACK HOME MENU SOURCE PLAY PAUSE STOP REWIND FORWARD` | remote |
 | `launch_app` | app id from `meta.apps` | apps |
 | `set_input` | input id from `meta.inputs` | inputs |
+| `clean` | `start` / `pause` / `resume` / `stop` | clean |
+| `dock` | — (go back to the charging dock) | dock |
+| `clean_rooms` | list of room ids from `meta.rooms`, e.g. `[1, 3]` | rooms |
+| `set_suction` | id from `meta.suction_levels` | suction |
+| `set_clean_mode` | id from `meta.clean_modes` (vacuum, mop, both…) | clean_mode |
+| `station` | id from `meta.station_actions` (e.g. `empty_dustbin`) | station |
+| `locate` | — (plays a sound) | locate |
+| `set_sound_mode` | sound mode id from `meta.sound_modes` (other ids are rejected) | sound_mode |
+
+`GET /devices/{id}/map` returns the floor plan as an image (SVG for Ecovacs) for
+devices with the `map` capability. The state key `map_rev` changes when the map
+does, so add it to the URL to refresh the picture.
 
 Returns the updated device. Example:
 
@@ -91,7 +103,7 @@ room (shown as "Other" on the panel). Returns `{"turned_off": n}`.
 | POST | `/scenes` | `{"name", "icon", "actions": [{device_id, action, value}]}` **or** `{"name", "icon", "capture": [device ids]}` to save devices as they are now |
 | DELETE | `/scenes/{id}` | — |
 | POST | `/scenes/{id}/run` | — → `{"ok": n, "failed": [messages]}` |
-| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`ocean`/`aurora`/`night`), `glass_transparency` (0–100), `glass_effect` (blur on/off) |
+| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`ocean`/`aurora`/`night`), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`), `place_name` (shown on the clock, max 40 characters), `weather_enabled` (opt-in), `temperature_unit` (`C`/`F`) |
 
 ## Energy
 
@@ -113,6 +125,7 @@ room (shown as "Other" on the panel). Returns `{"turned_off": n}`.
 | DELETE | `/automations/{id}` | — |
 | POST | `/automations/{id}/run` | run it now |
 | GET | `/sun` | today's `sunrise` / `sunset` (unix time) once a location is set |
+| GET | `/weather` | `{available, temperature, high, low, unit, condition, label, is_day, updated}`; `condition` is one of `clear`, `partly-cloudy`, `cloudy`, `fog`, `drizzle`, `rain`, `snow`, `storm`. `{available: false}` when weather is off, there's no location, or the source can't be reached. Fetched on the server and cached for 20 minutes |
 | GET | `/presence` | `{"people": [{name, ip, home, last_seen}]}` |
 
 ```json

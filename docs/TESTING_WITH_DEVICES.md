@@ -15,6 +15,7 @@ on a laptop first, no Raspberry Pi needed.
 | Schedules, sunrise/sunset, presence logic, energy history | Tested automatically |
 | Shelly adapter | Tested against a simulated Shelly Gen2 |
 | Home Assistant adapter | Tested against a simulated Home Assistant |
+| LG sound bar adapter | Tested against a simulated sound bar; reading state checked on a real S95TR |
 | Tuya / Globe, Govee, Kasa/Tapo, WiZ, Hue, Samsung TV, LG TV | **Needs real-hardware testing** — protocol code follows each brand's docs/libraries |
 | Raspberry Pi installer and kiosk | **Needs a test run on a Pi** |
 | Presence with real phones | **Needs testing** (phones sleep Wi-Fi differently) |
@@ -74,6 +75,7 @@ what worked, and the log file if something didn't.
 | Govee plugs | Paste your Govee API key, then Search. State changes from the Govee app show up within ~90 s. |
 | Samsung TV | TV on → Search → Add → press Allow on the TV. |
 | LG TV | TV on → Search → Add → press Accept on the TV. |
+| LG sound bar | Search → Add. No prompt. Volume, inputs and sound modes appear when you open it. |
 
 ## 3. Use Claude Code to debug and improve it
 

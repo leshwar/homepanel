@@ -8,6 +8,7 @@ web/
 ├── index.html      page shell + the SVG icon set (<symbol id="i-…">)
 ├── app.css         all styles; design tokens at the top (:root)
 ├── photoframe.css  photo frame slideshow and its settings
+├── clockfaces.css  resting clock faces and the face picker previews
 └── js/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
     ├── store.js    client state, optimistic commands, change notifications
@@ -16,6 +17,7 @@ web/
     ├── app.js      home screen: clock, scenes, rooms, device grid, idle night clock
     ├── sheet.js    bottom sheet: light controls and the TV remote
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
+    ├── clockfaces.js  resting clock faces (digital, analog, words, date, night) + burn-in drift
     └── settings.js settings pages: add devices, edit, rooms, scenes, display, diagnostics
 ```
 

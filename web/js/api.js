@@ -35,6 +35,7 @@ export const api = {
   refresh: (id) => call("POST", `/devices/${id}/refresh`),
   allOff: (room = null) => call("POST", "/all-off", room == null ? {} : { room }),   // "" = devices with no room
 
+  mapUrl: (id, rev = 0) => `${BASE}/devices/${encodeURIComponent(id)}/map?v=${encodeURIComponent(rev)}`,
   discoverAll: () => call("POST", "/discover"),
   discover: (adapter) => call("POST", `/adapters/${adapter}/discover`),
   getAccount: (adapter) => call("GET", `/adapters/${adapter}/account`),
@@ -53,6 +54,7 @@ export const api = {
   runAutomation: (id) => call("POST", `/automations/${id}/run`),
   presence: () => call("GET", "/presence"),
   sun: () => call("GET", "/sun"),
+  weather: () => call("GET", "/weather"),
 
   photos: () => call("GET", "/photos"),
   deletePhoto: (id) => call("DELETE", `/photos/${encodeURIComponent(id)}`),

@@ -6,6 +6,7 @@ import { store, reload } from "./store.js";
 import { $, esc, icon, kindIcon, toast } from "./util.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame } from "./photoframe.js";
+import { FACES, faceId, faceHTML, faceInfo } from "./clockfaces.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
@@ -153,13 +154,18 @@ const VIEWS = {
       ${st.result ? searchAllResults(st.result) : ""}
       <p class="group-label">Or choose the brand. Most plugs sold as "works with Smart Life" use Tuya.</p>
       <div class="list">${list.map((a) => row(`data-go=brand data-arg="${esc(a.id)}"`, kindIcon({ kind: a.kinds[0] }), a.name,
-        a.available ? a.brands : `Not installed on this panel (needs ${a.missing.join(", ")})`)).join("")}</div>`, { closeBtn: true });
+        a.available ? a.brands : a.unsupported ? `Not available on this panel: ${a.unsupported}`
+          : `Not installed on this panel (needs ${a.missing.join(", ")})`)).join("")}</div>`, { closeBtn: true });
   },
 
   brand(id) {
     const a = store.adapters.find((x) => x.id === id);
     if (!a) return back();
     const st = brandState;
+    if (!a.available && a.unsupported) {
+      return page(a.name, `<div class="note warn">${esc(a.name)} can't run on this panel. ${esc(a.unsupported)}.
+        See docs/DEVICE_SETUP.md for how to set it up.</div>`, { closeBtn: true });
+    }
     if (!a.available) {
       return page(a.name, `<div class="note warn">Support for ${esc(a.name)} isn't installed. On the panel, run
         <b>./scripts/install.sh</b> again, or <b>pip install ${esc(a.missing.join(" "))}</b>.</div>`, { closeBtn: true });
@@ -348,10 +354,18 @@ const VIEWS = {
     page("Location and presence", `
       <form class="card" data-location>
         <h3>Your location</h3>
-        <p>Used only to work out sunrise and sunset times on this panel. In Google Maps, long-press your home to see its coordinates.</p>
+        <p>Used on this panel for sunrise and sunset times and, if you turn it on, the weather. In Google Maps, long-press your home to see its coordinates.</p>
         <label class="field"><span>Latitude</span><input name="latitude" inputmode="decimal" value="${s.latitude ?? ""}" placeholder="47.61"></label>
         <label class="field"><span>Longitude</span><input name="longitude" inputmode="decimal" value="${s.longitude ?? ""}" placeholder="-122.33"></label>
         <p id="sun-today"></p>
+        <label class="field"><span>Place name (optional)</span><input name="place_name" maxlength="40" value="${esc(s.place_name || "")}" placeholder="Seattle">
+          <small>Shown on the resting clock. Your coordinates aren't sent anywhere to look it up.</small></label>
+        <label class="check"><input type="checkbox" name="weather_enabled" ${s.weather_enabled ? "checked" : ""}>
+          <span>Show the weather on the resting clock</span></label>
+        <p><small>The panel asks Open-Meteo (free, no account) for the weather about every 20 minutes, sending your location rounded to about 1 km. It's the panel's only internet call that isn't for a device. Without internet the clock just leaves the weather out.</small></p>
+        <label class="field"><span>Temperature</span><select name="temperature_unit">
+          ${[["F", "°F (Fahrenheit)"], ["C", "°C (Celsius)"]].map(([v, l]) => `<option value="${v}" ${(s.temperature_unit || "F") === v ? "selected" : ""}>${l}</option>`).join("")}
+        </select></label>
         <div class="btn-row"><button class="btn primary" type="submit">Save location</button></div>
       </form>
       <div class="card">
@@ -398,7 +412,7 @@ const VIEWS = {
         <label class="check"><input type="checkbox" name="frame_shuffle" ${s.frame_shuffle !== false ? "checked" : ""}><span>Shuffle</span></label>
         <label class="check"><input type="checkbox" name="frame_clock" ${s.frame_clock !== false ? "checked" : ""}><span>Show the time over photos</span></label>
         <label class="field" style="margin-top:12px"><span>When the panel is idle, show</span><select name="idle_screen">
-          <option value="clock" ${s.idle_screen !== "photos" ? "selected" : ""}>The dim night clock</option>
+          <option value="clock" ${s.idle_screen !== "photos" ? "selected" : ""}>The resting clock</option>
           <option value="photos" ${s.idle_screen === "photos" ? "selected" : ""}>The photo frame</option>
         </select><small>How long until idle is set in Display and clock.</small></label>
         <label class="check"><input type="checkbox" name="frame_night_clock" ${s.frame_night_clock !== false ? "checked" : ""}>
@@ -410,12 +424,20 @@ const VIEWS = {
 
   display() {
     const s = store.settings;
+    const now = new Date();
+    const info = faceInfo();
     const opts = [[0, "Never"], [30, "30 seconds"], [60, "1 minute"], [90, "90 seconds"], [180, "3 minutes"], [600, "10 minutes"]];
     page("Display and clock", `
       <form class="card" data-display>
-        <label class="field"><span>Show the night clock after</span><select name="dim_after_seconds">
+        <label class="field"><span>Show the resting clock after</span><select name="dim_after_seconds">
           ${opts.map(([v, l]) => `<option value="${v}" ${Number(s.dim_after_seconds) === v ? "selected" : ""}>${l}</option>`).join("")}
         </select><small>The screen goes dark with a dim clock so it doesn't light up the room. Touch to wake.</small></label>
+        <span class="field"><span>Clock face</span></span>
+        <div class="face-choices" role="radiogroup" aria-label="Clock face">
+          ${FACES.map((f) => `
+            <label class="face-choice"><input type="radio" name="clock_face" value="${f.id}" ${faceId(s.clock_face) === f.id ? "checked" : ""}>
+              <span class="face-preview">${faceHTML(f.id, now, info)}</span><span>${esc(f.name)}</span></label>`).join("")}
+        </div>
         <label class="check"><input type="checkbox" name="clock_24h" ${s.clock_24h ? "checked" : ""}><span>24-hour clock</span></label>
         <span class="field"><span>Background</span></span>
         <div class="bg-choices" role="radiogroup" aria-label="Background">
@@ -444,7 +466,8 @@ const VIEWS = {
       const h = await api.health();
       $("#health").innerHTML = `<h3>${h.online} of ${h.devices} devices responding</h3>
         <p>Running for ${fmtDuration(h.uptime_s)}. Brands available: ${esc(h.adapters.join(", "))}.
-        ${Object.keys(h.unavailable).length ? `<br>Not installed: ${esc(Object.keys(h.unavailable).join(", "))}.` : ""}</p>`;
+        ${Object.keys(h.unavailable).length ? `<br>Not installed: ${esc(Object.keys(h.unavailable).join(", "))}.` : ""}
+        ${Object.keys(h.unsupported || {}).length ? `<br>Not available on this Python: ${esc(Object.keys(h.unsupported).join(", "))}.` : ""}</p>`;
     } catch (e) { $("#health").innerHTML = `<p>${esc(e.message)}</p>`; }
     loadLogs("");
   },
@@ -595,6 +618,8 @@ root.addEventListener("click", async (e) => {
     }
     if (t("[data-account-action]")) {
       const b = t("[data-account-action]"); b.disabled = true;
+      const form = b.closest("form");      // save what was typed first, so the action can use it
+      if (form) brandState.account = await api.saveAccount(top.arg, formValues(form));
       const r = await api.accountAction(top.arg, b.dataset.accountAction);
       brandState.account = r.account; toast(r.message); await reload(); return render();
     }
@@ -668,7 +693,9 @@ root.addEventListener("submit", async (e) => {
     }
     if (form.matches("[data-location]")) {
       const v = formValues(form);
-      await api.saveSettings({ latitude: v.latitude.trim() || null, longitude: v.longitude.trim() || null });
+      await api.saveSettings({ latitude: v.latitude.trim() || null, longitude: v.longitude.trim() || null,
+                               place_name: v.place_name.trim(), weather_enabled: !!v.weather_enabled,
+                               temperature_unit: v.temperature_unit });
       toast("Location saved"); await reload(); return render();
     }
     if (form.matches("[data-person-add]")) {
@@ -689,7 +716,7 @@ root.addEventListener("submit", async (e) => {
     if (form.matches("[data-display]")) {
       const v = formValues(form);
       await api.saveSettings({ dim_after_seconds: Number(v.dim_after_seconds), clock_24h: !!v.clock_24h,
-                               glass_effect: !!v.glass_effect, background: v.background,
+                               glass_effect: !!v.glass_effect, background: v.background, clock_face: v.clock_face,
                                glass_transparency: Number(v.glass_transparency) });
       toast("Saved"); await reload(); return back();
     }

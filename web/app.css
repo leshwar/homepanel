@@ -202,6 +202,18 @@ label.field { display: block; margin: 0 0 14px; }
 .round.active { background: var(--paper); color: var(--night); }
 @media (max-width: 420px) { .dpad { transform: scale(.82); margin: -20px; } }
 
+/* Phones (open the panel's address in Safari or Chrome): smaller clock so the
+   header buttons stay on one line; buttons stay at least 48 px for touch. */
+#health .phone-title { margin-top: 16px; }
+@media (max-width: 520px) {
+  .top { gap: 10px; }
+  .clock-time { font-size: 46px; }
+  .clock-sub { font-size: 15px; }
+  .top-actions { gap: 8px; padding-top: 0; }
+  .icon-btn { width: 48px; height: 48px; }
+  .btn-alloff { height: 48px; padding: 0 14px 0 12px; gap: 6px; white-space: nowrap; }
+}
+
 .chips { display: flex; flex-wrap: wrap; gap: 10px; }
 .chip { height: 52px; padding: 0 18px; border-radius: var(--r-ctl); background: var(--slate); font-weight: 500; }
 .chip:active { background: var(--line); }

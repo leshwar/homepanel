@@ -154,6 +154,27 @@ class UITests(unittest.TestCase):
         self.page.click("[data-arg=shelly]")          # a brand with no extra libraries, so always available
         self.page.wait_for_selector("text=You're in demo mode")
 
+    def test_fits_a_phone_screen(self):
+        phone = self.browser.new_page(viewport={"width": 390, "height": 844}, has_touch=True, device_scale_factor=1)
+        try:
+            phone.goto(f"http://127.0.0.1:{self.port}/")
+            phone.wait_for_selector(".tile")
+            self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth - innerWidth"), 0)
+            # header buttons on one line, big enough to tap
+            box = phone.locator("#all-off").bounding_box()
+            self.assertLessEqual(box["height"], 52)
+            for sel in ("#all-off", "#open-frame", "#open-settings"):
+                b = phone.locator(sel).bounding_box()
+                self.assertGreaterEqual(min(b["width"], b["height"]), 48, sel)
+                self.assertLessEqual(b["x"] + b["width"], 390, sel)
+            # Diagnostics says where to open the panel on a phone
+            phone.locator("#open-settings").click()
+            phone.get_by_text("Diagnostics and logs").click()
+            phone.wait_for_selector("#phone-url")
+            self.assertIn("same Wi-Fi", phone.locator("#phone-url").inner_text())
+        finally:
+            phone.close()
+
     def test_ambient_clock_wakes_without_toggling(self):
         self.page.click("#clock")
         self.page.wait_for_selector("#ambient:not([hidden])")

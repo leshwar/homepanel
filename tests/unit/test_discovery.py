@@ -52,3 +52,11 @@ class LGScanFallback(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PhoneUrl(unittest.TestCase):
+    def test_lan_address_becomes_a_link(self):
+        self.assertEqual(net.phone_url(8080, ip="192.168.1.20"), "http://192.168.1.20:8080")
+
+    def test_no_network_means_no_link(self):
+        self.assertIsNone(net.phone_url(8080, ip="127.0.0.1"))

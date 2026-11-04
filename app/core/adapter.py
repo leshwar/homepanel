@@ -149,10 +149,14 @@ class Found:
     detail: str = ""         # e.g. "192.168.1.40 · H5083"
     needs_pairing: bool = False
     room: str = ""           # suggested room, if the source knows one (e.g. a Home Assistant area)
+    # Other ids the same device may have been saved under (e.g. an SSDP uuid when uid is the MAC,
+    # or the uid an older version of the adapter used). Matched like uid to avoid duplicates.
+    aliases: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         d = dict(self.__dict__)
         d.pop("config", None)  # never send secrets to the browser
+        d.pop("aliases", None)
         return d
 
 
@@ -218,6 +222,12 @@ class DeviceAdapter(abc.ABC):
     def from_manual(self, values: dict) -> Found:
         """Build a device from the manual-add form."""
         raise AdapterError("This brand can't be added by hand. Use Search.")
+
+    def known_ids(self, device: Device) -> set[str]:
+        """Every id a saved device may turn up under in discovery (its uid and aliases).
+        Override to add ids the adapter learns later, e.g. a MAC address found after pairing."""
+        ids = {device.config.get("_uid"), *device.config.get("_aliases", [])}
+        return {i for i in ids if i}
 
     async def setup(self, device: Device) -> None:
         """First connection after adding. May raise PairingRequired.

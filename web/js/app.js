@@ -1,6 +1,7 @@
 // Home screen: clock, scenes, room tabs and the device grid. Also wires up live
 // updates and the idle ambient clock.
 
+import { roomGroups, OTHER } from "./store.js";   // room tabs
 import { api, connectEvents } from "./api.js";
 import { store, onChange, emit, reload, upsertDevice, command, setRoom, devicesIn } from "./store.js";
 import { $, esc, icon, isMedia, kindIcon, glow, glowVar, statusText, toast } from "./util.js";
@@ -35,18 +36,100 @@ function renderScenes() {
 }
 
 // ---------- rooms ----------
+// One tab per room that has devices, "Other" for devices without a room, and "All"
+// for the overview. The chosen tab is remembered (store.setRoom). Swipe the grid
+// sideways to go to the next or previous tab.
+const roomLabel = (r) => (r === OTHER ? "Other" : r);
+const isOn = (d) => !!d.state?.on && d.state?.online !== false;
+const canTurnOff = (d) => isOn(d) && d.caps.includes("power") && !d.keep_on;
+
+function tabOrder() {
+  const groups = roomGroups();
+  return groups.length < 2 ? [] : ["all", ...groups];   // one group: nothing to switch between
+}
+
 function renderRooms() {
-  const rooms = store.rooms.filter((r) => devicesIn(r).length);
   const el = $("#rooms");
-  if (rooms.length < 2) { el.hidden = true; if (store.room !== "all") setRoom("all"); return; }
+  const order = tabOrder();
+  if (!order.length) { el.hidden = true; if (store.room !== "all") setRoom("all"); return; }
+  if (!order.includes(store.room)) return setRoom("all");   // its devices moved away
   el.hidden = false;
-  const onCount = (r) => devicesIn(r).filter((d) => d.state?.on).length;
-  const tab = (id, label) => {
-    const n = onCount(id);
-    return `<button class="room" data-room="${esc(id)}" aria-pressed="${store.room === id}">${esc(label)}${
-      n ? `<span class="count" aria-label="${n} on">${n}</span>` : ""}</button>`;
-  };
-  el.innerHTML = tab("all", "All") + rooms.map((r) => tab(r, r)).join("");
+  el.innerHTML = order.map((id) => {
+    const n = devicesIn(id).filter(isOn).length;
+    return `<button class="room" role="tab" data-room="${esc(id)}" aria-selected="${store.room === id}">${
+      esc(id === "all" ? "All" : roomLabel(id))}${n ? `<span class="count" aria-label="${n} on">${n}</span>` : ""}</button>`;
+  }).join("");
+}
+
+// Keep the chosen tab visible in the scrolling bar.
+function revealTab() {
+  const el = $("#rooms");
+  const b = el.querySelector('[aria-selected="true"]');
+  if (!b) return;
+  const left = b.offsetLeft - 24, right = b.offsetLeft + b.offsetWidth + 24 - el.clientWidth;
+  if (el.scrollLeft > left) el.scrollLeft = left;
+  else if (el.scrollLeft < right) el.scrollLeft = right;
+}
+
+function goRoom(room) {
+  if (room === store.room) return;
+  const order = tabOrder();
+  const dir = Math.sign(order.indexOf(room) - order.indexOf(store.room));
+  setRoom(room);
+  revealTab();
+  // If the page was scrolled down, bring the top of the new room into view.
+  const grid = $("#grid");
+  const top = grid.getBoundingClientRect().top + window.scrollY - $("#rooms").offsetHeight - 8;
+  if (window.scrollY > top) window.scrollTo({ top });
+  if (dir && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    grid.animate([{ transform: `translateX(${dir * 28}px)`, opacity: 0.3 }, { transform: "none", opacity: 1 }],
+                 { duration: 200, easing: "cubic-bezier(.2,.8,.2,1)" });
+  }
+}
+
+function stepRoom(step) {
+  const order = tabOrder();
+  const next = order[order.indexOf(store.room) + step];
+  if (next !== undefined) goRoom(next);
+}
+
+// Heading above a room's tiles: what's on, and a button to turn that room off.
+// In "All" the room name is a button that opens the room's tab.
+function roomHead(r, linked) {
+  const list = devicesIn(r);
+  const on = list.filter(isOn).length;
+  const offable = list.filter(canTurnOff).length;
+  const name = esc(roomLabel(r));
+  const title = linked && tabOrder().length
+    ? `<button class="room-title" data-room="${esc(r)}" aria-label="Open ${name}">${name}${icon("right")}</button>`
+    : `<h2 class="room-title">${name}</h2>`;
+  const status = on ? `${on} of ${list.length} on` : "Everything is off";
+  return `<div class="room-head" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>${
+    offable ? `<button class="room-off" data-room-off="${esc(r)}">${icon("power")}Turn off</button>` : ""}</div>`;
+}
+
+function updateHeads() {
+  document.querySelectorAll(".room-head[data-head]").forEach((el) => {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = roomHead(el.dataset.head, !!el.querySelector("button.room-title"));
+    el.replaceWith(tmp.firstElementChild);
+  });
+}
+
+// Shown with "Other": a nudge to give those devices a room so they get a tab.
+function sortNudge() {
+  const list = devicesIn(OTHER);
+  const msg = store.rooms.length
+    ? `${list.length === 1 ? "This device isn't" : "These devices aren't"} in a room yet. Pick a room and it gets its own tab.`
+    : "Add rooms like Living room or Kitchen to get a tab for each one.";
+  const label = !store.rooms.length ? "Add rooms" : list.length === 1 ? "Choose a room" : "Choose rooms";
+  return `<div class="nudge"><p>${msg}</p><button class="btn small" data-sort-rooms>${label}</button></div>`;
+}
+
+function openSorting() {
+  const list = devicesIn(OTHER);
+  if (!store.rooms.length) return openSettings("rooms");
+  return list.length === 1 ? openSettings("device", list[0].id) : openSettings("devices");
 }
 
 // ---------- tiles ----------
@@ -87,17 +170,9 @@ function renderGrid() {
     return;
   }
   const room = store.room;
-  let html = "";
-  if (room === "all") {
-    const order = [...store.rooms, ""];
-    for (const r of order) {
-      const list = devicesIn(r === "" ? "" : r).filter((d) => (r === "" ? !store.rooms.includes(d.room) : true));
-      if (!list.length) continue;
-      html += `<div class="room-head">${esc(r || "Other")}</div>` + sortDevices(list).map(tileHtml).join("");
-    }
-  } else {
-    html = sortDevices(devicesIn(room)).map(tileHtml).join("");
-  }
+  const section = (r, linked) => `<section class="room-section" aria-label="${esc(roomLabel(r))}">${roomHead(r, linked)}${
+    r === OTHER ? sortNudge() : ""}<div class="tiles">${sortDevices(devicesIn(r)).map(tileHtml).join("")}</div></section>`;
+  const html = room === "all" ? roomGroups().map((r) => section(r, true)).join("") : section(room, false);
   grid.innerHTML = html;
 }
 
@@ -152,20 +227,44 @@ function setupGrid() {
   const grid = $("#grid");
   let pressTimer = null, longPressed = false;
 
+  // Swipe sideways anywhere on the grid to change room tab.
+  let start = null, swiped = false;
   grid.addEventListener("pointerdown", (e) => {
+    start = { x: e.clientX, y: e.clientY };
+    swiped = false;
     const tile = e.target.closest(".tile");
     if (!tile || e.target.closest("button")) return;
     longPressed = false;
     pressTimer = setTimeout(() => { longPressed = true; openDevice(tile.dataset.id); }, 480);
   });
-  const cancel = () => clearTimeout(pressTimer);
-  grid.addEventListener("pointerup", cancel);
-  grid.addEventListener("pointerleave", cancel);
+  grid.addEventListener("pointermove", (e) => {
+    if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 12) clearTimeout(pressTimer);
+  });
+  window.addEventListener("pointerup", (e) => {     // window: the finger may end up past the grid's edge
+    clearTimeout(pressTimer);
+    if (!start) return;
+    const dx = e.clientX - start.x, dy = e.clientY - start.y;
+    start = null;
+    if (Math.abs(dx) > 70 && Math.abs(dx) > 1.5 * Math.abs(dy) && tabOrder().length) {
+      swiped = true;
+      stepRoom(dx < 0 ? 1 : -1);
+    }
+  });
+  const cancel = () => { clearTimeout(pressTimer); start = null; };
+  grid.addEventListener("pointerleave", () => clearTimeout(pressTimer));
   grid.addEventListener("pointercancel", cancel);
+  grid.addEventListener("click", (e) => {   // a swipe isn't a tap
+    if (swiped) { swiped = false; e.stopImmediatePropagation(); e.preventDefault(); }
+  }, { capture: true });
   grid.addEventListener("contextmenu", (e) => e.preventDefault());
 
   grid.addEventListener("click", (e) => {
     if (e.target.closest("[data-add-device]")) return openSettings("add");
+    if (e.target.closest("[data-sort-rooms]")) return openSorting();
+    const off = e.target.closest("[data-room-off]");
+    if (off) return turnOff(off.dataset.roomOff);
+    const title = e.target.closest("[data-room]");
+    if (title) return goRoom(title.dataset.room);
     const tile = e.target.closest(".tile");
     if (!tile) return;
     if (longPressed) { longPressed = false; return; }
@@ -183,11 +282,25 @@ function setupGrid() {
   });
 }
 
+// room: null = everything, "" = devices without a room, else that room.
+async function turnOff(room = null) {
+  try {
+    const r = await api.allOff(room);
+    toast(r.turned_off ? `Turned off ${r.turned_off} ${r.turned_off === 1 ? "device" : "devices"}` : "Everything is already off");
+  } catch (err) { toast(err.message, true); }
+}
+
 function setupChrome() {
-  $("#rooms").addEventListener("click", (e) => {
+  const bar = $("#rooms");
+  bar.addEventListener("click", (e) => {
     const b = e.target.closest("[data-room]");
-    if (b) setRoom(b.dataset.room);
+    if (b) goRoom(b.dataset.room);
   });
+  // The bar sticks to the top while scrolling; give it a glass backing only then.
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(([en]) => bar.classList.toggle("stuck", en.intersectionRatio < 1 && en.boundingClientRect.top < 1),
+                             { threshold: [1] }).observe(bar);
+  }
   $("#scenes").addEventListener("click", async (e) => {
     if (e.target.closest("[data-new-scene]")) return openSettings("scene-new");
     const b = e.target.closest("[data-scene]");
@@ -200,13 +313,7 @@ function setupChrome() {
     } catch (err) { toast(err.message, true); }
     b.classList.remove("running");
   });
-  $("#all-off").addEventListener("click", async () => {
-    const room = store.room === "all" ? null : store.room;
-    try {
-      const r = await api.allOff(room);
-      toast(r.turned_off ? `Turned off ${r.turned_off} ${r.turned_off === 1 ? "device" : "devices"}` : "Everything is already off");
-    } catch (err) { toast(err.message, true); }
-  });
+  $("#all-off").addEventListener("click", () => turnOff());   // always everything; rooms have their own button
   $("#open-settings").addEventListener("click", () => openSettings());
   $("#open-frame").addEventListener("click", () => { closeSheet(); openFrame(); });
   $("#clock").addEventListener("click", showAmbient);
@@ -255,6 +362,7 @@ onChange((what, id) => {
     renderAmbience();
     refreshSheet(id);
     renderRooms();
+    updateHeads();
   } else if (what === "room") {
     renderRooms(); renderGrid();
   } else {
@@ -268,4 +376,4 @@ setupGrid();
 setupChrome();
 setupIdle();
 setInterval(renderClock, 10_000);
-reload().then(setupLive).catch((e) => { toast(e.message, true); setupLive(); });
+reload().then(() => { revealTab(); setupLive(); }).catch((e) => { toast(e.message, true); setupLive(); });

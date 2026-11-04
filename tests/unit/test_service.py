@@ -97,6 +97,20 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(self.svc.get("kt-fridge").state["on"])
         self.assertFalse(self.svc.get("lr-ceiling").state["on"])
 
+    async def test_all_off_for_one_room_and_for_devices_without_a_room(self):
+        for did in list(self.svc.store.devices):              # don't race the first poll (CI can be slow)
+            await self.svc.refresh(did)
+        for did in ("lr-lamp", "kt-kettle", "kt-fridge", "bd-fan"):
+            await self.svc.command(did, Action.POWER, True)
+        await self.svc.command("kt-pendant", Action.POWER, False)
+        self.svc.update_device("bd-fan", {"room": ""})            # shows under "Other" on the panel
+        self.assertEqual(await self.svc.all_off(""), 1)            # "" = devices without a room
+        self.assertFalse(self.svc.get("bd-fan").state["on"])
+        self.assertTrue(self.svc.get("lr-lamp").state["on"])
+        self.assertEqual(await self.svc.all_off("Kitchen"), 2)       # kettle and fridge
+        self.assertFalse(self.svc.get("kt-kettle").state["on"])
+        self.assertTrue(self.svc.get("lr-lamp").state["on"])
+
     async def test_scene_capture_and_run(self):
         await self.svc.command("bd-lamp", Action.BRIGHTNESS, 33)
         scene = self.svc.save_scene({"name": "Reading", "icon": "sun", "capture": ["bd-lamp"]})

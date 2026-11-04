@@ -40,6 +40,19 @@ class ApiTests(unittest.TestCase):
         for d in data["devices"]:
             self.assertNotIn("config", d)
 
+    def test_all_off_for_devices_without_a_room(self):
+        self.call("PATCH", "/devices/kt-kettle", {"room": ""})
+        try:
+            self.call("POST", "/devices/kt-kettle/command", {"action": "power", "value": True})
+            self.call("POST", "/devices/kt-pendant/command", {"action": "power", "value": True})
+            status, res = self.call("POST", "/all-off", {"room": ""})
+            self.assertEqual((status, res["turned_off"]), (200, 1))
+            _, s = self.call("GET", "/state")
+            on = {d["id"]: d["state"].get("on") for d in s["devices"]}
+            self.assertEqual((on["kt-kettle"], on["kt-pendant"]), (False, True))
+        finally:
+            self.call("PATCH", "/devices/kt-kettle", {"room": "Kitchen"})
+
     def test_command_and_errors(self):
         status, d = self.call("POST", "/devices/lr-ceiling/command", {"action": "brightness", "value": 42})
         self.assertEqual((status, d["state"]["brightness"]), (200, 42))

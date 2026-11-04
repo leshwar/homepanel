@@ -313,9 +313,14 @@ class HomeService:
         return self.public_device(d)
 
     async def all_off(self, room: str | None = None) -> int:
+        """Turn off what's on. room=None: everywhere; room="": devices that aren't in a room
+        (no room, or a room that was deleted), which the UI shows as "Other"."""
+        def in_room(d: Device) -> bool:
+            if room is None:
+                return True
+            return d.room not in self.store.rooms if room == "" else d.room == room
         targets = [d for d in self.store.devices.values()
-                   if Cap.POWER in d.caps and d.state.get("on") and not d.keep_on
-                   and (room is None or d.room == room)]
+                   if Cap.POWER in d.caps and d.state.get("on") and not d.keep_on and in_room(d)]
         results = await asyncio.gather(*(self.command(d.id, Action.POWER, False) for d in targets),
                                        return_exceptions=True)
         return sum(1 for r in results if not isinstance(r, Exception))

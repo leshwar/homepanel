@@ -31,7 +31,7 @@ export function applySnapshot(s) {
   store.presence = s.presence || [];
   store.demo = s.demo;
   store.inContainer = !!s.in_container;
-  if (store.room !== "all" && !store.rooms.includes(store.room)) store.room = "all";
+  if (store.room !== "all" && store.room !== OTHER && !store.rooms.includes(store.room)) store.room = "all";
   emit("all");
 }
 
@@ -78,5 +78,16 @@ export function setRoom(room) {
   emit("room");
 }
 
+// Devices with no room (or a room that was deleted) are grouped as "Other"; its
+// tab and the server's all-off both use "" for it.
+export const OTHER = "";
+export const roomOf = (d) => (store.rooms.includes(d.room) ? d.room : OTHER);
 export const devicesIn = (room) =>
-  [...store.devices.values()].filter((d) => room === "all" || d.room === room);
+  [...store.devices.values()].filter((d) => room === "all" || roomOf(d) === room);
+
+// The groups that get a tab, in display order: rooms that have devices, then "Other".
+export function roomGroups() {
+  const groups = store.rooms.filter((r) => devicesIn(r).length);
+  if (devicesIn(OTHER).length) groups.push(OTHER);
+  return groups;
+}

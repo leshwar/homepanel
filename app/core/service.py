@@ -32,6 +32,7 @@ from .presence import Presence
 from .geolocate import Geolocator
 from .weather import Weather
 from .store import Store
+from .voice import Voice
 
 log = logging.getLogger("homepanel")
 
@@ -182,6 +183,7 @@ class HomeService:
         self.weather = Weather(lambda: self.store.settings)
         self.geo = Geolocator()          # only used when the user taps "Use my location"
         self.presence = Presence(lambda: self.store.settings.get("presence") or [], self.automations.on_presence)
+        self.voice = Voice(self)                      # spoken/typed commands → the same command pipeline
         self._background: list[asyncio.Task] = []
 
     # --- middleware ---------------------------------------------------------

@@ -9,6 +9,7 @@ app/
 │   ├── adapter.py     the DeviceAdapter interface + shared vocabulary (Kind, Cap, Action, Key)
 │   ├── service.py     HomeService: registry, polling, commands + middleware, scenes, events
 │   ├── store.py       saves devices/rooms/scenes/accounts/settings to data/homepanel.json
+│   ├── voice.py       voice commands: sentence → generic commands (rules today; Parser is the seam for others)
 │   ├── automations.py schedules: time of day, sunrise/sunset, presence → scene / all off / command
 │   ├── sun.py         sunrise/sunset calculation (no internet)
 │   ├── presence.py    who's home, by checking family phones on the Wi-Fi

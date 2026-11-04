@@ -32,7 +32,13 @@ web/
 - **Touch targets ≥ 48 px**, big sliders, no hover-only features.
 - **Tap = do the obvious thing** (toggle). Long-press or the arrow = full controls.
   TVs open the remote on tap so they're never switched off by accident.
-- **Portrait first** (Touch Display 2 is 720×1280), 4–5 columns in landscape.
+- **Room tabs.** A sticky bar with "All", one tab per room and "Other" (devices
+  without a room); the number on a tab is how many things are on. Swipe the grid
+  sideways to change tab; the chosen tab is remembered. Each room has a heading with
+  what's on and a **Turn off** button for that room (the header's **All off** is
+  always everything). "Other" nudges you to give its devices a room.
+- **Portrait first** (Touch Display 2 is 720×1280): 2 columns on a phone, 3 in
+  portrait, 4–5 in landscape.
 - Font: IBM Plex Sans (installed on the Pi by install.sh), falling back to Inter / system fonts.
 
 Color tokens (`app.css`): `--night` page, `--dusk` surfaces, `--slate` controls,

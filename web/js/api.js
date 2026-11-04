@@ -33,7 +33,7 @@ export const api = {
   removeDevice: (id) => call("DELETE", `/devices/${id}`),
   pair: (id) => call("POST", `/devices/${id}/pair`),
   refresh: (id) => call("POST", `/devices/${id}/refresh`),
-  allOff: (room) => call("POST", "/all-off", room ? { room } : {}),
+  allOff: (room = null) => call("POST", "/all-off", room == null ? {} : { room }),   // "" = devices with no room
 
   discoverAll: () => call("POST", "/discover"),
   discover: (adapter) => call("POST", `/adapters/${adapter}/discover`),

@@ -86,6 +86,69 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector(".bars .bar")
         self.assertEqual(self.page.locator(".bars .bar").count(), 7)
 
+    def tab(self, name):
+        return self.page.locator("#rooms .room", has_text=name)
+
+    def swipe(self, dx):
+        box = self.page.locator("#grid .tile").first.bounding_box()
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        self.page.mouse.move(x, y)
+        self.page.mouse.down()
+        self.page.mouse.move(x + dx, y + 4, steps=8)
+        self.page.mouse.up()
+
+    def shown_ids(self):
+        return set(self.page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id)"))
+
+    def test_room_tabs_switch_swipe_and_remember(self):
+        names = self.page.eval_on_selector_all("#rooms .room", "els => els.map(e => e.firstChild.textContent)")
+        self.assertEqual(names, ["All", "Living room", "Bedroom", "Kitchen"])
+        for b in self.page.locator("#rooms .room").all():
+            self.assertGreaterEqual(b.bounding_box()["height"], 48)            # touch target
+        self.assertEqual(self.page.locator(".room-section").count(), 3)       # "All" = every room, with headings
+
+        self.tab("Kitchen").click()
+        self.page.wait_for_function("document.querySelector('#rooms [aria-selected=true]').textContent.startsWith('Kitchen')")
+        self.assertEqual(self.shown_ids(), {"kt-pendant", "kt-kettle", "kt-fridge"})
+        self.assertIn("1 of 3 on", self.page.locator(".room-head").inner_text())
+
+        self.page.reload()                                                     # the chosen room is remembered
+        self.page.wait_for_selector(".tile")
+        self.assertEqual(self.shown_ids(), {"kt-pendant", "kt-kettle", "kt-fridge"})
+
+        kettle_on = self.tile("kt-kettle").evaluate("el => el.classList.contains('on')")
+        self.swipe(200)                                                        # swipe right = previous room
+        self.page.wait_for_function("document.querySelector('#rooms [aria-selected=true]').textContent.startsWith('Bedroom')")
+        self.assertEqual(self.shown_ids(), {"bd-lamp", "bd-tv", "bd-fan"})
+        self.swipe(-200)                                                       # and back
+        self.page.wait_for_function("document.querySelector('#rooms [aria-selected=true]').textContent.startsWith('Kitchen')")
+        self.assertEqual(kettle_on, self.tile("kt-kettle").evaluate("el => el.classList.contains('on')"))  # not a tap
+
+        self.tab("All").click()
+        self.page.locator(".room-title", has_text="Bedroom").click()          # a heading in "All" opens its tab
+        self.page.wait_for_function("document.querySelector('#rooms [aria-selected=true]').textContent.startsWith('Bedroom')")
+
+    def test_other_tab_nudges_to_pick_a_room_and_turns_off_just_those(self):
+        api = "(path, body, method = 'POST') => fetch('/api/v1' + path, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})"
+        self.page.evaluate(f"({api})('/devices/bd-fan', {{room: ''}}, 'PATCH')")
+        try:
+            self.page.evaluate(f"({api})('/devices/bd-fan/command', {{action: 'power', value: true}})")
+            self.page.reload()
+            self.page.wait_for_selector("#rooms .room:has-text('Other')")
+            self.tab("Other").click()
+            self.page.wait_for_selector(".nudge")
+            self.assertEqual(self.shown_ids(), {"bd-fan"})
+            self.page.wait_for_selector('.tile.on[data-id="bd-fan"]')
+            self.page.click(".room-head [data-room-off]")                      # "Turn off" for this group only
+            self.page.wait_for_selector('.tile[data-id="bd-fan"]:not(.on)')
+            self.assertTrue(self.page.evaluate(
+                "fetch('/api/v1/state').then(r => r.json()).then(s => s.devices.find(d => d.id === 'lr-tv').state.on)"))
+            self.page.click("[data-sort-rooms]")                               # one device: straight to its room picker
+            self.page.wait_for_selector("#d-room")
+            self.assertEqual(self.page.input_value("#d-room"), "")
+        finally:
+            self.page.evaluate(f"({api})('/devices/bd-fan', {{room: 'Bedroom'}}, 'PATCH')")
+
     def test_create_schedule(self):
         self.page.click("#open-settings")
         self.page.click("[data-go=automations]")

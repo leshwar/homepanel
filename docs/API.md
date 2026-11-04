@@ -60,7 +60,8 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 ```
 
 `POST /all-off` with optional `{"room": "Kitchen"}` turns off everything that's on
-(skipping devices marked `keep_on`). Returns `{"turned_off": n}`.
+(skipping devices marked `keep_on`). `{"room": ""}` means devices that aren't in a
+room (shown as "Other" on the panel). Returns `{"turned_off": n}`.
 
 ## Managing devices
 

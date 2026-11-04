@@ -19,6 +19,7 @@ MODULES = [
     "samsung_tv",  # Samsung Tizen TVs (2016+)
     "lg_tv",       # LG webOS TVs
     "home_assistant",  # anything an existing Home Assistant controls
+    "ecovacs",     # Ecovacs Deebot robot vacuums (cloud)
 ]
 
 for _name in MODULES:

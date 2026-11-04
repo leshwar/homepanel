@@ -51,6 +51,17 @@ A device looks like:
 | `key` | `UP DOWN LEFT RIGHT OK BACK HOME MENU SOURCE PLAY PAUSE STOP REWIND FORWARD` | remote |
 | `launch_app` | app id from `meta.apps` | apps |
 | `set_input` | input id from `meta.inputs` | inputs |
+| `clean` | `start` / `pause` / `resume` / `stop` | clean |
+| `dock` | — (go back to the charging dock) | dock |
+| `clean_rooms` | list of room ids from `meta.rooms`, e.g. `[1, 3]` | rooms |
+| `set_suction` | id from `meta.suction_levels` | suction |
+| `set_clean_mode` | id from `meta.clean_modes` (vacuum, mop, both…) | clean_mode |
+| `station` | id from `meta.station_actions` (e.g. `empty_dustbin`) | station |
+| `locate` | — (plays a sound) | locate |
+
+`GET /devices/{id}/map` returns the floor plan as an image (SVG for Ecovacs) for
+devices with the `map` capability. The state key `map_rev` changes when the map
+does, so add it to the URL to refresh the picture.
 
 Returns the updated device. Example:
 

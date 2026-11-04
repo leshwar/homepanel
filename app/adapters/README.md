@@ -17,6 +17,7 @@ adapter declares.
 | `samsung_tv.py` | Samsung Tizen TVs | local WebSocket + REST, Wake-on-LAN | samsungtvws |
 | `lg_tv.py` | LG webOS TVs | local WebSocket, Wake-on-LAN | aiowebostv |
 | `home_assistant.py` | Anything an existing Home Assistant controls | Home Assistant REST API | — |
+| `ecovacs.py` | Ecovacs Deebot robot vacuums | Ecovacs cloud (REST + MQTT) | deebot-client (Python 3.14 only) |
 
 `shelly.py` is the simplest complete example — copy it.
 
@@ -88,6 +89,19 @@ class MyBrandAdapter(DeviceAdapter):
 `on`, `brightness` (1–100), `color` `{r,g,b}`, `color_temp` (Kelvin),
 `color_mode` (`"color"` or `"temp"`), `volume` (0–100), `muted`, `app`,
 `input`, `power_w` (watts — recorded automatically for the energy chart).
+Robot vacuums (`Kind.VACUUM`, `Cap.CLEAN` / `Cap.DOCK`): `activity` (one of
+`Activity.ALL`: cleaning, paused, returning, docked, idle, error), `battery`
+(0–100), `problem` (text to show, e.g. "Brush stuck"). Set `on` to true while
+cleaning or returning so the tile lights up. Optional extras: `suction` and
+`clean_mode` (ids from `meta["suction_levels"]` / `meta["clean_modes"]`), `parts`
+(`[{id, name, percent}]`, most worn first), `last_clean` (`{area_m2, minutes}`) and
+`map_rev` (change it when the map changes). Option lists go in `device.meta` as
+`[{id, name}]`: `rooms`, `suction_levels`, `clean_modes`, `station_actions`. The
+service checks command values against them. With `Cap.MAP`, implement
+`map_image(device) -> (content_type, bytes)`.
+
+If your brand hears about changes on its own (a live connection), call
+`self.changed(uid)` and the panel refreshes that device straight away.
 
 Media players without a full remote can declare `Cap.MEDIA` instead of
 `Cap.REMOTE`: the UI then shows play/pause but no D-pad. Put lists of TV apps/inputs in `device.meta["apps"]` /

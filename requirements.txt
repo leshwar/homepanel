@@ -10,3 +10,6 @@ tinytuya>=1.13        # Tuya / Smart Life / Globe Electric
 python-kasa>=0.7      # TP-Link Kasa and Tapo
 samsungtvws>=2.6      # Samsung TVs
 aiowebostv>=0.4       # LG webOS TVs
+# Ecovacs Deebot vacuums. Only published for Python 3.14; on other versions the
+# brand shows as "not installed" and everything else works.
+deebot-client>=18.7; python_version == "3.14"

@@ -106,6 +106,36 @@ Lights, switches, fans and media players appear, already sorted into your Home
 Assistant areas. TVs added this way get volume, inputs and play/pause; for the
 full D-pad remote, add Samsung/LG TVs directly with their own adapters.
 
+## Ecovacs Deebot robot vacuums
+
+Deebots are controlled through the Ecovacs cloud, with the same account as the
+**Ecovacs Home** app, so the panel needs internet. Set the vacuum up in that app first.
+
+This brand needs **Python 3.14** (its library, deebot-client, is only published
+for 3.14). Elsewhere it shows as "not installed" and the rest of the panel works.
+On a Mac: `brew install python@3.14`, then `make setup PY=python3.14`.
+
+1. HomePanel: Add a device → **Ecovacs Deebot** → your Ecovacs email (or phone
+   number), password and country → **Save**.
+2. Tap **Search my Wi-Fi**. If it says Ecovacs wants to confirm this panel, tap
+   **Email me a code**, type the code from the email into **Email code**, then
+   tap **Confirm code** and search again. This only happens once.
+3. Tap **Add** next to your vacuum.
+
+Tap the vacuum's tile for **Start cleaning**, **Pause**, **Keep cleaning** and
+**Back to dock**, plus the battery level. Models with a map (most current
+Deebots) also get:
+
+- the **map** of your home, from the Ecovacs app (it appears after the first clean);
+- **Rooms**: tap rooms to pick them, then **Clean these rooms**;
+- **Suction** and **Mode** (vacuum, mop, or both);
+- station jobs such as **Empty dustbin** and **Wash mop**, and **Find my vacuum**;
+- **Parts**: how worn the brushes, filter and mop pads are.
+
+Rooms come from the map you made in the Ecovacs app; rename or split them there.
+The first time the panel connects, these can take up to a minute to appear. Older models that the Ecovacs app
+lists as "legacy" (for example the N79) aren't supported.
+
 ## Schedules, sunset and "everyone left"
 
 - **Location** (Settings → Location and presence): enter latitude and longitude

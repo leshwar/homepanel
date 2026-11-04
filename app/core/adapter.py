@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import abc
 from dataclasses import dataclass, field
-from typing import Any, ClassVar
+from typing import Any, Callable, ClassVar
 
 
 # ---------------------------------------------------------------------------
@@ -36,9 +36,10 @@ class Kind:
     SWITCH = "switch"
     TV = "tv"
     FAN = "fan"
+    VACUUM = "vacuum"
     OTHER = "other"
 
-    ALL = (LIGHT, PLUG, SWITCH, TV, FAN, OTHER)
+    ALL = (LIGHT, PLUG, SWITCH, TV, FAN, VACUUM, OTHER)
 
 
 class Cap:
@@ -55,6 +56,14 @@ class Cap:
     MEDIA = "media"            # play / pause / stop / forward / rewind keys only
     APPS = "apps"              # launch_app
     INPUTS = "inputs"          # set_input
+    CLEAN = "clean"            # robot vacuum: start / pause / resume / stop cleaning
+    DOCK = "dock"              # robot vacuum: go back to the charging dock
+    ROOMS = "rooms"            # clean chosen rooms (meta["rooms"])
+    SUCTION = "suction"        # suction power levels (meta["suction_levels"])
+    CLEAN_MODE = "clean_mode"  # vacuum / mop / both (meta["clean_modes"])
+    STATION = "station"        # dock station jobs, e.g. empty dustbin (meta["station_actions"])
+    LOCATE = "locate"          # play a sound to find the device
+    MAP = "map"                # a picture of the floor plan: GET /devices/{id}/map
 
 
 class Action:
@@ -73,9 +82,17 @@ class Action:
     KEY = "key"                # value: one of Key.ALL
     LAUNCH_APP = "launch_app"  # value: app id
     SET_INPUT = "set_input"    # value: input id
+    CLEAN = "clean"            # value: one of Clean.ALL
+    DOCK = "dock"              # no value
+    CLEAN_ROOMS = "clean_rooms"        # value: list of room ids from meta["rooms"]
+    SET_SUCTION = "set_suction"        # value: id from meta["suction_levels"]
+    SET_CLEAN_MODE = "set_clean_mode"  # value: id from meta["clean_modes"]
+    STATION = "station"                # value: id from meta["station_actions"]
+    LOCATE = "locate"                  # no value
 
     ALL = (POWER, TOGGLE, BRIGHTNESS, COLOR, COLOR_TEMP, VOLUME, VOLUME_UP,
-           VOLUME_DOWN, MUTE, CHANNEL_UP, CHANNEL_DOWN, KEY, LAUNCH_APP, SET_INPUT)
+           VOLUME_DOWN, MUTE, CHANNEL_UP, CHANNEL_DOWN, KEY, LAUNCH_APP, SET_INPUT,
+           CLEAN, DOCK, CLEAN_ROOMS, SET_SUCTION, SET_CLEAN_MODE, STATION, LOCATE)
 
     # Which capability each action needs (service layer checks this).
     REQUIRES = {
@@ -83,8 +100,13 @@ class Action:
         COLOR: Cap.COLOR, COLOR_TEMP: Cap.COLOR_TEMP, VOLUME: Cap.VOLUME_LEVEL,
         VOLUME_UP: Cap.VOLUME, VOLUME_DOWN: Cap.VOLUME, MUTE: Cap.MUTE,
         CHANNEL_UP: Cap.CHANNEL, CHANNEL_DOWN: Cap.CHANNEL, KEY: Cap.REMOTE,
-        LAUNCH_APP: Cap.APPS, SET_INPUT: Cap.INPUTS,
+        LAUNCH_APP: Cap.APPS, SET_INPUT: Cap.INPUTS, CLEAN: Cap.CLEAN, DOCK: Cap.DOCK,
+        CLEAN_ROOMS: Cap.ROOMS, SET_SUCTION: Cap.SUCTION, SET_CLEAN_MODE: Cap.CLEAN_MODE,
+        STATION: Cap.STATION, LOCATE: Cap.LOCATE,
     }
+
+    # Actions whose value must be one of the ids the device lists in device.meta[...].
+    OPTIONS = {SET_SUCTION: "suction_levels", SET_CLEAN_MODE: "clean_modes", STATION: "station_actions"}
 
 
 class Key:
@@ -97,6 +119,19 @@ class Key:
     ALL = (UP, DOWN, LEFT, RIGHT, OK, BACK, HOME, MENU, SOURCE,
            PLAY, PAUSE, STOP, REWIND, FORWARD)
     MEDIA = (PLAY, PAUSE, STOP, REWIND, FORWARD)   # allowed with Cap.MEDIA alone
+
+
+class Clean:
+    """Values for Action.CLEAN."""
+    START, PAUSE, RESUME, STOP = "start", "pause", "resume", "stop"
+    ALL = (START, PAUSE, RESUME, STOP)
+
+
+class Activity:
+    """What a robot vacuum is doing: the `activity` state key."""
+    CLEANING, PAUSED, RETURNING = "cleaning", "paused", "returning"
+    DOCKED, IDLE, ERROR = "docked", "idle", "error"
+    ALL = (CLEANING, PAUSED, RETURNING, DOCKED, IDLE, ERROR)
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +238,16 @@ class DeviceAdapter(abc.ABC):
     def account_changed(self, account: dict) -> None:
         self.account = account or {}
 
+    # --- push updates ---
+    # The service sets this. Adapters that hear about changes on their own (live
+    # connections, events) call changed(uid) so the panel refreshes that device now
+    # instead of waiting for the next poll.
+    on_change: Callable[[str], None] | None = None
+
+    def changed(self, uid: str) -> None:
+        if self.on_change:
+            self.on_change(uid)
+
     # --- account-level actions (e.g. "Pair with Hue bridge") ---
     account_actions: ClassVar[list[dict]] = []   # [{"id","label","help"}]
 
@@ -214,6 +259,10 @@ class DeviceAdapter(abc.ABC):
     async def discover(self, timeout: float = 6.0) -> list[Found]:
         """Look for devices on the network or in the brand's cloud account."""
         return []
+
+    async def map_image(self, device: Device) -> tuple[str, bytes] | None:
+        """For Cap.MAP: (content type, image bytes) of the device's floor plan, or None if not ready."""
+        return None
 
     def from_manual(self, values: dict) -> Found:
         """Build a device from the manual-add form."""

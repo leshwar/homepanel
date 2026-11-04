@@ -546,6 +546,8 @@ root.addEventListener("click", async (e) => {
     }
     if (t("[data-account-action]")) {
       const b = t("[data-account-action]"); b.disabled = true;
+      const form = b.closest("form");      // save what was typed first, so the action can use it
+      if (form) brandState.account = await api.saveAccount(top.arg, formValues(form));
       const r = await api.accountAction(top.arg, b.dataset.accountAction);
       brandState.account = r.account; toast(r.message); await reload(); return render();
     }

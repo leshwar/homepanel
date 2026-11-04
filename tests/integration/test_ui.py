@@ -114,6 +114,30 @@ class UITests(unittest.TestCase):
         self.page.evaluate("""fetch('/api/v1/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
                               body: JSON.stringify({background: 'ocean', glass_transparency: 45})})""")
 
+    def test_photo_frame_shows_photos_and_touch_exits(self):
+        before = self.tile("lr-lamp").evaluate("el => el.classList.contains('on')")
+        self.page.click("#open-frame")
+        self.page.wait_for_selector("#frame:not([hidden])")
+        self.page.wait_for_function("[...document.querySelectorAll('.frame-photo.visible')]"
+                                    ".some(el => el.style.backgroundImage.includes('/api/v1/photos/'))")
+        self.page.mouse.click(360, 400)            # where the floor lamp tile is underneath
+        self.page.wait_for_selector("#frame", state="hidden")
+        self.assertEqual(before, self.tile("lr-lamp").evaluate("el => el.classList.contains('on')"))
+
+    def test_add_photo_from_settings(self):
+        import os
+        import tempfile
+        from PIL import Image
+        path = os.path.join(tempfile.mkdtemp(), "beach.jpg")
+        Image.new("RGB", (1200, 800), (240, 200, 120)).save(path, "JPEG")
+        self.page.click("#open-settings")
+        self.page.click("[data-go=photos]")
+        self.page.wait_for_selector(".thumb")
+        count = self.page.locator(".thumb").count()
+        self.page.set_input_files("#photo-input", path)
+        self.page.wait_for_function(f"document.querySelectorAll('.thumb').length === {count + 1}")
+        self.page.wait_for_selector("text=Added 1 photo")
+
     def test_ambient_clock_wakes_without_toggling(self):
         self.page.click("#clock")
         self.page.wait_for_selector("#ambient:not([hidden])")

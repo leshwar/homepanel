@@ -90,6 +90,38 @@ class ApiTests(unittest.TestCase):
         self.assertIn("Background", err["error"])
         self.call("PUT", "/settings", {"background": "ocean", "glass_transparency": 45})
 
+    def _upload(self, data: bytes, content_type="image/png"):
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/v1/photos?name=test.png", data=data,
+                                     method="POST", headers={"Content-Type": content_type})
+        try:
+            with urllib.request.urlopen(req, timeout=10) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read())
+
+    def test_photo_upload_list_view_delete(self):
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (640, 480), (30, 120, 200)).save(buf, "PNG")
+        status, photo = self._upload(buf.getvalue())
+        self.assertEqual(status, 200)
+        status, listing = self.call("GET", "/photos")
+        self.assertIn(photo["id"], [p["id"] for p in listing["photos"]])
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{photo['url']}", timeout=5) as r:
+            self.assertTrue(r.headers["Content-Type"].startswith("image/"))
+            self.assertGreater(len(r.read()), 100)
+        status, _ = self.call("DELETE", f"/photos/{photo['id']}")
+        self.assertEqual(status, 200)
+        status, err = self._upload(b"definitely not an image", "image/jpeg")
+        self.assertEqual(status, 400)
+        self.assertIn("supported photo", err["error"])
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/v1/photos/..%2Fhomepanel.json/image", timeout=5)
+            self.fail("path outside the photo folder was served")
+        except urllib.error.HTTPError as e:
+            self.assertEqual(e.code, 404)
+
     def test_ui_served(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=5) as r:
             self.assertIn(b"HomePanel", r.read())

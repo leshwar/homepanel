@@ -25,6 +25,11 @@ describes the layers and rules below.
 | Change the UI | [web/README.md](web/README.md) |
 | Change the Pi installer | [scripts/README.md](scripts/README.md) |
 
+## Working on several branches
+
+Use git worktrees so each branch has its own folder: `./scripts/dev/wt.sh new feature/x`.
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md).
+
 ## Workflow
 
 `main` is protected: every change, including the owner's, goes through a pull

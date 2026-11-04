@@ -34,7 +34,7 @@ jobs:
       - name: Python
         run: ruff check app tests scripts
       - name: Shell scripts
-        run: bash -n scripts/*.sh
+        run: bash -n scripts/*.sh scripts/dev/*.sh
 
   tests-included:
     name: Tests included

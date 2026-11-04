@@ -7,6 +7,7 @@ import { $, esc, icon, kindIcon, glow, glowVar, statusText, toast } from "./util
 import { openDevice, refreshSheet, closeSheet, isSheetOpen } from "./sheet.js";
 import { openSettings, isSettingsOpen, refreshSettings } from "./settings.js";
 import { applyTransparency } from "./glass.js";
+import { openFrame, isFrameOpen } from "./photoframe.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 
@@ -208,6 +209,7 @@ function setupChrome() {
     } catch (err) { toast(err.message, true); }
   });
   $("#open-settings").addEventListener("click", () => openSettings());
+  $("#open-frame").addEventListener("click", () => { closeSheet(); openFrame(); });
   $("#clock").addEventListener("click", showAmbient);
 }
 
@@ -223,7 +225,12 @@ function setupIdle() {
   });
   setInterval(() => {
     const after = Number(store.settings.dim_after_seconds || 0);
-    if (after > 0 && Date.now() - lastActivity > after * 1000 && !isSettingsOpen() && $("#ambient").hidden) showAmbient();
+    if (!(after > 0 && Date.now() - lastActivity > after * 1000) || isSettingsOpen()) return;
+    if (!$("#ambient").hidden || isFrameOpen()) return;
+    const hour = new Date().getHours();
+    const night = store.settings.frame_night_clock !== false && (hour >= 22 || hour < 7);
+    if (store.settings.idle_screen === "photos" && !night) { closeSheet(); openFrame(); }
+    else showAmbient();
   }, 5000);
 }
 

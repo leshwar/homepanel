@@ -18,6 +18,7 @@ once — controlled directly over your Wi-Fi.
 - **Local first.** Everything except Govee plugs is controlled directly on your network — it keeps working when the internet is down.
 - **Scenes and rooms.** "Movie night", "Bedtime", or "All off" for a room or the whole house.
 - **Schedules and automations.** At a time of day, at sunset/sunrise (computed locally), or when everyone leaves / someone comes home (phones on Wi-Fi).
+- **Photo frame.** A full-screen slideshow of family photos, added from any phone's browser. It can start by itself when the panel is idle, switches to a dim clock at night, and one touch goes back to the controls.
 - **Energy history.** Plugs that measure power show watts now, kWh today and a 7-day chart.
 - **Works with Home Assistant.** Already run Home Assistant? Add its lights, switches and TVs here, rooms included.
 - **Works from phones too.** Open `http://homepanel.local:8080` in any browser on your Wi-Fi.
@@ -119,6 +120,10 @@ Common fixes are in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 | Display: background and glass | Solid, clear, and Aurora |
 |---|---|
 | <img src="docs/screenshots/display.png" width="240" alt="Background choices Ocean, Aurora, Night, a glass transparency slider and a frosted blur switch"> | <img src="docs/screenshots/glass-compare.png" width="520" alt="Three versions of the home screen: 15% transparency, 85% transparency, and the Aurora background"> |
+
+| Photo frame | Photo frame, landscape | Photo frame settings |
+|---|---|---|
+| <img src="docs/screenshots/photo-frame.png" width="240" alt="Full-screen photo with the time in the corner"> | <img src="docs/screenshots/photo-frame-landscape.png" width="240" alt="The slideshow in landscape"> | <img src="docs/screenshots/photo-frame-settings.png" width="240" alt="Thumbnails, Add photos, seconds per photo, shuffle, idle and night options"> |
 
 | Automations | New automation | Location and presence |
 |---|---|---|

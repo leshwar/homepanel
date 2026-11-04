@@ -214,6 +214,9 @@ class DeviceAdapter(abc.ABC):
     description: ClassVar[str] = ""
     # Python packages this adapter needs; missing ones disable it gracefully.
     requires: ClassVar[tuple] = ()
+    # Python versions the brand's library works on, e.g. ((3, 14),). None = any.
+    # Elsewhere the brand is "not supported on this Python" rather than "not installed".
+    python_versions: ClassVar[tuple | None] = None
     # Account-level settings (API keys, logins) shared by all devices of this adapter.
     account_fields: ClassVar[list[Field]] = []
     # Fields to add a device by hand when discovery can't find it.
@@ -297,6 +300,15 @@ def register(cls: type[DeviceAdapter]) -> type[DeviceAdapter]:
         raise ValueError(f"{cls.__name__} needs an id")
     ADAPTERS[cls.id] = cls
     return cls
+
+
+def unsupported_reason(cls: type[DeviceAdapter]) -> str:
+    """Why this brand can't run on this Python at all ("" if it can)."""
+    import sys
+    if cls.python_versions and tuple(sys.version_info[:2]) not in cls.python_versions:
+        want = " or ".join(".".join(map(str, v)) for v in cls.python_versions)
+        return f"Needs Python {want} (this panel has {sys.version_info[0]}.{sys.version_info[1]})"
+    return ""
 
 
 def missing_requirements(cls: type[DeviceAdapter]) -> list[str]:

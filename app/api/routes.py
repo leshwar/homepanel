@@ -305,7 +305,7 @@ async def health(request):
     devices = list(svc.store.devices.values())
     return {"ok": True, "time": time.time(), "uptime_s": round(time.time() - request.app.state.started, 1),
             "devices": len(devices), "online": sum(1 for d in devices if d.state.get("online")),
-            "adapters": sorted(svc.adapters), "unavailable": svc.unavailable, "demo": svc.demo,
+            "adapters": sorted(svc.adapters), "unavailable": svc.unavailable, "unsupported": svc.unsupported, "demo": svc.demo,
             "in_container": in_container()}
 
 

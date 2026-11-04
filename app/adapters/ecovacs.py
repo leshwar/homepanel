@@ -114,6 +114,7 @@ class EcovacsAdapter(DeviceAdapter):
     description = ("Uses your Ecovacs Home app account and works through the Ecovacs cloud, "
                    "so the panel needs internet.")
     requires = ("deebot_client",)
+    python_versions = ((3, 14),)   # the library is only published for 3.14
     poll_interval = 30          # live updates arrive over MQTT; polling is only a safety net
     account_fields = [
         Field("email", "Email or phone number", required=True, placeholder="you@example.com",

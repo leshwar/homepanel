@@ -21,7 +21,7 @@ from dataclasses import asdict
 from typing import Any, Awaitable, Callable
 
 from .adapter import (ADAPTERS, Action, AdapterError, Cap, Clean, Device, DeviceAdapter, Found,
-                      Key, PairingRequired, missing_requirements)
+                      Key, PairingRequired, missing_requirements, unsupported_reason)
 from .automations import Automations
 from .history import History
 from .net import in_container, normalize_mac, parse_color
@@ -138,6 +138,7 @@ class HomeService:
         self.store = Store(os.path.join(data_dir, "demo.json" if demo else "homepanel.json"))
         self.adapters: dict[str, DeviceAdapter] = {}
         self.unavailable: dict[str, list[str]] = {}   # adapter id -> missing python modules
+        self.unsupported: dict[str, str] = {}         # adapter id -> why it can't run on this Python
         self._subscribers: set[asyncio.Queue] = set()
         self._pollers: dict[str, asyncio.Task] = {}
         self._soon: dict[str, asyncio.TimerHandle] = {}   # pushed changes waiting to refresh
@@ -169,6 +170,10 @@ class HomeService:
         from .. import adapters  # noqa: F401  (imports every adapter module → @register)
         for aid, cls in ADAPTERS.items():
             if cls.hidden and not self.demo:
+                continue
+            reason = unsupported_reason(cls)
+            if reason:
+                self.unsupported[aid] = reason
                 continue
             missing = missing_requirements(cls)
             if missing:
@@ -252,6 +257,7 @@ class HomeService:
             "account_set": bool(self.store.accounts.get(aid)),
             "available": aid in self.adapters,
             "missing": self.unavailable.get(aid, []),
+            "unsupported": self.unsupported.get(aid, ""),
             "hidden": cls.hidden,
         }
 

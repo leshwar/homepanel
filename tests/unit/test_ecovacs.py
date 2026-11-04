@@ -268,6 +268,15 @@ class EcovacsAdapterTests(unittest.IsolatedAsyncioTestCase):
         return Device(id="v1", adapter="ecovacs", name="Hall bot", kind=Kind.VACUUM,
                       caps=[Cap.CLEAN, Cap.DOCK], config={"did": "bot1", "_uid": "bot1"})
 
+    def test_only_offered_on_supported_python(self):
+        from unittest import mock
+        from app.core.adapter import unsupported_reason
+        with mock.patch("sys.version_info", (3, 13, 1, "final", 0)):
+            self.assertIn("Needs Python 3.14", unsupported_reason(self.cls))
+            self.assertIn("this panel has 3.13", unsupported_reason(self.cls))
+        with mock.patch("sys.version_info", (3, 14, 0, "final", 0)):
+            self.assertEqual(unsupported_reason(self.cls), "")
+
     def test_metadata(self):
         self.assertEqual(self.cls.kinds, (Kind.VACUUM,))
         self.assertIn("deebot_client", self.cls.requires)

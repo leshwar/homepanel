@@ -1,6 +1,7 @@
 """Integration tests for the API layer: the real server in demo mode, called over HTTP."""
 import json
 import shutil
+import sys
 import tempfile
 import unittest
 import urllib.error
@@ -96,6 +97,10 @@ class ApiTests(unittest.TestCase):
     def test_health_and_logs(self):
         status, h = self.call("GET", "/health")
         self.assertTrue(h["ok"])
+        self.assertIn("unsupported", h)
+        if sys.version_info[:2] != (3, 14):        # e.g. CI and Docker: the vacuum brand needs 3.14
+            self.assertIn("Needs Python 3.14", h["unsupported"]["ecovacs"])
+            self.assertNotIn("ecovacs", h["unavailable"])        # "not for this Python", not "not installed"
         self.assertIn("in_container", h)
         self.assertIn("demo", h["adapters"])
         status, logs = self.call("GET", "/logs")

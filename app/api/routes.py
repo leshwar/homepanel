@@ -133,6 +133,16 @@ async def all_off(request):
     return {"turned_off": await _svc(request).all_off(b.get("room"))}
 
 
+@handle_errors
+async def voice(request):
+    """A spoken or typed sentence → device commands, run through the normal pipeline."""
+    b = await _body(request)
+    text = b.get("text")
+    if not isinstance(text, str):
+        raise AdapterError("Say or type a command, like “turn off the kitchen”.")
+    return await _svc(request).voice.handle(text, confirm=b.get("confirm") is True)
+
+
 # --- adapters / discovery / accounts --------------------------------------------------
 
 @handle_errors
@@ -326,6 +336,7 @@ routes = [
     Route("/api/v1/devices/{id}/pair", pair_device, methods=["POST"]),
     Route("/api/v1/devices/{id}/refresh", refresh_device, methods=["POST"]),
     Route("/api/v1/all-off", all_off, methods=["POST"]),
+    Route("/api/v1/voice", voice, methods=["POST"]),
     Route("/api/v1/discover", discover_all, methods=["POST"]),
     Route("/api/v1/adapters/{adapter}/discover", discover, methods=["POST"]),
     Route("/api/v1/adapters/{adapter}/account", get_account, methods=["GET"]),

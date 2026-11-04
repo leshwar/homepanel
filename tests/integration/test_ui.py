@@ -178,7 +178,7 @@ class UITests(unittest.TestCase):
         self.tab("Kitchen").click()
         self.page.wait_for_function("document.querySelector('#rooms [aria-selected=true]').textContent.startsWith('Kitchen')")
         self.assertEqual(self.shown_ids(), {"kt-pendant", "kt-kettle", "kt-fridge"})
-        self.assertIn("1 of 3 on", self.page.locator(".room-head").inner_text())
+        self.assertEqual((self.page.inner_text("#title"), self.page.inner_text("#subtitle")), ("Kitchen", "1 of 3 on"))
 
         self.page.reload()                                                     # the chosen room is remembered
         self.page.wait_for_selector(".tile")
@@ -517,7 +517,7 @@ class UITests(unittest.TestCase):
         try:
             def open_location(p):
                 p.goto(f"http://127.0.0.1:{self.port}/")
-                p.wait_for_selector(".tile")
+                p.wait_for_selector(".widget, .tile")
                 p.click("#open-settings")
                 p.click("[data-go=location]")
                 p.wait_for_selector("[data-locate]")
@@ -676,7 +676,7 @@ class UITests(unittest.TestCase):
     def order(self, page):
         return page.eval_on_selector_all(".home-grid > .widget", "els => els.map(e => e.dataset.wid)")
 
-    def test_home_page_clocks_device_widgets_and_rooms(self):
+    def test_home_page_has_clocks_and_rooms_but_no_devices(self):
         page = self.home(timezone_id="America/Denver")
         try:
             page.wait_for_selector('.widget[data-wid="clock"] [data-time]')
@@ -687,24 +687,11 @@ class UITests(unittest.TestCase):
                 self.assertTrue(expected.startswith(zone.locator("[data-time]").inner_text()))
             self.assertIn("India", page.inner_text('.widget[data-wid="zone-in"]'))
 
-            lamp = page.locator('.widget[data-wid="dev-lr-lamp"] .tile')
-            was_on = lamp.get_attribute("data-on")
-            with page.expect_response("**/devices/lr-lamp/command"):          # one tap at a time: the demo
-                lamp.locator(".tile-name").click()                              # devices answer in random order
-            page.wait_for_function(f"document.querySelector('.widget[data-wid=\"dev-lr-lamp\"] .tile').dataset.on !== '{was_on}'")
-            lamp.locator(".tile-name").click()                                  # and back
-            page.wait_for_function(f"document.querySelector('.widget[data-wid=\"dev-lr-lamp\"] .tile').dataset.on === '{was_on}'")
-            self.long_press(page, '.widget[data-wid="dev-lr-lamp"] .tile')      # long press = controls, no toggle
-            page.wait_for_selector("#sheet:not([hidden]) #bri")
-            self.assertEqual(lamp.get_attribute("data-on"), was_on)
-            page.keyboard.press("Escape")
-            page.wait_for_selector("#sheet", state="hidden")
-
-            for wid in ("dev-lr-vacuum", "dev-lr-soundbar"):                   # no on/off, or media: tap opens controls
-                page.locator(f'.widget[data-wid="{wid}"] .tile-name').click()
-                page.wait_for_selector("#sheet:not([hidden]):not(.closing)")
-                page.keyboard.press("Escape")
-                page.wait_for_selector("#sheet", state="hidden")
+            # devices aren't on Home: they're on each room's page
+            self.assertEqual(page.locator("#home .tile, #home .t-device").count(), 0)
+            self.assertEqual(page.locator("#grid .tile:visible").count(), 0)
+            rooms = page.eval_on_selector_all('.widget[data-wid="rooms"] [data-go-room]', "els => els.map(e => e.dataset.goRoom)")
+            self.assertEqual(rooms, ["Living room", "Bedroom", "Kitchen"])
 
             page.click('[data-go-room="Kitchen"]')                              # Rooms widget opens that room
             page.wait_for_function("document.documentElement.dataset.view === 'rooms'")
@@ -785,6 +772,7 @@ class UITests(unittest.TestCase):
             page.click('.widget[data-wid="weather"] [data-hide]')
             page.click("[data-add-widget]")                                    # hidden widgets can come back
             page.wait_for_selector('.wmenu [data-unhide="scenes"]')
+            self.assertNotIn("Devices", page.inner_text(".wmenu"))            # devices aren't Home widgets any more
             page.click('.wmenu [data-unhide="scenes"]')
             page.wait_for_selector('.widget[data-wid="scenes"]')
             page.click("[data-edit-cancel]")
@@ -836,6 +824,121 @@ class UITests(unittest.TestCase):
         finally:
             self.page.evaluate("""fetch('/api/v1/devices/kt-kettle', {method: 'PATCH', headers: {'Content-Type': 'application/json'},
                                   body: JSON.stringify({icon: ''})})""")
+
+
+    # ---------- room sidebar: All rooms, then each room on its own ----------
+    def rail_rooms(self, page):
+        return page.eval_on_selector_all("#rail .rail-rooms .rail-item", "els => els.map(e => e.querySelector('span').textContent)")
+
+    def shown(self, page):
+        return set(page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id)"))
+
+    def test_sidebar_lists_each_room_and_shows_only_its_devices(self):
+        page = self.open(width=1180, height=820, reduced_motion="reduce")       # a new screen starts on Home
+        try:
+            page.wait_for_selector("#rail .rail-rooms .rail-item")
+            all_ids = set(page.evaluate("fetch('/api/v1/state').then(r => r.json()).then(s => s.devices.map(d => d.id))"))
+            self.assertEqual(self.rail_rooms(page), ["All rooms", "Living room", "Bedroom", "Kitchen"])   # room order
+
+            page.click('#rail [data-room="Bedroom"]')
+            page.wait_for_selector('#rail [data-room="Bedroom"][aria-selected="true"]')
+            self.assertEqual(self.shown(page), {"bd-lamp", "bd-tv", "bd-fan"})                       # only that room
+            self.assertEqual(page.inner_text("#title"), "Bedroom")
+
+            page.click('#rail [data-room="Living room"]')
+            page.wait_for_selector('#grid .tile[data-id="lr-tv"]')
+            self.assertTrue(all(i.startswith("lr-") for i in self.shown(page)))
+            self.assertEqual(page.inner_text("#title"), "Living room")
+            self.assertEqual(page.locator("#grid .room-head [data-room-off]").count(), 1)          # its own Turn off
+
+            page.click('#rail [data-room="all"]')                                                 # All rooms: everything,
+            page.wait_for_selector('#grid .tile[data-id="kt-kettle"]')                            # grouped by room
+            self.assertEqual(self.shown(page), all_ids)
+            self.assertEqual(page.locator("#grid .room-section").count(), 3)
+
+            page.click('#rail [data-room="Kitchen"]')
+            page.wait_for_selector('#grid .tile[data-id="kt-kettle"]')
+            page.reload()                                                                         # remembered
+            page.wait_for_selector('#rail [data-room="Kitchen"][aria-selected="true"]')
+            self.assertEqual(self.shown(page), {"kt-pendant", "kt-kettle", "kt-fridge"})
+            self.assertEqual(page.locator("#rail [data-room='']").count(), 0)                    # no "Other" yet
+
+            page.evaluate("""fetch('/api/v1/devices/bd-fan', {method: 'PATCH', headers: {'Content-Type': 'application/json'},
+                             body: JSON.stringify({room: ''})})""")
+            page.wait_for_selector("#rail [data-room='']")                                        # a device with no room
+            self.assertEqual(self.rail_rooms(page)[-1], "Other")
+        finally:
+            page.evaluate("""fetch('/api/v1/devices/bd-fan', {method: 'PATCH', headers: {'Content-Type': 'application/json'},
+                             body: JSON.stringify({room: 'Bedroom'})})""")
+            page.close()
+
+    def test_phone_dock_opens_the_same_rooms(self):
+        page = self.home(width=393, height=852, is_mobile=True)
+        try:
+            page.click('#dock [data-nav="rooms"]')
+            page.wait_for_selector("#rooms:not([hidden])")
+            tabs = page.eval_on_selector_all("#rooms .room", "els => els.map(e => e.firstChild.textContent)")
+            self.assertEqual(tabs, ["All", "Living room", "Bedroom", "Kitchen"])
+            page.click('#rooms [data-room="Kitchen"]')
+            page.wait_for_selector('#rooms [data-room="Kitchen"][aria-selected="true"]')
+            self.assertEqual(self.shown(page), {"kt-pendant", "kt-kettle", "kt-fridge"})
+        finally:
+            page.close()
+
+
+
+@unittest.skipIf(sync_playwright is None, "playwright not installed")
+class SignedInRoomsTests(unittest.TestCase):
+    """With sign-in on, a member only gets rooms that have devices they can see.
+    Demo member Sam (PIN 2468) sees bd-fan, bd-lamp, bd-tv and kt-pendant: no Living room."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.dir = tempfile.mkdtemp()
+        cls.server = DemoServer(cls.dir, sign_in=True).start()
+        cls.pw = sync_playwright().start()
+        try:
+            cls.browser = cls.pw.chromium.launch()
+        except Exception as e:  # browser binaries not downloaded
+            cls.pw.stop()
+            cls.server.stop()
+            if os.environ.get("REQUIRE_UI_TESTS"):
+                raise
+            raise unittest.SkipTest(f"chromium not available: {e}")
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.browser.close()
+        cls.pw.stop()
+        cls.server.stop()
+        shutil.rmtree(cls.dir, ignore_errors=True)
+
+    def test_member_sees_only_rooms_with_their_devices(self):
+        page = self.browser.new_page(viewport={"width": 1180, "height": 820})
+        errors = []
+        page.on("pageerror", lambda e: errors.append(str(e)))
+        try:
+            page.goto(f"{self.server.url}/")
+            status = page.evaluate("""fetch('/api/v1/auth/sign-in', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                                      body: JSON.stringify({profile_id: 'sam', pin: '2468'})}).then(r => r.status)""")
+            self.assertEqual(status, 200)
+            page.add_init_script("localStorage.setItem('view', '\"home\"')")
+            page.reload()
+            page.wait_for_selector("#rail .rail-rooms .rail-item")
+            rooms = page.eval_on_selector_all("#rail .rail-rooms .rail-item", "els => els.map(e => e.querySelector('span').textContent)")
+            self.assertEqual(rooms, ["All rooms", "Bedroom", "Kitchen"])                      # Living room: all hidden
+            widget = page.eval_on_selector_all('.widget[data-wid="rooms"] [data-go-room]', "els => els.map(e => e.dataset.goRoom)")
+            self.assertEqual(widget, ["Bedroom", "Kitchen"])
+            page.click('#rail [data-room="all"]')
+            page.wait_for_selector("#grid .tile")
+            ids = set(page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id)"))
+            self.assertEqual(ids, {"bd-fan", "bd-lamp", "bd-tv", "kt-pendant"})
+            page.click('#rail [data-room="Kitchen"]')
+            page.wait_for_selector('#rail [data-room="Kitchen"][aria-selected="true"]')
+            self.assertEqual(page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id)"), ["kt-pendant"])
+            self.assertEqual(errors, [])
+        finally:
+            page.close()
 
 
 if __name__ == "__main__":

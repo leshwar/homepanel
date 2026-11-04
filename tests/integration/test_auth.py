@@ -154,11 +154,12 @@ class SignInApiTests(unittest.TestCase):
         owner.sign_in(profile_id="owner", pin="1234")
         _, before, _ = owner.call("GET", "/state")
         try:
-            mine = {"widgets": [{"id": "dev-bd-tv", "type": "device", "size": "2x2", "options": {"device_id": "bd-tv"}}]}
+            mine = {"widgets": [{"id": "weather", "type": "weather", "size": "2x2"},
+                                {"id": "dev-bd-tv", "type": "device", "size": "2x2", "options": {"device_id": "bd-tv"}}]}
             status, saved, _ = sam.call("PUT", "/profiles/me/layout", {"home_layout": mine})
             self.assertEqual((status, saved["home_layout"]["widgets"][0]["size"]), (200, "2x2"))
             _, s, _ = sam.call("GET", "/state")
-            self.assertEqual([w["id"] for w in s["settings"]["home_layout"]["widgets"]], ["dev-bd-tv"])
+            self.assertEqual([w["id"] for w in s["settings"]["home_layout"]["widgets"]], ["weather"])   # no devices on Home
             _, o, _ = owner.call("GET", "/state")
             self.assertEqual(o["settings"]["home_layout"], before["settings"]["home_layout"])
         finally:
@@ -311,8 +312,10 @@ class SignInUITests(unittest.TestCase):
         page.wait_for_selector("#signin", state="hidden")
         page.wait_for_selector("#profile-btn:not([hidden])")
         self.assertEqual(page.inner_text("#profile-btn"), "S")
-        page.wait_for_selector('.widget[data-wid="dev-bd-tv"]')
-        self.assertEqual(page.locator('[data-wid="dev-lr-tv"], .tile[data-id="lr-tv"]').count(), 0)   # hidden device
+        page.wait_for_selector('.widget[data-wid="rooms"] [data-go-room]')
+        rooms = page.eval_on_selector_all('.widget[data-wid="rooms"] [data-go-room]', "els => els.map(e => e.dataset.goRoom)")
+        self.assertEqual(rooms, ["Bedroom", "Kitchen"])                   # Living room: only hidden devices
+        self.assertEqual(page.locator('.tile[data-id="lr-tv"]').count(), 0)
         page.click('[data-nav="rooms"]')
         page.wait_for_selector("#grid .tile")
         ids = sorted(page.eval_on_selector_all("#grid .tile[data-id]", "els => [...new Set(els.map(e => e.dataset.id))]"))

@@ -6,6 +6,7 @@ import colorsys
 import ipaddress
 import json
 import math
+import os
 import socket
 import ssl
 from typing import Any
@@ -111,6 +112,14 @@ async def udp_query(host: str, port: int, payload: bytes, *, timeout: float = 2.
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if broadcast:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+    if is_multicast(host):
+        # Macs often have extra interfaces (VPN, Docker, Thunderbolt bridge). Send discovery
+        # out of the interface that reaches the home network, not whichever the OS picks.
+        sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+        try:
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(local_ip()))
+        except OSError:
+            pass
     sock.bind(("0.0.0.0", bind_port))
     transport, proto = await loop.create_datagram_endpoint(_Collector, sock=sock)
     try:
@@ -158,6 +167,36 @@ async def ssdp_search(target: str = "ssdp:all", timeout: float = 3.0) -> list[di
                 headers[k.strip().lower()] = v.strip()
         results.append(headers)
     return results
+
+
+def is_multicast(host: str) -> bool:
+    try:
+        return ipaddress.ip_address(host).is_multicast
+    except ValueError:
+        return False
+
+
+def in_container() -> bool:
+    """True when running inside Docker (where Docker Desktop on Mac/Windows hides the home network)."""
+    return os.path.exists("/.dockerenv")
+
+
+async def scan_ports(hosts: list[str], ports: tuple[int, ...], timeout: float = 0.8,
+                     concurrency: int = 128) -> dict[str, int]:
+    """Which hosts accept a TCP connection on any of `ports`? Returns {ip: first open port}.
+    A fallback for finding devices when multicast discovery is blocked by the network."""
+    sem = asyncio.Semaphore(concurrency)
+    found: dict[str, int] = {}
+
+    async def probe(ip):
+        async with sem:
+            for p in ports:
+                if await port_open(ip, p, timeout):
+                    found[ip] = p
+                    return
+
+    await asyncio.gather(*(probe(h) for h in hosts))
+    return found
 
 
 async def port_open(host: str, port: int, timeout: float = 1.0) -> bool:

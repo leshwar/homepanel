@@ -57,6 +57,7 @@ class ApiTests(unittest.TestCase):
     def test_health_and_logs(self):
         status, h = self.call("GET", "/health")
         self.assertTrue(h["ok"])
+        self.assertIn("in_container", h)
         self.assertIn("demo", h["adapters"])
         status, logs = self.call("GET", "/logs")
         self.assertEqual(status, 200)

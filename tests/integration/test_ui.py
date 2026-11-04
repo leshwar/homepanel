@@ -121,6 +121,12 @@ class UITests(unittest.TestCase):
         self.page.wait_for_function(f"document.querySelectorAll('.thumb').length === {count + 1}")
         self.page.wait_for_selector("text=Added 1 photo")
 
+    def test_demo_mode_explains_how_to_add_real_devices(self):
+        self.page.click("#open-settings")
+        self.page.click("[data-go=add]")
+        self.page.click("[data-arg=shelly]")          # a brand with no extra libraries, so always available
+        self.page.wait_for_selector("text=You're in demo mode")
+
     def test_ambient_clock_wakes_without_toggling(self):
         self.page.click("#clock")
         self.page.wait_for_selector("#ambient:not([hidden])")

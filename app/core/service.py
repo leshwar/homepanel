@@ -24,7 +24,7 @@ from .adapter import (ADAPTERS, Action, AdapterError, Cap, Device, DeviceAdapter
                       Key, PairingRequired, missing_requirements)
 from .automations import Automations
 from .history import History
-from .net import parse_color
+from .net import in_container, parse_color
 from .photos import PhotoLibrary
 from .presence import Presence
 from .store import Store
@@ -246,6 +246,7 @@ class HomeService:
             "automations": self.automations.list(),
             "presence": self.presence.snapshot(),
             "demo": self.demo,
+            "in_container": in_container(),
         }
 
     def get(self, device_id: str) -> Device:

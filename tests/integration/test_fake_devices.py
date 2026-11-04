@@ -63,6 +63,49 @@ class HttpClientAgainstLocalServer(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(st, {"on": True, "power_w": 12.3})
 
 
+class ScanFallbackOverRealSockets(unittest.IsolatedAsyncioTestCase):
+    """scan_ports and the Samsung fallback against real local servers."""
+
+    async def test_scan_ports_finds_listening_host(self):
+        server = await asyncio.start_server(lambda r, w: w.close(), "127.0.0.1", 0)
+        port = server.sockets[0].getsockname()[1]
+        async with server:
+            found = await net.scan_ports(["127.0.0.1"], (port,), timeout=1)
+        self.assertEqual(found, {"127.0.0.1": port})
+        self.assertEqual(await net.scan_ports(["127.0.0.1"], (1,), timeout=0.5), {})   # nothing on port 1
+
+    async def test_samsung_found_by_scan_when_ssdp_finds_nothing(self):
+        from app.adapters import samsung_tv
+
+        async def handle(reader, writer):
+            try:
+                await reader.readuntil(b"\r\n\r\n")
+            except asyncio.IncompleteReadError:   # the port scan connects and hangs up straight away
+                writer.close()
+                return
+            body = json.dumps({"device": {"name": "Living Room TV", "modelName": "QN65", "wifiMac": "aa:bb:cc:00:11:22"}}).encode()
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Length: " + str(len(body)).encode() + b"\r\n\r\n" + body)
+            await writer.drain()
+            writer.close()
+
+        try:
+            server = await asyncio.start_server(handle, "127.0.0.1", 8001)   # the port every Tizen TV uses
+        except OSError:
+            self.skipTest("port 8001 is busy on this machine")
+        saved = (samsung_tv.ssdp_search, samsung_tv.local_subnet_hosts)
+
+        async def no_ssdp(*a, **k):
+            return []
+        samsung_tv.ssdp_search, samsung_tv.local_subnet_hosts = no_ssdp, (lambda: ["127.0.0.1"])
+        try:
+            async with server:
+                found = await samsung_tv.SamsungTVAdapter({}, tempfile.mkdtemp()).discover()
+        finally:
+            samsung_tv.ssdp_search, samsung_tv.local_subnet_hosts = saved
+        self.assertEqual([(f.name, f.config["ip"], f.uid) for f in found],
+                         [("Living Room TV", "127.0.0.1", "AA:BB:CC:00:11:22")])
+
+
 class FakeHA:
     TOKEN = "test-token"
 

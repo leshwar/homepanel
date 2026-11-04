@@ -12,7 +12,9 @@ import asyncio
 
 from ..core.adapter import (Action, AdapterError, Cap, Device, DeviceAdapter, Field, Found, Key,
                             Kind, PairingRequired, register)
-from ..core.net import mac_from_arp, port_open, ssdp_search, wake_on_lan
+from ..core.net import http, local_subnet_hosts, mac_from_arp, port_open, scan_ports, ssdp_search, wake_on_lan
+
+WEBOS_PORTS = (3001, 3000)   # webOS remote control: secure, then plain (older TVs)
 
 BUTTONS = {Key.UP: "UP", Key.DOWN: "DOWN", Key.LEFT: "LEFT", Key.RIGHT: "RIGHT", Key.OK: "ENTER",
            Key.BACK: "BACK", Key.HOME: "HOME", Key.MENU: "MENU", Key.SOURCE: "INPUT_HUB",
@@ -59,7 +61,32 @@ class LGTVAdapter(DeviceAdapter):
             found.append(Found(adapter=self.id, uid=(h.get("usn", "").split("::")[0] or ip),
                                name="LG TV", kind=Kind.TV, caps=CAPS, config={"ip": ip, "mac": mac_from_arp(ip) or ""},
                                detail=f"{ip} · webOS", needs_pairing=True))
+        if not found:
+            found = await self._scan_for_tvs(seen)
         return found
+
+    async def _scan_for_tvs(self, skip: set) -> list[Found]:
+        """Fallback when the network blocks discovery broadcasts (common with mesh Wi-Fi and
+        some Macs): look for the webOS remote-control port on every address nearby."""
+        hosts = [h for h in local_subnet_hosts() if h not in skip]
+        open_hosts = await scan_ports(hosts, WEBOS_PORTS)
+        found = []
+        for ip, port in sorted(open_hosts.items()):
+            if not await self._looks_like_webos(ip):
+                continue
+            mac = mac_from_arp(ip) or ""
+            found.append(Found(adapter=self.id, uid=mac or ip, name="LG TV", kind=Kind.TV, caps=CAPS,
+                               config={"ip": ip, "mac": mac}, detail=f"{ip} · found by network scan",
+                               needs_pairing=True))
+        return found
+
+    async def _looks_like_webos(self, ip: str) -> bool:
+        """webOS answers plain HTTP on port 3000 with a short 'Hello world' page."""
+        try:
+            body = await http("GET", f"http://{ip}:3000/", timeout=1.5)
+        except Exception:
+            return await port_open(ip, 3001, 1.0) and await port_open(ip, 3000, 1.0)
+        return isinstance(body, str) and "hello" in body.lower()
 
     def from_manual(self, values):
         if not values.get("ip"):

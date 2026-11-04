@@ -17,23 +17,27 @@ import logging
 import os
 import time
 import uuid
+from collections import Counter
 from dataclasses import asdict
 from typing import Any, Awaitable, Callable
 
-from .adapter import (ADAPTERS, Action, AdapterError, Cap, Device, DeviceAdapter, Found,
-                      Key, PairingRequired, missing_requirements)
+from .adapter import (ADAPTERS, Action, AdapterError, Cap, Clean, Device, DeviceAdapter, Found,
+                      Key, PairingRequired, Pointer, missing_requirements, unsupported_reason)
 from .automations import Automations
 from .history import History
+from .layout import LayoutError, clean_layout, default_layout
 from .net import in_container, normalize_mac, parse_color
 from .photos import PhotoLibrary
 from .presence import Presence
+from .weather import Weather
 from .store import Store
 
 log = logging.getLogger("homepanel")
 
 COMMAND_TIMEOUT = 10.0
-BACKGROUNDS = ("ocean", "aurora", "night")
+BACKGROUNDS = ("sky", "ocean", "aurora", "night")   # sky: follows the weather and time of day
 IDLE_SCREENS = ("clock", "photos")
+CLOCK_FACES = ("digital", "analog", "words", "date", "night")
 REFRESH_TIMEOUT = 8.0
 OFFLINE_AFTER_FAILURES = 2
 
@@ -64,10 +68,42 @@ async def mw_validate(ctx: CommandContext, call_next):
         if Cap.REMOTE not in ctx.device.caps and not media_ok:
             raise AdapterError(f"{ctx.device.name} can't do '{ctx.value}'")
         return await call_next(ctx)
+    if ctx.action == Action.CLEAN and ctx.value not in Clean.ALL:
+        raise AdapterError(f"Unknown cleaning command '{ctx.value}'")
+    if ctx.action in Action.OPTIONS:
+        ids = {str(o.get("id")) for o in ctx.device.meta.get(Action.OPTIONS[ctx.action], [])}
+        if str(ctx.value) not in ids:
+            raise AdapterError(f"{ctx.device.name} doesn't have the option '{ctx.value}'")
+    if ctx.action == Action.CLEAN_ROOMS:
+        rooms = {str(r.get("id")) for r in ctx.device.meta.get("rooms", [])}
+        picked = ctx.value if isinstance(ctx.value, list) else []
+        if not picked or not {str(v) for v in picked} <= rooms:
+            raise AdapterError("Pick at least one room from the list.")
     needed = Action.REQUIRES.get(ctx.action)
     if needed and needed not in ctx.device.caps:
         raise AdapterError(f"{ctx.device.name} can't do '{ctx.action}'")
     return await call_next(ctx)
+
+
+def normalize_pointer(value: Any) -> dict:
+    """Turn a pointer command into exactly one of {"dx","dy"}, {"click": True} or {"scroll": n}."""
+    if not isinstance(value, dict):
+        raise AdapterError("Pointer commands need a move, a click or a scroll.")
+
+    def num(v: Any, limit: int) -> int:
+        try:
+            n = int(round(float(v)))
+        except (TypeError, ValueError):
+            raise AdapterError("Pointer moves must be numbers.") from None
+        return max(-limit, min(limit, n))
+
+    if value.get("click"):
+        return {"click": True}
+    if "scroll" in value:
+        return {"scroll": num(value["scroll"], Pointer.MAX_SCROLL)}
+    if "dx" in value or "dy" in value:
+        return {"dx": num(value.get("dx", 0), Pointer.MAX_MOVE), "dy": num(value.get("dy", 0), Pointer.MAX_MOVE)}
+    raise AdapterError("Pointer commands need a move, a click or a scroll.")
 
 
 async def mw_normalize(ctx: CommandContext, call_next):
@@ -86,13 +122,15 @@ async def mw_normalize(ctx: CommandContext, call_next):
         ctx.value = parse_color(v)
     elif a == Action.MUTE:
         ctx.value = (not ctx.device.state.get("muted")) if v is None else bool(v)
+    elif a == Action.POINTER:
+        ctx.value = normalize_pointer(v)
     return await call_next(ctx)
 
 
 async def mw_log(ctx: CommandContext, call_next):
     try:
         result = await call_next(ctx)
-        log.info("%s %s=%r ok (%.0f ms)", ctx.device.name, ctx.action, ctx.value,
+        (log.debug if ctx.action in Action.QUIET else log.info)("%s %s=%r ok (%.0f ms)", ctx.device.name, ctx.action, ctx.value,
                  (time.monotonic() - ctx.started) * 1000)
         return result
     except Exception as e:
@@ -102,9 +140,11 @@ async def mw_log(ctx: CommandContext, call_next):
 
 async def mw_timeout_retry(ctx: CommandContext, call_next):
     last: Exception | None = None
-    for _attempt in range(2):
+    # A late pointer move is worse than a lost one, so those get one quick try.
+    attempts, limit = (1, 3.0) if ctx.action in Action.QUIET else (2, COMMAND_TIMEOUT)
+    for _attempt in range(attempts):
         try:
-            return await asyncio.wait_for(call_next(ctx), COMMAND_TIMEOUT)
+            return await asyncio.wait_for(call_next(ctx), limit)
         except (AdapterError, ValueError):
             raise                      # meaningful errors: don't retry
         except (asyncio.TimeoutError, OSError, ConnectionError) as e:
@@ -127,14 +167,18 @@ class HomeService:
         self.store = Store(os.path.join(data_dir, "demo.json" if demo else "homepanel.json"))
         self.adapters: dict[str, DeviceAdapter] = {}
         self.unavailable: dict[str, list[str]] = {}   # adapter id -> missing python modules
+        self.unsupported: dict[str, str] = {}         # adapter id -> why it can't run on this Python
         self._subscribers: set[asyncio.Queue] = set()
         self._pollers: dict[str, asyncio.Task] = {}
+        self._soon: dict[str, asyncio.TimerHandle] = {}   # pushed changes waiting to refresh
         self._failures: dict[str, int] = {}
         self._found: dict[tuple[str, str], Found] = {}
+        self._found_ips: dict[str, Counter] = {}     # per brand: how many results the last search found at each address
         self._middleware: list[Middleware] = [mw_validate, mw_normalize, mw_log, mw_timeout_retry]
         self.history = History(os.path.join(data_dir, "demo-history.db" if demo else "history.db"))
         self.automations = Automations(self)
         self.photos = PhotoLibrary(os.path.join(data_dir, "demo-photos" if demo else "photos"))
+        self.weather = Weather(lambda: self.store.settings)
         self.presence = Presence(lambda: self.store.settings.get("presence") or [], self.automations.on_presence)
         self._background: list[asyncio.Task] = []
 
@@ -158,6 +202,10 @@ class HomeService:
         for aid, cls in ADAPTERS.items():
             if cls.hidden and not self.demo:
                 continue
+            reason = unsupported_reason(cls)
+            if reason:
+                self.unsupported[aid] = reason
+                continue
             missing = missing_requirements(cls)
             if missing:
                 self.unavailable[aid] = missing
@@ -168,6 +216,7 @@ class HomeService:
             except Exception as e:  # one broken adapter must not stop the panel
                 log.exception("Adapter %s failed to start: %s", aid, e)
                 continue
+            inst.on_change = (lambda uid, aid=aid: self._changed(aid, uid))
             self.adapters[aid] = inst
         if self.demo and not self.store.devices:
             await self._seed_demo()
@@ -185,6 +234,9 @@ class HomeService:
     async def stop(self) -> None:
         for t in [*self._pollers.values(), *self._background]:
             t.cancel()
+        for h in self._soon.values():
+            h.cancel()
+        self._soon.clear()
         for a in self.adapters.values():
             try:
                 await a.stop()
@@ -236,6 +288,7 @@ class HomeService:
             "account_set": bool(self.store.accounts.get(aid)),
             "available": aid in self.adapters,
             "missing": self.unavailable.get(aid, []),
+            "unsupported": self.unsupported.get(aid, ""),
             "hidden": cls.hidden,
         }
 
@@ -244,13 +297,21 @@ class HomeService:
             "devices": [self.public_device(d) for d in self.store.devices.values()],
             "rooms": self.store.rooms,
             "scenes": self.store.scenes,
-            "settings": self.store.settings,
+            "settings": self.settings(),
             "adapters": [self.adapter_meta(a) for a in ADAPTERS if not ADAPTERS[a].hidden or self.demo],
             "automations": self.automations.list(),
             "presence": self.presence.snapshot(),
             "demo": self.demo,
             "in_container": in_container(),
         }
+
+    def settings(self) -> dict:
+        """Panel settings as the UI sees them. Until someone edits the Home page, its
+        layout is the default one built from the devices that exist now."""
+        s = dict(self.store.settings)
+        if not s.get("home_layout"):
+            s["home_layout"] = default_layout(self.store.devices.values())
+        return s
 
     def get(self, device_id: str) -> Device:
         d = self.store.devices.get(device_id)
@@ -279,6 +340,8 @@ class HomeService:
         if d.config != config_before:
             self.store.save()
         self._failures[d.id] = 0
+        if action in Action.QUIET:          # nothing changed; don't flood the live events
+            return self.public_device(d)
         d.state.update({"online": True, **changed})
         self._publish_device(d)
         # confirm the real state shortly after (devices sometimes ignore commands)
@@ -286,12 +349,27 @@ class HomeService:
         return self.public_device(d)
 
     async def all_off(self, room: str | None = None) -> int:
+        """Turn off what's on. room=None: everywhere; room="": devices that aren't in a room
+        (no room, or a room that was deleted), which the UI shows as "Other"."""
+        def in_room(d: Device) -> bool:
+            if room is None:
+                return True
+            return d.room not in self.store.rooms if room == "" else d.room == room
         targets = [d for d in self.store.devices.values()
-                   if Cap.POWER in d.caps and d.state.get("on") and not d.keep_on
-                   and (room is None or d.room == room)]
+                   if Cap.POWER in d.caps and d.state.get("on") and not d.keep_on and in_room(d)]
         results = await asyncio.gather(*(self.command(d.id, Action.POWER, False) for d in targets),
                                        return_exceptions=True)
         return sum(1 for r in results if not isinstance(r, Exception))
+
+    def _changed(self, adapter_id: str, uid: str) -> None:
+        """An adapter says a device changed on its own: refresh it shortly (bursts are merged)."""
+        loop = asyncio.get_running_loop()
+        for d in self.store.devices.values():
+            if d.adapter == adapter_id and d.config.get("_uid") == uid:
+                if (h := self._soon.pop(d.id, None)) is not None:
+                    h.cancel()
+                self._soon[d.id] = loop.call_later(
+                    0.3, lambda i=d.id: (self._soon.pop(i, None), asyncio.ensure_future(self.refresh(i))))
 
     # --- polling ------------------------------------------------------------
     def _start_poller(self, d: Device) -> None:
@@ -322,6 +400,7 @@ class HomeService:
             return
         before = dict(d.state)
         config_before = dict(d.config)
+        shape_before = (list(d.caps), dict(d.meta))
         try:
             state = await asyncio.wait_for(adapter.refresh(d), REFRESH_TIMEOUT)
             self._failures[d.id] = 0
@@ -335,10 +414,20 @@ class HomeService:
                 d.state = {**before, "online": False, "error": _friendly(e)}
         if d.state.get("power_w") is not None and d.state.get("online"):
             await asyncio.to_thread(self.history.record, d.id, d.state["power_w"])
-        if d.config != config_before:
+        shape_changed = (list(d.caps), dict(d.meta)) != shape_before   # e.g. a vacuum's rooms arrived
+        if d.config != config_before or shape_changed:
             self.store.save()              # the adapter learned something (e.g. a TV's MAC address)
-        if d.state != before:
+        if d.state != before or shape_changed:
             self._publish_device(d)
+
+    async def map_image(self, device_id: str) -> tuple[str, bytes]:
+        d = self.get(device_id)
+        if Cap.MAP not in d.caps:
+            raise AdapterError(f"{d.name} doesn't have a map.")
+        img = await asyncio.wait_for(self._adapter_for(d).map_image(d), REFRESH_TIMEOUT)
+        if not img:
+            raise AdapterError("The map isn't ready yet. Try again in a minute.")
+        return img
 
     async def energy(self, device_id: str, days: int = 7) -> dict:
         self.get(device_id)
@@ -350,14 +439,82 @@ class HomeService:
         if not a:
             raise AdapterError("This brand isn't available.")
         found = await asyncio.wait_for(a.discover(), 25)
-        known = {(d.adapter, d.config.get("_uid")) for d in self.store.devices.values()}
+        self._found_ips[adapter_id] = Counter(f.config.get("ip") for f in found if f.config.get("ip"))
         out = []
         for f in found:
             self._found[(adapter_id, f.uid)] = f
             item = f.to_dict()
-            item["added"] = (adapter_id, f.uid) in known
+            item["added"] = self._already_added(adapter_id, f, by_ip=True) is not None
             out.append(item)
         return out
+
+    def _already_added(self, adapter_id: str, f: Found, *, by_ip: bool) -> Device | None:
+        """The saved device a search result (or manual entry) is, if any.
+        Matches the result's uid and aliases against every id the device is known by. With by_ip,
+        a saved device of the same brand at the same address also counts (a safety net for when a
+        brand reports a different uid depending on how it found the device) — but only when that
+        address belongs to one device on each side, so hubs and multi-channel devices aren't hidden,
+        and not when both sides know a MAC and the MACs differ (a new device on a reused address)."""
+        a = self.adapters[adapter_id]
+        ids = {f.uid, *f.aliases}
+        mine = [d for d in self.store.devices.values() if d.adapter == adapter_id]
+        for d in mine:
+            if ids & a.known_ids(d):
+                return d
+        ip = f.config.get("ip")
+        if not by_ip or not ip or self._found_ips.get(adapter_id, Counter())[ip] > 1:
+            return None
+        at_ip = [d for d in mine if d.config.get("ip") == ip]
+        if len(at_ip) != 1:
+            return None
+        mac, saved_mac = normalize_mac(f.config.get("mac")), normalize_mac(at_ip[0].config.get("mac"))
+        if mac and saved_mac and mac != saved_mac:
+            return None
+        return at_ip[0]
+
+    def _searchable(self) -> tuple[list[str], list[str]]:
+        """Brands that "Search all brands" can search now, and brands that need an account first.
+        In demo mode only the pretend (hidden) brands are searched, so nothing touches the real network."""
+        ready, needs_account = [], []
+        for aid, a in self.adapters.items():
+            cls = type(a)
+            if not cls.can_discover or cls.hidden != self.demo:
+                continue
+            if any(f.required for f in cls.account_fields) and not self.store.accounts.get(aid):
+                needs_account.append(aid)
+            else:
+                ready.append(aid)
+        return ready, needs_account
+
+    async def discover_all(self) -> dict:
+        """Search every brand at once. One slow or broken brand never stops the others."""
+        ready, needs_account = self._searchable()
+
+        async def one(aid: str):
+            try:
+                return aid, await self.discover(aid), None
+            except asyncio.TimeoutError:
+                return aid, [], "Took too long to answer."
+            except Exception as e:
+                log.warning("Search all: %s failed: %s", aid, e)
+                return aid, [], _friendly(e)
+
+        def name(aid: str) -> str:
+            return type(self.adapters[aid]).name or aid
+
+        found, failed = [], []
+        for aid, items, err in await asyncio.gather(*(one(a) for a in ready)):
+            if err:
+                failed.append({"adapter": aid, "adapter_name": name(aid), "error": err})
+            for item in items:
+                found.append({**item, "adapter": aid, "adapter_name": name(aid)})
+        found.sort(key=lambda f: (f["added"], f["adapter_name"], f["name"].lower()))
+        return {
+            "found": found,
+            "searched": ready,
+            "failed": failed,
+            "needs_account": [{"adapter": a, "adapter_name": name(a)} for a in needs_account],
+        }
 
     async def add_device(self, adapter_id: str, *, uid: str | None = None, manual: dict | None = None,
                          name: str | None = None, room: str = "") -> dict:
@@ -370,12 +527,17 @@ class HomeService:
                 raise AdapterError("That device isn't in the latest search. Search again.")
         else:
             f = a.from_manual(manual or {})
-        for d in self.store.devices.values():
-            if d.adapter == adapter_id and d.config.get("_uid") == f.uid:
-                raise AdapterError(f"Already added as '{d.name}'.")
+        # The address safety net only for search results: a hand-entered device may share an
+        # address on purpose (e.g. the second channel of a two-channel relay).
+        dup = self._already_added(adapter_id, f, by_ip=bool(uid))
+        if dup:
+            raise AdapterError(f"Already added as '{dup.name}'.")
         room = room or f.room
+        config = {**f.config, "_uid": f.uid}
+        if f.aliases:
+            config["_aliases"] = list(f.aliases)
         d = Device(id=uuid.uuid4().hex[:10], adapter=adapter_id, name=(name or f.name).strip(),
-                   kind=f.kind, room=room, config={**f.config, "_uid": f.uid}, caps=list(f.caps))
+                   kind=f.kind, room=room, config=config, caps=list(f.caps))
         self.store.devices[d.id] = d
         if room and room not in self.store.rooms:
             self.store.rooms.append(room)
@@ -570,14 +732,29 @@ class HomeService:
                 raise AdapterError("Glass transparency should be a number from 0 to 100.")
         if "idle_screen" in changes and changes["idle_screen"] not in IDLE_SCREENS:
             raise AdapterError("Idle screen should be 'clock' or 'photos'.")
+        if "place_name" in changes:
+            changes["place_name"] = " ".join(str(changes["place_name"] or "").split())[:40]
+        if "temperature_unit" in changes:
+            unit = str(changes["temperature_unit"] or "").upper()
+            if unit not in ("C", "F"):
+                raise AdapterError("Temperature unit should be C or F.")
+            changes["temperature_unit"] = unit
+        if "clock_face" in changes and changes["clock_face"] not in CLOCK_FACES:
+            raise AdapterError(f"Clock face should be one of: {', '.join(CLOCK_FACES)}.")
         if "frame_seconds" in changes:
             try:
                 changes["frame_seconds"] = max(5, min(300, int(float(changes["frame_seconds"]))))
             except (TypeError, ValueError):
                 raise AdapterError("Seconds per photo should be a number.")
-        for key in ("glass_effect", "clock_24h", "frame_shuffle", "frame_clock", "frame_night_clock"):
+        for key in ("glass_effect", "clock_24h", "frame_shuffle", "frame_clock", "frame_night_clock",
+                    "weather_enabled"):
             if key in changes:
                 changes[key] = changes[key] in (True, 1, "1", "true", "on")
+        if "home_layout" in changes:
+            try:
+                changes["home_layout"] = clean_layout(changes["home_layout"]) if changes["home_layout"] else None
+            except LayoutError as e:
+                raise AdapterError(str(e)) from None
         if "presence" in changes:
             people = []
             for p in changes["presence"] or []:
@@ -588,7 +765,7 @@ class HomeService:
         self.store.settings.update(changes)
         self.store.save()
         self._publish_layout()
-        return self.store.settings
+        return self.settings()
 
     # --- demo ---------------------------------------------------------------
     async def _seed_demo(self) -> None:
@@ -598,6 +775,7 @@ class HomeService:
         for f in await a.discover():
             d = Device(id=f.uid, adapter="demo", name=f.name, kind=f.kind,
                        room=f.config.get("room", ""), config={**f.config, "_uid": f.uid}, caps=f.caps)
+            await a.setup(d)                       # like adding a device: fills in meta (TV apps, vacuum rooms)
             self.store.devices[d.id] = d
         self.store.scenes = [
             {"id": "movie", "name": "Movie night", "icon": "film", "actions": [

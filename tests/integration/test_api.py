@@ -1,12 +1,14 @@
 """Integration tests for the API layer: the real server in demo mode, called over HTTP."""
 import json
+import os
 import shutil
+import sys
 import tempfile
 import unittest
 import urllib.error
 import urllib.request
 
-from tests.helpers import DemoServer
+from tests.helpers import DemoServer, FakeWeatherSource
 
 
 class ApiTests(unittest.TestCase):
@@ -38,6 +40,39 @@ class ApiTests(unittest.TestCase):
         for d in data["devices"]:
             self.assertNotIn("config", d)
 
+    def test_all_off_for_devices_without_a_room(self):
+        self.call("PATCH", "/devices/kt-kettle", {"room": ""})
+        try:
+            self.call("POST", "/devices/kt-kettle/command", {"action": "power", "value": True})
+            self.call("POST", "/devices/kt-pendant/command", {"action": "power", "value": True})
+            status, res = self.call("POST", "/all-off", {"room": ""})
+            self.assertEqual((status, res["turned_off"]), (200, 1))
+            _, s = self.call("GET", "/state")
+            on = {d["id"]: d["state"].get("on") for d in s["devices"]}
+            self.assertEqual((on["kt-kettle"], on["kt-pendant"]), (False, True))
+        finally:
+            self.call("PATCH", "/devices/kt-kettle", {"room": "Kitchen"})
+
+    def test_home_layout_is_saved_for_every_screen(self):
+        _, s = self.call("GET", "/state")
+        default = s["settings"]["home_layout"]
+        self.assertEqual(default["widgets"][0]["type"], "clock")
+        try:
+            mine = {"widgets": [{"id": "zone-us", "type": "zone", "size": "2x1",
+                                 "options": {"tz": "America/Los_Angeles", "label": "US"}}]}
+            status, saved = self.call("PUT", "/settings", {"home_layout": mine})
+            self.assertEqual(status, 200)
+            _, s = self.call("GET", "/state")
+            self.assertEqual(s["settings"]["home_layout"], saved["home_layout"])
+            self.assertEqual(s["settings"]["home_layout"]["widgets"][0]["options"]["tz"], "America/Los_Angeles")
+            status, err = self.call("PUT", "/settings", {"home_layout": {"widgets": [{"id": "a", "type": "clock", "size": "9x9"}]}})
+            self.assertEqual(status, 400)
+            self.assertIn("Widget size", err["error"])
+        finally:
+            self.call("PUT", "/settings", {"home_layout": None})
+        _, s = self.call("GET", "/state")
+        self.assertEqual(s["settings"]["home_layout"], default)
+
     def test_command_and_errors(self):
         status, d = self.call("POST", "/devices/lr-ceiling/command", {"action": "brightness", "value": 42})
         self.assertEqual((status, d["state"]["brightness"]), (200, 42))
@@ -54,9 +89,52 @@ class ApiTests(unittest.TestCase):
         status, res = self.call("POST", "/all-off", {"room": "Living room"})
         self.assertEqual(status, 200)
 
+    def test_robot_vacuum_commands(self):
+        status, d = self.call("POST", "/devices/lr-vacuum/command", {"action": "clean", "value": "start"})
+        self.assertEqual((status, d["state"]["activity"]), (200, "cleaning"))
+        status, d = self.call("POST", "/devices/lr-vacuum/command", {"action": "dock"})
+        self.assertEqual((status, d["state"]["activity"]), (200, "returning"))
+        status, err = self.call("POST", "/devices/lr-vacuum/command", {"action": "clean", "value": "turbo"})
+        self.assertEqual(status, 400)
+        self.assertIn("cleaning command", err["error"])
+        status, _ = self.call("POST", "/devices/lr-plug/command", {"action": "dock"})
+        self.assertEqual(status, 400)
+
+    def test_vacuum_rooms_suction_and_map(self):
+        status, d = self.call("POST", "/devices/lr-vacuum/command", {"action": "clean_rooms", "value": [2]})
+        self.assertEqual((status, d["state"]["activity"]), (200, "cleaning"))
+        self.assertEqual([r["name"] for r in d["meta"]["rooms"]][:2], ["Living room", "Kitchen"])
+        status, err = self.call("POST", "/devices/lr-vacuum/command", {"action": "set_suction", "value": "turbo"})
+        self.assertEqual(status, 400)
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/v1/devices/lr-vacuum/map", timeout=5) as r:
+            self.assertEqual(r.headers["Content-Type"].split(";")[0], "image/svg+xml")
+            self.assertIn("default-src 'none'", r.headers["Content-Security-Policy"])   # can't run scripts
+            self.assertTrue(r.read().startswith(b"<svg"))
+        status, _ = self.call("GET", "/devices/lr-plug/map")
+        self.assertEqual(status, 400)
+
+    def test_search_all_brands_and_add_a_result(self):
+        status, _ = self.call("DELETE", "/devices/bd-fan")
+        self.assertIn(status, (200, 204))
+        status, r = self.call("POST", "/discover")
+        self.assertEqual(status, 200)
+        self.assertIn("demo", r["searched"])          # other test suites may register extra pretend brands
+        self.assertEqual(r["failed"], [])
+        fan = next(f for f in r["found"] if f["uid"] == "bd-fan")
+        self.assertEqual((fan["adapter"], fan["added"]), ("demo", False))
+        self.assertTrue(all("config" not in f for f in r["found"]))
+        status, d = self.call("POST", "/devices", {"adapter": fan["adapter"], "uid": fan["uid"], "room": "Bedroom"})
+        self.assertEqual((status, d["name"]), (200, "Fan plug"))
+        _, r = self.call("POST", "/discover")
+        self.assertTrue(next(f for f in r["found"] if f["uid"] == "bd-fan")["added"])
+
     def test_health_and_logs(self):
         status, h = self.call("GET", "/health")
         self.assertTrue(h["ok"])
+        self.assertIn("unsupported", h)
+        if sys.version_info[:2] != (3, 14):        # e.g. CI and Docker: the vacuum brand needs 3.14
+            self.assertIn("Needs Python 3.14", h["unsupported"]["ecovacs"])
+            self.assertNotIn("ecovacs", h["unavailable"])        # "not for this Python", not "not installed"
         self.assertIn("in_container", h)
         self.assertIn("phone_url", h)          # where to open the panel on a phone
         if h["phone_url"]:
@@ -92,7 +170,38 @@ class ApiTests(unittest.TestCase):
         status, err = self.call("PUT", "/settings", {"background": "neon"})
         self.assertEqual(status, 400)
         self.assertIn("Background", err["error"])
-        self.call("PUT", "/settings", {"background": "ocean", "glass_transparency": 45})
+        self.call("PUT", "/settings", {"background": "sky", "glass_transparency": 45})
+
+    def test_clock_face_setting(self):
+        status, s = self.call("PUT", "/settings", {"clock_face": "words"})
+        self.assertEqual((status, s["clock_face"]), (200, "words"))
+        status, err = self.call("PUT", "/settings", {"clock_face": "sundial"})
+        self.assertEqual(status, 400)
+        self.assertIn("Clock face", err["error"])
+        self.call("PUT", "/settings", {"clock_face": "digital"})
+
+    def test_weather_from_source_and_hidden_without_it(self):
+        status, w = self.call("GET", "/weather")
+        self.assertEqual((status, w["available"]), (200, False))      # off until the user opts in
+        source = FakeWeatherSource(temperature=21.4, code=0)
+        os.environ["HOMEPANEL_WEATHER_URL"] = source.url
+        try:
+            self.call("PUT", "/settings", {"latitude": 47.61, "longitude": -122.33, "weather_enabled": True,
+                                           "temperature_unit": "C"})
+            status, w = self.call("GET", "/weather")
+            self.assertEqual((status, w["available"], w["temperature"], w["unit"], w["condition"]),
+                             (200, True, 21, "C", "clear"))
+            self.assertIn("latitude=47.61", source.requests[0])
+            self.call("GET", "/weather")
+            self.assertEqual(len(source.requests), 1)                  # cached
+            source.stop()
+            os.environ["HOMEPANEL_WEATHER_URL"] = source.url.replace("/v1", "/gone/v1")   # new source, unreachable
+            status, w = self.call("GET", "/weather")
+            self.assertEqual((status, w["available"]), (200, False))   # no error, just no weather
+        finally:
+            os.environ.pop("HOMEPANEL_WEATHER_URL", None)
+            self.call("PUT", "/settings", {"latitude": None, "longitude": None, "weather_enabled": False,
+                                           "temperature_unit": "F"})
 
     def _upload(self, data: bytes, content_type="image/png"):
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/v1/photos?name=test.png", data=data,
@@ -147,6 +256,19 @@ class ApiTests(unittest.TestCase):
             self.assertIn(b"HomePanel", r.read())
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/js/app.js", timeout=5) as r:
             self.assertEqual(r.status, 200)
+
+    def test_add_to_home_screen_files(self):
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=5) as r:
+            html = r.read().decode()
+        for tag in ('name="apple-mobile-web-app-capable"', 'viewport-fit=cover', 'rel="apple-touch-icon"', 'rel="manifest"'):
+            self.assertIn(tag, html)
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/manifest.webmanifest", timeout=5) as r:
+            manifest = json.loads(r.read())
+        self.assertEqual(manifest["display"], "standalone")
+        for path in ["/icon-180.png", *(i["src"] for i in manifest["icons"])]:
+            with self.subTest(path=path), urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=5) as r:
+                self.assertEqual(r.headers.get("Content-Type"), "image/png")
+                self.assertEqual(r.read(8), b"\x89PNG\r\n\x1a\n")
 
 
 if __name__ == "__main__":

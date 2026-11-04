@@ -4,9 +4,20 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#151a22">
+  <!-- "Add to Home Screen" on iPhone/iPad and Android: full screen, no browser bars -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="HomePanel">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <link rel="manifest" href="/manifest.webmanifest">
   <title>HomePanel</title>
   <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/controls.css">
   <link rel="stylesheet" href="/photoframe.css">
+  <link rel="stylesheet" href="/clockfaces.css">
+  <link rel="stylesheet" href="/shell.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23151a22'/%3E%3Ccircle cx='16' cy='14' r='6' fill='%23f2b35b'/%3E%3Crect x='13' y='21' width='6' height='3' rx='1' fill='%23ede7dc'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -31,7 +42,26 @@
         </linearGradient>
         <filter id="far" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="9"/></filter>
         <filter id="mid" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="3"/></filter>
-      </defs>
+        <!-- device controls (sheet.js, remote.js, vacuum.js) -->
+      <symbol id="i-dpad" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 5.2v1.3M12 17.5v1.3M5.2 12h1.3M17.5 12h1.3"/></symbol>
+      <symbol id="i-touchpad" viewBox="0 0 24 24"><path d="M9 11.5V5.2a1.7 1.7 0 0 1 3.4 0v5.3M12.4 10.5V9a1.7 1.7 0 0 1 3.4 0v2M15.8 11V10a1.7 1.7 0 0 1 3.2.8v4.4A6.8 6.8 0 0 1 12.2 22h-.6a6.3 6.3 0 0 1-5.1-2.6l-2.9-4a1.7 1.7 0 0 1 2.6-2.2L9 15.6"/></symbol>
+      <symbol id="i-numpad" viewBox="0 0 24 24"><path d="M6 5h.01M12 5h.01M18 5h.01M6 11h.01M12 11h.01M18 11h.01M6 17h.01M12 17h.01M18 17h.01M12 22h.01" stroke-width="3.2"/></symbol>
+      <symbol id="i-tilt" viewBox="0 0 24 24"><rect x="8" y="5" width="8" height="14" rx="2" transform="rotate(-18 12 12)"/><path d="M3.5 8.5a9.5 9.5 0 0 0 1 8M20.5 15.5a9.5 9.5 0 0 0-1-8"/></symbol>
+      <symbol id="i-list" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></symbol>
+      <symbol id="i-exit" viewBox="0 0 24 24"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M9.5 16.5L5 12l4.5-4.5M5 12h10"/></symbol>
+      <symbol id="i-playpause" viewBox="0 0 24 24"><path d="M3.5 6v12l8-6zM15 6v12M20 6v12"/></symbol>
+      <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5h.01"/></symbol>
+      <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7.5"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22"/></symbol>
+      <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/></symbol>
+      <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6.5 7 6.5 11.5a6.5 6.5 0 0 1-13 0C5.5 10 12 3 12 3z"/></symbol>
+      <symbol id="i-vacmop" viewBox="0 0 24 24"><circle cx="10" cy="11" r="7"/><circle cx="10" cy="9" r="1.8"/><path d="M18.5 13s2.5 2.7 2.5 4.5a2.5 2.5 0 0 1-5 0c0-1.8 2.5-4.5 2.5-4.5z"/></symbol>
+      <symbol id="i-bin" viewBox="0 0 24 24"><path d="M5 7h14l-1.3 12.2a2 2 0 0 1-2 1.8H8.3a2 2 0 0 1-2-1.8L5 7zM3.5 7h17M9.5 3.5h5M10 11v6M14 11v6"/></symbol>
+      <symbol id="i-wind" viewBox="0 0 24 24"><path d="M3 8h11a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h8"/></symbol>
+      <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9l-3.8 3.8z"/></symbol>
+      <symbol id="i-battery" viewBox="0 0 24 24"><rect x="2.5" y="7" width="17" height="10" rx="2.5"/><path d="M22 10.5v3"/></symbol>
+      <symbol id="i-warm" viewBox="0 0 24 24"><path d="M12 3v2M5.6 5.6L7 7M3 12h2M19 12h2M17 7l1.4-1.4M8 15a4 4 0 1 1 8 0z"/><path d="M4 19h16"/></symbol>
+      <symbol id="i-palette" viewBox="0 0 24 24"><path d="M12 3a9 9 0 0 0 0 18c1.2 0 1.8-.8 1.8-1.7 0-1.2-1-1.6-1-2.6 0-.9.8-1.7 1.7-1.7H17a4 4 0 0 0 4-4C21 6.4 17 3 12 3z"/><path d="M7.5 11h.01M10 7h.01M14.5 7h.01M17 10.5h.01" stroke-width="2.6"/></symbol>
+    </defs>
       <!-- far: big and blurred -->
       <ellipse cx="860" cy="860" rx="190" ry="120" fill="url(#sh-ball)" filter="url(#far)" opacity=".55"/>
       <rect x="40" y="700" width="230" height="230" rx="60" fill="url(#sh-bar)" filter="url(#far)" opacity=".45"
@@ -49,26 +79,52 @@
       <circle cx="905" cy="560" r="16" fill="url(#sh-ball)" opacity=".85"/>
       <circle cx="90" cy="420" r="10" fill="url(#sh-ball)" opacity=".8"/>
     </svg>
+    <!-- the "Sky" background (js/sky.js): follows the weather and time of day -->
+    <div class="sky">
+      <div class="sky-stars"></div>
+      <div class="sky-sun"></div>
+      <div class="sky-clouds far"></div>
+      <div class="sky-clouds near"></div>
+      <div class="sky-rain"></div>
+      <div class="sky-snow"></div>
+    </div>
     <div class="room-light"></div>
   </div>
   <div id="app" class="app">
-    <header class="top">
-      <button class="clock" id="clock" aria-label="Show ambient clock">
-        <span class="clock-time" id="clock-time">--:--</span>
-        <span class="clock-sub" id="clock-sub"></span>
-      </button>
-      <div class="top-actions">
-        <button class="btn-alloff" id="all-off" aria-label="Turn everything off">
-          <svg class="i"><use href="#i-power"/></svg><span>All off</span>
-        </button>
-        <button class="icon-btn" id="open-frame" aria-label="Photo frame"><svg class="i"><use href="#i-image"/></svg></button>
-        <button class="icon-btn" id="open-settings" aria-label="Settings"><svg class="i"><use href="#i-gear"/></svg></button>
-      </div>
-    </header>
+    <!-- wide screens (iPad, landscape panel): Home and every room down the left side -->
+    <aside class="rail" id="rail" aria-label="Rooms"></aside>
 
-    <section class="scenes" id="scenes" aria-label="Scenes"></section>
-    <nav class="rooms" id="rooms" aria-label="Rooms"></nav>
-    <main class="grid" id="grid" aria-live="polite"></main>
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 id="title">Home</h1>
+          <p id="subtitle"></p>
+        </div>
+        <div class="topbar-actions">
+          <button class="topbar-clock" id="clock" aria-label="Show the resting clock"><span id="clock-time">--:--</span></button>
+          <button class="icon-btn" id="edit-home" aria-label="Edit Home page" hidden>
+            <svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg></button>
+          <button class="btn-alloff" id="all-off" aria-label="Turn everything off">
+            <svg class="i"><use href="#i-power"/></svg><span>All off</span>
+          </button>
+          <button class="icon-btn" id="open-frame" aria-label="Photo frame"><svg class="i"><use href="#i-image"/></svg></button>
+        </div>
+      </header>
+
+      <nav class="rooms" id="rooms" role="tablist" aria-label="Rooms" hidden></nav>
+      <section class="home" id="home" aria-label="Home page"></section>
+      <main class="grid" id="grid" aria-live="polite" hidden></main>
+    </div>
+
+    <!-- phones and the portrait panel: a floating dock -->
+    <nav class="dock" id="dock" aria-label="Pages">
+      <div class="dock-bar">
+        <button data-nav="home"><svg class="i"><use href="#i-home"/></svg><span>Home</span></button>
+        <button data-nav="rooms"><svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span>Rooms</span></button>
+        <button id="open-settings" data-open-settings><svg class="i"><use href="#i-gear"/></svg><span>Settings</span></button>
+      </div>
+      <button class="dock-add" data-add-device aria-label="Add a device"><svg class="i"><use href="#i-plus"/></svg></button>
+    </nav>
     <div class="conn" id="conn" hidden>Reconnecting to the panel…</div>
   </div>
 
@@ -79,10 +135,9 @@
   <!-- full-screen settings -->
   <section class="page" id="settings" role="dialog" aria-modal="true" hidden></section>
 
-  <!-- ambient clock shown when idle -->
-  <div class="ambient" id="ambient" hidden>
-    <div class="ambient-time" id="ambient-time"></div>
-    <div class="ambient-sub" id="ambient-sub"></div>
+  <!-- resting clock shown when idle; the face is drawn by js/clockfaces.js -->
+  <div class="ambient" id="ambient" aria-label="Clock. Touch to wake." hidden>
+    <div id="ambient-face"></div>
   </div>
 
   <!-- photo frame slideshow (js/photoframe.js) -->
@@ -102,8 +157,10 @@
       <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1.1 2V16h5v-.2c.1-.8.5-1.5 1.1-2A6 6 0 0 0 12 3z"/></symbol>
       <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0V7zM12 17v5"/></symbol>
       <symbol id="i-tv" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="12.5" rx="2"/><path d="M8 21h8"/></symbol>
+      <symbol id="i-speaker" viewBox="0 0 24 24"><rect x="1.5" y="8.5" width="21" height="7" rx="2.5"/><path d="M6 12h.01M10 12h.01M14 12h.01M18 12h.01"/></symbol>
       <symbol id="i-switch" viewBox="0 0 24 24"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><rect x="9.5" y="6" width="5" height="7" rx="1.5"/></symbol>
       <symbol id="i-fan" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.6"/><path d="M12 10.4C12 6 13 3 15.5 3S19 6 12 10.4zM13.6 12c4.4 0 7.4 1 7.4 3.5S18 19 13.6 12zM12 13.6c0 4.4-1 7.4-3.5 7.4S5 18 12 13.6zM10.4 12C6 12 3 11 3 8.5S6 5 10.4 12z"/></symbol>
+      <symbol id="i-vacuum" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9" r="2.2"/><path d="M6.5 15.5h11"/></symbol>
       <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8M6.4 6.6a8 8 0 1 0 11.2 0"/></symbol>
       <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
       <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>

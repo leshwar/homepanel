@@ -28,13 +28,17 @@ export const api = {
   logs: (level = "") => call("GET", `/logs${level ? `?level=${level}` : ""}`),
 
   command: (id, action, value) => call("POST", `/devices/${id}/command`, { action, value }),
+  // Move / click / scroll a TV's on-screen pointer: {dx, dy} | {click: true} | {scroll: dy}.
+  pointer: (id, value) => call("POST", `/devices/${id}/command`, { action: "pointer", value }),
   addDevice: (body) => call("POST", "/devices", body),
   updateDevice: (id, changes) => call("PATCH", `/devices/${id}`, changes),
   removeDevice: (id) => call("DELETE", `/devices/${id}`),
   pair: (id) => call("POST", `/devices/${id}/pair`),
   refresh: (id) => call("POST", `/devices/${id}/refresh`),
-  allOff: (room) => call("POST", "/all-off", room ? { room } : {}),
+  allOff: (room = null) => call("POST", "/all-off", room == null ? {} : { room }),   // "" = devices with no room
 
+  mapUrl: (id, rev = 0) => `${BASE}/devices/${encodeURIComponent(id)}/map?v=${encodeURIComponent(rev)}`,
+  discoverAll: () => call("POST", "/discover"),
   discover: (adapter) => call("POST", `/adapters/${adapter}/discover`),
   getAccount: (adapter) => call("GET", `/adapters/${adapter}/account`),
   saveAccount: (adapter, values) => call("PUT", `/adapters/${adapter}/account`, values),
@@ -52,6 +56,7 @@ export const api = {
   runAutomation: (id) => call("POST", `/automations/${id}/run`),
   presence: () => call("GET", "/presence"),
   sun: () => call("GET", "/sun"),
+  weather: () => call("GET", "/weather"),
 
   photos: () => call("GET", "/photos"),
   deletePhoto: (id) => call("DELETE", `/photos/${encodeURIComponent(id)}`),

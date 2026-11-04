@@ -6,10 +6,13 @@ import { store, reload } from "./store.js";
 import { $, esc, icon, kindIcon, toast } from "./util.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame } from "./photoframe.js";
+import { FACES, faceId, faceHTML, faceInfo } from "./clockfaces.js";
+import { DEVICE_ICONS, deviceIconName, svg } from "./icons.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
 let brandState = {};          // per-visit state of the "brand" screen
+let searchAll = {};           // per-visit state of "Search all brands" on the "add" screen
 
 export const isSettingsOpen = () => !$("#settings").hidden;
 
@@ -21,7 +24,7 @@ export function openSettings(view = "home", arg = null) {
 }
 
 function close() { $("#settings").hidden = true; stack = []; }
-function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; render(); $("#settings").scrollTop = 0; }
+function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; if (view === "add") searchAll = {}; render(); $("#settings").scrollTop = 0; }
 function back() { stack.pop(); stack.length ? render() : close(); }
 
 export function refreshSettings() {
@@ -41,8 +44,27 @@ function page(title, body, { closeBtn = false } = {}) {
 }
 
 const row = (attrs, iconName, title, sub = "", extra = "") =>
-  `<button class="row" ${attrs}>${iconName ? icon(iconName, "dim") : ""}<span class="grow">
+  `<button class="row" ${attrs}>${iconName?.startsWith?.("<svg") ? iconName : iconName ? icon(iconName, "dim") : ""}<span class="grow">
     <span class="title">${esc(title)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}</span>${extra}${icon("right", "dim")}</button>`;
+
+function searchAllResults(r) {
+  const found = r.found.length ? `<div class="list" data-search-all-results>${r.found.map((f) => `
+      <div class="row">${icon(kindIcon({ kind: f.kind }), "dim")}
+        <span class="grow"><span class="title">${esc(f.name)}</span><span class="sub">${esc(f.adapter_name)}${f.detail ? ` · ${esc(f.detail)}` : ""}</span></span>
+        ${f.added ? `<span class="sub">Added</span>` :
+          `<button class="btn small primary" data-add-found="${esc(f.uid)}" data-adapter="${esc(f.adapter)}" data-name="${esc(f.name)}">Add</button>`}
+      </div>`).join("")}</div>` :
+    `<div class="card"><h3>Nothing found</h3>${store.inContainer
+      ? `<p>The panel is running inside Docker, which can't see your Wi-Fi on a Mac or Windows PC, so search can't find devices.
+           Add the device by IP address instead, or run the panel without Docker (make run).</p>`
+      : `<p>Make sure the devices are set up in their own app first and are on the same Wi-Fi as this panel.
+           If they still don't show up, choose the brand below and add them by IP address.</p>`}</div>`;
+  const extra = [
+    ...r.needs_account.map((b) => row(`data-go=brand data-arg="${esc(b.adapter)}"`, "link", b.adapter_name, "Not searched. Connect your account first.")),
+    ...r.failed.map((b) => row(`data-go=brand data-arg="${esc(b.adapter)}"`, "wifi-off", b.adapter_name, b.error)),
+  ];
+  return found + (extra.length ? `<div class="list" data-search-all-skipped>${extra.join("")}</div>` : "");
+}
 
 const VIEWS = {
   home() {
@@ -77,7 +99,7 @@ const VIEWS = {
       return `<p class="group-label">${esc(r || "No room")}</p><div class="list">${list.map((d) => {
         const s = d.state || {};
         const warn = s.needs_pairing ? "Needs pairing" : s.online === false ? "Offline" : "";
-        return row(`data-go=device data-arg="${esc(d.id)}"`, kindIcon(d), d.name, d.adapter_name,
+        return row(`data-go=device data-arg="${esc(d.id)}"`, svg(deviceIconName(d), "dim"), d.name, d.adapter_name,
                    warn ? `<span class="badge">${warn}</span>` : "");
       }).join("")}</div>`;
     }).join("");
@@ -98,6 +120,13 @@ const VIEWS = {
           <option value="">No room</option>
           ${store.rooms.map((r) => `<option ${r === d.room ? "selected" : ""}>${esc(r)}</option>`).join("")}
         </select></label>
+        <span class="field"><span>Icon</span></span>
+        <div class="icon-choices" role="radiogroup" aria-label="Icon">
+          <label class="icon-choice"><input type="radio" name="d-icon" value="" ${!d.icon ? "checked" : ""}>
+            <span>${svg(deviceIconName({ ...d, icon: "" }))}<small>Auto</small></span></label>
+          ${DEVICE_ICONS.map((ic) => `<label class="icon-choice"><input type="radio" name="d-icon" value="${ic}" ${d.icon === ic ? "checked" : ""}>
+            <span aria-label="${ic}">${svg(ic)}</span></label>`).join("")}
+        </div>
         ${d.kind === "tv" ? `<label class="field"><span>MAC address (used to turn the TV on)</span>
           <input id="d-mac" value="${esc(d.mac || "")}" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off" spellcheck="false">
           <small>${d.mac ? "Found automatically." : "Usually found automatically after the panel has talked to the TV while it's on."}
@@ -119,16 +148,32 @@ const VIEWS = {
 
   add() {
     const list = store.adapters.filter((a) => !a.hidden);
+    const st = searchAll;
     page("Add a device", `
-      <p class="group-label">Choose the brand. Most plugs sold as "works with Smart Life" use Tuya.</p>
+      <div class="card" data-search-all-card>
+        <h3>Search all brands</h3>
+        <p>Look for every plug, light and TV on your Wi-Fi at once. This can take up to half a minute.</p>
+        <label class="field"><span>Put new devices in</span><select id="add-room">
+          <option value="">No room</option>${store.rooms.map((r) => `<option ${r === st.room ? "selected" : ""}>${esc(r)}</option>`).join("")}
+        </select></label>
+        <div class="btn-row"><button class="btn primary" data-discover-all ${st.searching ? "disabled" : ""}>
+          ${icon("search")}${st.searching ? "Searching all brands…" : st.result ? "Search again" : "Search all brands"}</button></div>
+      </div>
+      ${st.result ? searchAllResults(st.result) : ""}
+      <p class="group-label">Or choose the brand. Most plugs sold as "works with Smart Life" use Tuya.</p>
       <div class="list">${list.map((a) => row(`data-go=brand data-arg="${esc(a.id)}"`, kindIcon({ kind: a.kinds[0] }), a.name,
-        a.available ? a.brands : `Not installed on this panel (needs ${a.missing.join(", ")})`)).join("")}</div>`, { closeBtn: true });
+        a.available ? a.brands : a.unsupported ? `Not available on this panel: ${a.unsupported}`
+          : `Not installed on this panel (needs ${a.missing.join(", ")})`)).join("")}</div>`, { closeBtn: true });
   },
 
   brand(id) {
     const a = store.adapters.find((x) => x.id === id);
     if (!a) return back();
     const st = brandState;
+    if (!a.available && a.unsupported) {
+      return page(a.name, `<div class="note warn">${esc(a.name)} can't run on this panel. ${esc(a.unsupported)}.
+        See docs/DEVICE_SETUP.md for how to set it up.</div>`, { closeBtn: true });
+    }
     if (!a.available) {
       return page(a.name, `<div class="note warn">Support for ${esc(a.name)} isn't installed. On the panel, run
         <b>./scripts/install.sh</b> again, or <b>pip install ${esc(a.missing.join(" "))}</b>.</div>`, { closeBtn: true });
@@ -317,10 +362,18 @@ const VIEWS = {
     page("Location and presence", `
       <form class="card" data-location>
         <h3>Your location</h3>
-        <p>Used only to work out sunrise and sunset times on this panel. In Google Maps, long-press your home to see its coordinates.</p>
+        <p>Used on this panel for sunrise and sunset times and, if you turn it on, the weather. In Google Maps, long-press your home to see its coordinates.</p>
         <label class="field"><span>Latitude</span><input name="latitude" inputmode="decimal" value="${s.latitude ?? ""}" placeholder="47.61"></label>
         <label class="field"><span>Longitude</span><input name="longitude" inputmode="decimal" value="${s.longitude ?? ""}" placeholder="-122.33"></label>
         <p id="sun-today"></p>
+        <label class="field"><span>Place name (optional)</span><input name="place_name" maxlength="40" value="${esc(s.place_name || "")}" placeholder="Seattle">
+          <small>Shown on the resting clock. Your coordinates aren't sent anywhere to look it up.</small></label>
+        <label class="check"><input type="checkbox" name="weather_enabled" ${s.weather_enabled ? "checked" : ""}>
+          <span>Show the weather on the resting clock</span></label>
+        <p><small>The panel asks Open-Meteo (free, no account) for the weather about every 20 minutes, sending your location rounded to about 1 km. It's the panel's only internet call that isn't for a device. Without internet the clock just leaves the weather out.</small></p>
+        <label class="field"><span>Temperature</span><select name="temperature_unit">
+          ${[["F", "°F (Fahrenheit)"], ["C", "°C (Celsius)"]].map(([v, l]) => `<option value="${v}" ${(s.temperature_unit || "F") === v ? "selected" : ""}>${l}</option>`).join("")}
+        </select></label>
         <div class="btn-row"><button class="btn primary" type="submit">Save location</button></div>
       </form>
       <div class="card">
@@ -367,7 +420,7 @@ const VIEWS = {
         <label class="check"><input type="checkbox" name="frame_shuffle" ${s.frame_shuffle !== false ? "checked" : ""}><span>Shuffle</span></label>
         <label class="check"><input type="checkbox" name="frame_clock" ${s.frame_clock !== false ? "checked" : ""}><span>Show the time over photos</span></label>
         <label class="field" style="margin-top:12px"><span>When the panel is idle, show</span><select name="idle_screen">
-          <option value="clock" ${s.idle_screen !== "photos" ? "selected" : ""}>The dim night clock</option>
+          <option value="clock" ${s.idle_screen !== "photos" ? "selected" : ""}>The resting clock</option>
           <option value="photos" ${s.idle_screen === "photos" ? "selected" : ""}>The photo frame</option>
         </select><small>How long until idle is set in Display and clock.</small></label>
         <label class="check"><input type="checkbox" name="frame_night_clock" ${s.frame_night_clock !== false ? "checked" : ""}>
@@ -379,17 +432,25 @@ const VIEWS = {
 
   display() {
     const s = store.settings;
+    const now = new Date();
+    const info = faceInfo();
     const opts = [[0, "Never"], [30, "30 seconds"], [60, "1 minute"], [90, "90 seconds"], [180, "3 minutes"], [600, "10 minutes"]];
     page("Display and clock", `
       <form class="card" data-display>
-        <label class="field"><span>Show the night clock after</span><select name="dim_after_seconds">
+        <label class="field"><span>Show the resting clock after</span><select name="dim_after_seconds">
           ${opts.map(([v, l]) => `<option value="${v}" ${Number(s.dim_after_seconds) === v ? "selected" : ""}>${l}</option>`).join("")}
         </select><small>The screen goes dark with a dim clock so it doesn't light up the room. Touch to wake.</small></label>
+        <span class="field"><span>Clock face</span></span>
+        <div class="face-choices" role="radiogroup" aria-label="Clock face">
+          ${FACES.map((f) => `
+            <label class="face-choice"><input type="radio" name="clock_face" value="${f.id}" ${faceId(s.clock_face) === f.id ? "checked" : ""}>
+              <span class="face-preview">${faceHTML(f.id, now, info)}</span><span>${esc(f.name)}</span></label>`).join("")}
+        </div>
         <label class="check"><input type="checkbox" name="clock_24h" ${s.clock_24h ? "checked" : ""}><span>24-hour clock</span></label>
         <span class="field"><span>Background</span></span>
         <div class="bg-choices" role="radiogroup" aria-label="Background">
-          ${[["ocean", "Ocean"], ["aurora", "Aurora"], ["night", "Night"]].map(([v, l]) => `
-            <label class="bg-choice"><input type="radio" name="background" value="${v}" ${(s.background || "ocean") === v ? "checked" : ""}>
+          ${[["sky", "Sky"], ["ocean", "Ocean"], ["aurora", "Aurora"], ["night", "Night"]].map(([v, l]) => `
+            <label class="bg-choice"><input type="radio" name="background" value="${v}" ${(s.background || "sky") === v ? "checked" : ""}>
               <span class="bg-swatch ${v}"></span><span>${l}</span></label>`).join("")}
         </div>
         <label class="field"><span>Glass transparency <b id="glass-val">${s.glass_transparency ?? 45}%</b></span>
@@ -413,7 +474,8 @@ const VIEWS = {
       const h = await api.health();
       $("#health").innerHTML = `<h3>${h.online} of ${h.devices} devices responding</h3>
         <p>Running for ${fmtDuration(h.uptime_s)}. Brands available: ${esc(h.adapters.join(", "))}.
-        ${Object.keys(h.unavailable).length ? `<br>Not installed: ${esc(Object.keys(h.unavailable).join(", "))}.` : ""}</p>
+        ${Object.keys(h.unavailable).length ? `<br>Not installed: ${esc(Object.keys(h.unavailable).join(", "))}.` : ""}
+        ${Object.keys(h.unsupported || {}).length ? `<br>Not available on this Python: ${esc(Object.keys(h.unsupported).join(", "))}.` : ""}</p>
         <h3 class="phone-title">Use it on your phone</h3>
         <p id="phone-url">${phoneHint(h)}</p>`;
     } catch (e) { $("#health").innerHTML = `<p>${esc(e.message)}</p>`; }
@@ -517,7 +579,7 @@ root.addEventListener("click", async (e) => {
     if (t("[data-save-device]")) {
       const id = t("[data-save-device]").dataset.saveDevice;
       const changes = { name: $("#d-name").value.trim() || "Device", room: $("#d-room").value,
-                        keep_on: !!$("#d-keep")?.checked };
+                        keep_on: !!$("#d-keep")?.checked, icon: $("input[name=d-icon]:checked")?.value || "" };
       if ($("#d-mac")) changes.mac = $("#d-mac").value.trim();
       await api.updateDevice(id, changes);
       toast("Saved");
@@ -534,6 +596,24 @@ root.addEventListener("click", async (e) => {
       const d = store.devices.get(id);
       if (!confirm(`Remove ${d?.name || "this device"} from the panel? It stays set up in its own app.`)) return;
       await api.removeDevice(id); await reload(); toast("Removed"); return back();
+    }
+    if (t("[data-discover-all]")) {
+      searchAll.searching = true; searchAll.room = $("#add-room")?.value; render();
+      try { searchAll.result = await api.discoverAll(); }
+      finally { searchAll.searching = false; if (stack.at(-1)?.view === "add") render(); }
+      return;
+    }
+    if (t("[data-add-found]")) {
+      const b = t("[data-add-found]");
+      b.disabled = true; b.textContent = "Adding…";
+      const room = $("#add-room")?.value || "";
+      searchAll.room = room;
+      const d = await api.addDevice({ adapter: b.dataset.adapter, uid: b.dataset.addFound, name: b.dataset.name, room });
+      const f = searchAll.result?.found.find((x) => x.adapter === b.dataset.adapter && x.uid === b.dataset.addFound);
+      if (f) f.added = true;
+      toast(d.pairing ? `${d.name} added. Look at the TV and accept the prompt, then tap Pair.` : `${d.name} added`, d.pairing);
+      await reload();
+      return render();
     }
     if (t("[data-discover]")) {
       brandState.searching = true; brandState.room = $("#add-room")?.value; render();
@@ -556,6 +636,8 @@ root.addEventListener("click", async (e) => {
     }
     if (t("[data-account-action]")) {
       const b = t("[data-account-action]"); b.disabled = true;
+      const form = b.closest("form");      // save what was typed first, so the action can use it
+      if (form) brandState.account = await api.saveAccount(top.arg, formValues(form));
       const r = await api.accountAction(top.arg, b.dataset.accountAction);
       brandState.account = r.account; toast(r.message); await reload(); return render();
     }
@@ -629,7 +711,9 @@ root.addEventListener("submit", async (e) => {
     }
     if (form.matches("[data-location]")) {
       const v = formValues(form);
-      await api.saveSettings({ latitude: v.latitude.trim() || null, longitude: v.longitude.trim() || null });
+      await api.saveSettings({ latitude: v.latitude.trim() || null, longitude: v.longitude.trim() || null,
+                               place_name: v.place_name.trim(), weather_enabled: !!v.weather_enabled,
+                               temperature_unit: v.temperature_unit });
       toast("Location saved"); await reload(); return render();
     }
     if (form.matches("[data-person-add]")) {
@@ -650,7 +734,7 @@ root.addEventListener("submit", async (e) => {
     if (form.matches("[data-display]")) {
       const v = formValues(form);
       await api.saveSettings({ dim_after_seconds: Number(v.dim_after_seconds), clock_24h: !!v.clock_24h,
-                               glass_effect: !!v.glass_effect, background: v.background,
+                               glass_effect: !!v.glass_effect, background: v.background, clock_face: v.clock_face,
                                glass_transparency: Number(v.glass_transparency) });
       toast("Saved"); await reload(); return back();
     }

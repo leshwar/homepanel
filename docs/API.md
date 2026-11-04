@@ -48,11 +48,28 @@ A device looks like:
 | `volume_up` / `volume_down` | — | volume |
 | `mute` | `true` / `false` (omit to toggle) | mute |
 | `channel_up` / `channel_down` | — | channel |
-| `key` | `UP DOWN LEFT RIGHT OK BACK HOME MENU SOURCE PLAY PAUSE STOP REWIND FORWARD` | remote |
+| `key` | `UP DOWN LEFT RIGHT OK BACK HOME MENU SOURCE PLAY PAUSE STOP REWIND FORWARD EXIT CHANNEL_LIST INFO` and the digits `0`–`9` | remote |
 | `launch_app` | app id from `meta.apps` | apps |
 | `set_input` | input id from `meta.inputs` | inputs |
+| `clean` | `start` / `pause` / `resume` / `stop` | clean |
+| `dock` | — (go back to the charging dock) | dock |
+| `clean_rooms` | list of room ids from `meta.rooms`, e.g. `[1, 3]` | rooms |
+| `set_suction` | id from `meta.suction_levels` | suction |
+| `set_clean_mode` | id from `meta.clean_modes` (vacuum, mop, both…) | clean_mode |
+| `station` | id from `meta.station_actions` (e.g. `empty_dustbin`) | station |
+| `locate` | — (plays a sound) | locate |
+| `set_sound_mode` | sound mode id from `meta.sound_modes` (other ids are rejected) | sound_mode |
+| `pointer` | `{"dx": 12, "dy": -4}` to move, `{"click": true}` to click, `{"scroll": 40}` to scroll (positive = down). Moves are clamped to ±400 per message. | pointer |
 
-Returns the updated device. Example:
+`GET /devices/{id}/map` returns the floor plan as an image (SVG for Ecovacs) for
+devices with the `map` capability. The state key `map_rev` changes when the map
+does, so add it to the URL to refresh the picture.
+
+Returns the updated device. `pointer` commands don't change the device's state, so they
+aren't broadcast as live events; the UI batches moves (one request in flight, every
+~30 ms) so the TV's pointer follows a finger smoothly.
+
+Example:
 
 ```bash
 curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
@@ -60,12 +77,14 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 ```
 
 `POST /all-off` with optional `{"room": "Kitchen"}` turns off everything that's on
-(skipping devices marked `keep_on`). Returns `{"turned_off": n}`.
+(skipping devices marked `keep_on`). `{"room": ""}` means devices that aren't in a
+room (shown as "Other" on the panel). Returns `{"turned_off": n}`.
 
 ## Managing devices
 
 | Method | Path | Body |
 |---|---|---|
+| POST | `/discover` | — → `{"found": [{adapter, adapter_name, uid, name, kind, caps, detail, needs_pairing, added}], "searched": [adapter ids], "failed": [{adapter, adapter_name, error}], "needs_account": [{adapter, adapter_name}]}`. Searches every brand at once; brands that need an account first are listed, not searched. Add a result with `POST /devices` `{"adapter", "uid"}`. |
 | POST | `/adapters/{adapter}/discover` | — → `{"found": [{uid, name, kind, caps, detail, needs_pairing, added}]}` |
 | POST | `/devices` | `{"adapter", "uid"}` from discovery, **or** `{"adapter", "manual": {...fields}}`, plus optional `name`, `room` |
 | PATCH | `/devices/{id}` | any of `name`, `room`, `icon`, `kind`, `keep_on` |
@@ -89,7 +108,23 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 | POST | `/scenes` | `{"name", "icon", "actions": [{device_id, action, value}]}` **or** `{"name", "icon", "capture": [device ids]}` to save devices as they are now |
 | DELETE | `/scenes/{id}` | — |
 | POST | `/scenes/{id}/run` | — → `{"ok": n, "failed": [messages]}` |
-| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`ocean`/`aurora`/`night`), `glass_transparency` (0–100), `glass_effect` (blur on/off) |
+| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`sky` (default: follows the weather and time of day)/`ocean`/`aurora`/`night`), `home_layout` (the Home page widgets, see below; `null` = the default), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`), `place_name` (shown on the clock, max 40 characters), `weather_enabled` (opt-in), `temperature_unit` (`C`/`F`) |
+
+`home_layout` is one object, the same for every screen. `GET /state` returns the
+default (built from your devices) until someone saves one:
+
+```json
+{"version": 1, "widgets": [
+  {"id": "clock",   "type": "clock",   "size": "2x2", "hidden": false, "options": {}},
+  {"id": "zone-in", "type": "zone",    "size": "1x1", "hidden": false, "options": {"tz": "Asia/Kolkata", "label": "India"}},
+  {"id": "zone-us", "type": "zone",    "size": "1x1", "hidden": false, "options": {"tz": null, "label": "US"}},
+  {"id": "dev-lr-tv", "type": "device", "size": "2x1", "hidden": false, "options": {"device_id": "lr-tv"}}]}
+```
+
+Types: `clock`, `zone` (a clock for another place; `tz: null` = the screen's own zone
+if it's in the US, else US Eastern), `weather`, `scenes`, `rooms`, `device`. Sizes are
+grid columns × rows: `1x1`, `2x1`, `2x2`. Up to 40 widgets; a bad layout gets a 400
+that says what's wrong.
 
 ## Energy
 
@@ -111,6 +146,7 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 | DELETE | `/automations/{id}` | — |
 | POST | `/automations/{id}/run` | run it now |
 | GET | `/sun` | today's `sunrise` / `sunset` (unix time) once a location is set |
+| GET | `/weather` | `{available, temperature, high, low, unit, condition, label, is_day, updated}`; `condition` is one of `clear`, `partly-cloudy`, `cloudy`, `fog`, `drizzle`, `rain`, `snow`, `storm`. `{available: false}` when weather is off, there's no location, or the source can't be reached. Fetched on the server and cached for 20 minutes |
 | GET | `/presence` | `{"people": [{name, ip, home, last_seen}]}` |
 
 ```json

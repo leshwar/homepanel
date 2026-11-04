@@ -13,7 +13,7 @@ import logging
 import time
 
 from starlette.requests import Request
-from starlette.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
+from starlette.responses import FileResponse, JSONResponse, PlainTextResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from ..core.adapter import AdapterError
@@ -42,7 +42,7 @@ def handle_errors(fn):
     async def wrapper(request: Request):
         try:
             result = await fn(request)
-            return result if isinstance(result, (JSONResponse, StreamingResponse, PlainTextResponse, FileResponse)) \
+            return result if isinstance(result, Response) \
                 else JSONResponse(result)
         except (AdapterError, PhotoError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
@@ -141,6 +141,11 @@ async def discover(request):
 
 
 @handle_errors
+async def discover_all(request):
+    return await _svc(request).discover_all()
+
+
+@handle_errors
 async def get_account(request):
     return _svc(request).account_public(request.path_params["adapter"])
 
@@ -187,6 +192,15 @@ async def put_settings(request):
 # --- energy, automations, presence ---------------------------------------------------
 
 @handle_errors
+async def device_map(request):
+    content_type, body = await _svc(request).map_image(request.path_params["id"])
+    # The picture comes from the device's cloud: never let it run scripts or load anything.
+    return Response(body, media_type=content_type, headers={
+        "Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:"})
+
+
+@handle_errors
 async def device_energy(request):
     days = int(request.query_params.get("days", 7))
     return await _svc(request).energy(request.path_params["id"], days)
@@ -231,6 +245,11 @@ async def get_sun(request):
         t = sun_event(today, s["latitude"], s["longitude"], ev)
         out[ev] = t.timestamp() if t else None
     return out
+
+
+@handle_errors
+async def get_weather(request):
+    return await _svc(request).weather.current()
 
 
 # --- photo frame -------------------------------------------------------------------
@@ -291,7 +310,7 @@ async def health(request):
     devices = list(svc.store.devices.values())
     return {"ok": True, "time": time.time(), "uptime_s": round(time.time() - request.app.state.started, 1),
             "devices": len(devices), "online": sum(1 for d in devices if d.state.get("online")),
-            "adapters": sorted(svc.adapters), "unavailable": svc.unavailable, "demo": svc.demo,
+            "adapters": sorted(svc.adapters), "unavailable": svc.unavailable, "unsupported": svc.unsupported, "demo": svc.demo,
             "in_container": in_container(),
             # where to open the panel on a phone (unknown inside Docker: the container's
             # address isn't the computer's, so the UI explains how to find it)
@@ -310,6 +329,7 @@ routes = [
     Route("/api/v1/devices/{id}/pair", pair_device, methods=["POST"]),
     Route("/api/v1/devices/{id}/refresh", refresh_device, methods=["POST"]),
     Route("/api/v1/all-off", all_off, methods=["POST"]),
+    Route("/api/v1/discover", discover_all, methods=["POST"]),
     Route("/api/v1/adapters/{adapter}/discover", discover, methods=["POST"]),
     Route("/api/v1/adapters/{adapter}/account", get_account, methods=["GET"]),
     Route("/api/v1/adapters/{adapter}/account", put_account, methods=["PUT"]),
@@ -320,12 +340,14 @@ routes = [
     Route("/api/v1/scenes/{id}/run", run_scene, methods=["POST"]),
     Route("/api/v1/settings", put_settings, methods=["PUT"]),
     Route("/api/v1/devices/{id}/energy", device_energy),
+    Route("/api/v1/devices/{id}/map", device_map),
     Route("/api/v1/automations", list_automations, methods=["GET"]),
     Route("/api/v1/automations", save_automation, methods=["POST"]),
     Route("/api/v1/automations/{id}", delete_automation, methods=["DELETE"]),
     Route("/api/v1/automations/{id}/run", run_automation, methods=["POST"]),
     Route("/api/v1/presence", get_presence),
     Route("/api/v1/sun", get_sun),
+    Route("/api/v1/weather", get_weather),
     Route("/api/v1/photos", list_photos, methods=["GET"]),
     Route("/api/v1/photos", upload_photo, methods=["POST"]),
     Route("/api/v1/photos/{id}", delete_photo, methods=["DELETE"]),

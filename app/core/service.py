@@ -17,6 +17,7 @@ import logging
 import os
 import time
 import uuid
+from collections import Counter
 from dataclasses import asdict
 from typing import Any, Awaitable, Callable
 
@@ -27,6 +28,7 @@ from .history import History
 from .net import in_container, normalize_mac, parse_color
 from .photos import PhotoLibrary
 from .presence import Presence
+from .weather import Weather
 from .store import Store
 
 log = logging.getLogger("homepanel")
@@ -34,6 +36,7 @@ log = logging.getLogger("homepanel")
 COMMAND_TIMEOUT = 10.0
 BACKGROUNDS = ("ocean", "aurora", "night")
 IDLE_SCREENS = ("clock", "photos")
+CLOCK_FACES = ("digital", "analog", "words", "date", "night")
 REFRESH_TIMEOUT = 8.0
 OFFLINE_AFTER_FAILURES = 2
 
@@ -144,10 +147,12 @@ class HomeService:
         self._soon: dict[str, asyncio.TimerHandle] = {}   # pushed changes waiting to refresh
         self._failures: dict[str, int] = {}
         self._found: dict[tuple[str, str], Found] = {}
+        self._found_ips: dict[str, Counter] = {}     # per brand: how many results the last search found at each address
         self._middleware: list[Middleware] = [mw_validate, mw_normalize, mw_log, mw_timeout_retry]
         self.history = History(os.path.join(data_dir, "demo-history.db" if demo else "history.db"))
         self.automations = Automations(self)
         self.photos = PhotoLibrary(os.path.join(data_dir, "demo-photos" if demo else "photos"))
+        self.weather = Weather(lambda: self.store.settings)
         self.presence = Presence(lambda: self.store.settings.get("presence") or [], self.automations.on_presence)
         self._background: list[asyncio.Task] = []
 
@@ -393,14 +398,38 @@ class HomeService:
         if not a:
             raise AdapterError("This brand isn't available.")
         found = await asyncio.wait_for(a.discover(), 25)
-        known = {(d.adapter, d.config.get("_uid")) for d in self.store.devices.values()}
+        self._found_ips[adapter_id] = Counter(f.config.get("ip") for f in found if f.config.get("ip"))
         out = []
         for f in found:
             self._found[(adapter_id, f.uid)] = f
             item = f.to_dict()
-            item["added"] = (adapter_id, f.uid) in known
+            item["added"] = self._already_added(adapter_id, f, by_ip=True) is not None
             out.append(item)
         return out
+
+    def _already_added(self, adapter_id: str, f: Found, *, by_ip: bool) -> Device | None:
+        """The saved device a search result (or manual entry) is, if any.
+        Matches the result's uid and aliases against every id the device is known by. With by_ip,
+        a saved device of the same brand at the same address also counts (a safety net for when a
+        brand reports a different uid depending on how it found the device) — but only when that
+        address belongs to one device on each side, so hubs and multi-channel devices aren't hidden,
+        and not when both sides know a MAC and the MACs differ (a new device on a reused address)."""
+        a = self.adapters[adapter_id]
+        ids = {f.uid, *f.aliases}
+        mine = [d for d in self.store.devices.values() if d.adapter == adapter_id]
+        for d in mine:
+            if ids & a.known_ids(d):
+                return d
+        ip = f.config.get("ip")
+        if not by_ip or not ip or self._found_ips.get(adapter_id, Counter())[ip] > 1:
+            return None
+        at_ip = [d for d in mine if d.config.get("ip") == ip]
+        if len(at_ip) != 1:
+            return None
+        mac, saved_mac = normalize_mac(f.config.get("mac")), normalize_mac(at_ip[0].config.get("mac"))
+        if mac and saved_mac and mac != saved_mac:
+            return None
+        return at_ip[0]
 
     def _searchable(self) -> tuple[list[str], list[str]]:
         """Brands that "Search all brands" can search now, and brands that need an account first.
@@ -457,12 +486,17 @@ class HomeService:
                 raise AdapterError("That device isn't in the latest search. Search again.")
         else:
             f = a.from_manual(manual or {})
-        for d in self.store.devices.values():
-            if d.adapter == adapter_id and d.config.get("_uid") == f.uid:
-                raise AdapterError(f"Already added as '{d.name}'.")
+        # The address safety net only for search results: a hand-entered device may share an
+        # address on purpose (e.g. the second channel of a two-channel relay).
+        dup = self._already_added(adapter_id, f, by_ip=bool(uid))
+        if dup:
+            raise AdapterError(f"Already added as '{dup.name}'.")
         room = room or f.room
+        config = {**f.config, "_uid": f.uid}
+        if f.aliases:
+            config["_aliases"] = list(f.aliases)
         d = Device(id=uuid.uuid4().hex[:10], adapter=adapter_id, name=(name or f.name).strip(),
-                   kind=f.kind, room=room, config={**f.config, "_uid": f.uid}, caps=list(f.caps))
+                   kind=f.kind, room=room, config=config, caps=list(f.caps))
         self.store.devices[d.id] = d
         if room and room not in self.store.rooms:
             self.store.rooms.append(room)
@@ -657,12 +691,22 @@ class HomeService:
                 raise AdapterError("Glass transparency should be a number from 0 to 100.")
         if "idle_screen" in changes and changes["idle_screen"] not in IDLE_SCREENS:
             raise AdapterError("Idle screen should be 'clock' or 'photos'.")
+        if "place_name" in changes:
+            changes["place_name"] = " ".join(str(changes["place_name"] or "").split())[:40]
+        if "temperature_unit" in changes:
+            unit = str(changes["temperature_unit"] or "").upper()
+            if unit not in ("C", "F"):
+                raise AdapterError("Temperature unit should be C or F.")
+            changes["temperature_unit"] = unit
+        if "clock_face" in changes and changes["clock_face"] not in CLOCK_FACES:
+            raise AdapterError(f"Clock face should be one of: {', '.join(CLOCK_FACES)}.")
         if "frame_seconds" in changes:
             try:
                 changes["frame_seconds"] = max(5, min(300, int(float(changes["frame_seconds"]))))
             except (TypeError, ValueError):
                 raise AdapterError("Seconds per photo should be a number.")
-        for key in ("glass_effect", "clock_24h", "frame_shuffle", "frame_clock", "frame_night_clock"):
+        for key in ("glass_effect", "clock_24h", "frame_shuffle", "frame_clock", "frame_night_clock",
+                    "weather_enabled"):
             if key in changes:
                 changes[key] = changes[key] in (True, 1, "1", "true", "on")
         if "presence" in changes:

@@ -14,7 +14,7 @@ except ImportError:  # pragma: no cover
         raise
     sync_playwright = None
 
-from tests.helpers import DemoServer
+from tests.helpers import DemoServer, FakeWeatherSource
 
 
 @unittest.skipIf(sync_playwright is None, "playwright not installed")
@@ -211,6 +211,107 @@ class UITests(unittest.TestCase):
         self.page.locator("#ambient").click()
         self.page.wait_for_selector("#ambient", state="hidden")
         self.assertEqual(before, self.tile("lr-lamp").evaluate("el => el.classList.contains('on')"))
+
+
+    def test_each_clock_face_shows_and_wakes(self):
+        faces = ["digital", "analog", "words", "date", "night"]
+        try:
+            for face in faces:
+                with self.subTest(face=face):
+                    self.page.click("#open-settings")
+                    self.page.click("[data-go=display]")
+                    self.page.click(f".face-choice:has(input[value={face}])")
+                    self.page.click("[data-display] button[type=submit]")
+                    self.page.wait_for_selector("[data-go=display]")      # saved, back on the settings home
+                    self.page.click("#settings [data-back]")
+                    self.page.wait_for_selector("#settings", state="hidden")
+                    self.page.click("#clock")
+                    self.page.wait_for_selector(f"#ambient[data-face={face}] .cf-{face}")
+                    self.assertTrue(self.page.locator(f"#ambient .cf-{face}").is_visible())
+                    before = self.tile("lr-lamp").evaluate("el => el.classList.contains('on')")
+                    self.page.locator("#ambient").click()
+                    self.page.wait_for_selector("#ambient", state="hidden")
+                    self.assertEqual(before, self.tile("lr-lamp").evaluate("el => el.classList.contains('on')"))
+        finally:
+            self.page.evaluate("""fetch('/api/v1/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+                                  body: JSON.stringify({clock_face: 'digital'})})""")
+
+    def put_settings(self, **s):
+        import json
+        self.page.evaluate(f"""fetch('/api/v1/settings', {{method: 'PUT', headers: {{'Content-Type': 'application/json'}},
+                                body: JSON.stringify({json.dumps(s)})}})""")
+
+    def show_clock(self):
+        self.page.reload()
+        self.page.wait_for_selector(".tile")
+        self.page.click("#clock")
+        self.page.wait_for_selector("#ambient:not([hidden])")
+
+    def test_clock_shows_weather_and_place_and_hides_weather_when_unavailable(self):
+        source = FakeWeatherSource(temperature=53.6, code=61)
+        os.environ["HOMEPANEL_WEATHER_URL"] = source.url
+        try:
+            # opt in through Settings → Location and presence
+            self.page.click("#open-settings")
+            self.page.click("[data-go=location]")
+            self.page.fill("input[name=latitude]", "47.61")
+            self.page.fill("input[name=longitude]", "-122.33")
+            self.page.fill("input[name=place_name]", "Seattle")
+            self.page.check("input[name=weather_enabled]")
+            self.page.click("[data-location] button[type=submit]")
+            self.page.wait_for_selector("text=Location saved")
+            for face in ("digital", "analog", "words", "date"):
+                with self.subTest(face=face):
+                    self.put_settings(clock_face=face)
+                    self.show_clock()
+                    self.page.wait_for_selector("#ambient .cf-wx[data-condition=rain] .cf-wx-icon")
+                    text = self.page.inner_text("#ambient")
+                    self.assertIn("54°", text)
+                    self.assertIn("Seattle".upper() if face == "date" else "Seattle", text)
+            self.put_settings(clock_face="night")              # night face: just a dim temperature
+            self.show_clock()
+            self.page.wait_for_selector("#ambient .cf-night .cf-temp")
+            self.assertEqual(self.page.locator("#ambient .cf-wx-icon").count(), 0)
+            before = self.tile("lr-lamp").evaluate("el => el.classList.contains('on')")
+            self.page.locator("#ambient").click()
+            self.page.wait_for_selector("#ambient", state="hidden")
+            self.assertEqual(before, self.tile("lr-lamp").evaluate("el => el.classList.contains('on')"))
+
+            # source unreachable → the clock just leaves the weather out
+            source.stop()
+            os.environ["HOMEPANEL_WEATHER_URL"] = source.url.replace("/v1", "/gone/v1")
+            self.put_settings(clock_face="digital", temperature_unit="C")
+            self.show_clock()
+            self.page.wait_for_selector("#ambient .cf-wx .cf-place")  # place still shown
+            self.page.wait_for_timeout(500)
+            self.assertEqual(self.page.locator("#ambient .cf-wx-icon").count(), 0)
+            self.assertNotIn("°", self.page.inner_text("#ambient"))
+        finally:
+            os.environ.pop("HOMEPANEL_WEATHER_URL", None)
+            self.put_settings(clock_face="digital", latitude=None, longitude=None, place_name="",
+                              weather_enabled=False, temperature_unit="F")
+
+    def test_clock_face_logic(self):
+        words, drift = self.page.evaluate("""async () => {
+            const m = await import('/js/clockfaces.js');
+            const words = [[10, 15], [10, 45], [23, 58], [0, 2], [12, 1], [9, 33], [21, 0]].map(([h, mi]) => m.wordTime(h, mi));
+            const drift = [];
+            for (let t = 0; t < 4 * 3600e3; t += 97e3) drift.push(m.driftOffset(t, 40, 30));
+            return [words, drift];
+        }""")
+        self.assertEqual(words, ["It's quarter past ten", "It's quarter to eleven", "It's midnight", "It's midnight",
+                                 "It's noon", "It's twenty-five to ten", "It's nine o'clock"])
+        self.assertTrue(all(abs(x) <= 40 and abs(y) <= 30 for x, y in drift))
+        self.assertGreater(len({tuple(d) for d in drift}), 50)   # it really moves around
+
+    def test_ambient_clock_drifts_within_screen(self):
+        self.page.click("#clock")
+        self.page.wait_for_selector("#ambient .cf-digital")
+        box = self.page.evaluate("""() => { const r = document.querySelector('#ambient-face').getBoundingClientRect();
+                                    return [r.left, r.top, r.right, r.bottom, innerWidth, innerHeight]; }""")
+        left, top, right, bottom, w, h = box
+        self.assertTrue(left >= 0 and top >= 0 and right <= w and bottom <= h, box)
+        self.page.locator("#ambient").click()
 
 
 if __name__ == "__main__":

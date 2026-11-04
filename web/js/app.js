@@ -8,6 +8,7 @@ import { openDevice, refreshSheet, closeSheet, isSheetOpen } from "./sheet.js";
 import { openSettings, isSettingsOpen, refreshSettings } from "./settings.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame, isFrameOpen } from "./photoframe.js";
+import { renderAmbient } from "./clockfaces.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 
@@ -20,9 +21,7 @@ function renderClock() {
   const date = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
   $("#clock-time").textContent = time;
   $("#clock-sub").textContent = date;
-  $("#ambient-time").textContent = time;
-  const on = [...store.devices.values()].filter((d) => d.state?.on && d.kind === "light").length;
-  $("#ambient-sub").textContent = on ? `${date}. ${on} ${on === 1 ? "light is" : "lights are"} on.` : date;
+  renderAmbient(now);
 }
 
 // ---------- scenes ----------
@@ -215,7 +214,7 @@ function setupChrome() {
 
 // ---------- idle ambient clock ----------
 let lastActivity = Date.now();
-function showAmbient() { closeSheet(); $("#ambient").hidden = false; }
+function showAmbient() { closeSheet(); $("#ambient").hidden = false; renderAmbient(); }
 function setupIdle() {
   const wake = () => { lastActivity = Date.now(); };
   ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, wake, { capture: true }));

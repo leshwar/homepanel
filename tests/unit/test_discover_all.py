@@ -4,7 +4,7 @@ import shutil
 import tempfile
 import unittest
 
-from app.core.adapter import Cap, DeviceAdapter, Field, Found, Kind
+from app.core.adapter import AdapterError, Cap, DeviceAdapter, Field, Found, Kind
 from app.core.service import HomeService
 
 
@@ -110,6 +110,88 @@ class DiscoverAllTests(unittest.IsolatedAsyncioTestCase):
         svc.adapters = {"t_plugs": _Plugs({}, self.dir)}       # hidden = pretend: never searched for real
         ready, _ = svc._searchable()
         self.assertEqual(ready, [])
+
+
+class _TVs(_Base):
+    """A brand that reports a different uid depending on how it found the device (the bug)."""
+    id, name, kinds, hidden = "t_tvs", "Test TVs", (Kind.TV,), True
+    results: list = []
+
+    async def discover(self, timeout=6.0):
+        return list(_TVs.results)
+
+    def from_manual(self, values):
+        return Found(adapter=self.id, uid=values["uid"], name="Manual", kind=Kind.TV, config={"ip": values["ip"]})
+
+    async def setup(self, device):
+        pass
+
+
+def _tv(uid, ip, mac=""):
+    return Found(adapter="t_tvs", uid=uid, name="TV", kind=Kind.TV, config={"ip": ip, "mac": mac})
+
+
+class SameAddressSafetyNet(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.svc = HomeService(self.dir, demo=True)
+        await self.svc.start()
+        self.svc.adapters["t_tvs"] = _TVs({}, self.dir)
+        _TVs.results = [_tv("uuid:1470", "10.0.0.13")]
+        await self.svc.discover("t_tvs")
+        await self.svc.add_device("t_tvs", uid="uuid:1470")
+
+    async def asyncTearDown(self):
+        await self.svc.stop()
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def added(self, r, uid):
+        return next(f for f in r["found"] if f["uid"] == uid)["added"]
+
+    async def test_same_brand_and_address_counts_as_added(self):
+        _TVs.results = [_tv("AA:BB:CC:DD:EE:13", "10.0.0.13")]     # same TV, found the other way
+        r = await self.svc.discover_all()
+        self.assertTrue(self.added(r, "AA:BB:CC:DD:EE:13"))
+        with self.assertRaisesRegex(AdapterError, "Already added"):
+            await self.svc.add_device("t_tvs", uid="AA:BB:CC:DD:EE:13")
+        self.assertEqual(sum(d.adapter == "t_tvs" for d in self.svc.store.devices.values()), 1)
+        self.assertTrue(all("config" not in f and "aliases" not in f for f in r["found"]))
+
+    async def test_aliases_match_and_are_saved(self):
+        f = _tv("AA:BB:CC:DD:EE:14", "10.0.0.14")
+        f.aliases = ["uuid:other"]
+        _TVs.results = [f]
+        await self.svc.discover("t_tvs")
+        d = await self.svc.add_device("t_tvs", uid="AA:BB:CC:DD:EE:14")
+        self.assertEqual(self.svc.store.devices[d["id"]].config["_aliases"], ["uuid:other"])
+        _TVs.results = [_tv("uuid:other", "10.0.0.99")]               # found by its old id, new address
+        self.assertTrue((await self.svc.discover("t_tvs"))[0]["added"])
+
+    async def test_different_address_or_brand_is_new(self):
+        _TVs.results = [_tv("AA:BB:CC:DD:EE:20", "10.0.0.20")]
+        self.assertFalse((await self.svc.discover("t_tvs"))[0]["added"])
+        self.svc.adapters["t_plugs"] = _Plugs({}, self.dir)            # _Plugs is at 10.0.0.9 …
+        _TVs.results = [_tv("AA:BB:CC:DD:EE:09", "10.0.0.9")]         # … another brand there doesn't count
+        await self.svc.discover("t_plugs")
+        await self.svc.add_device("t_plugs", uid="p1")
+        self.assertFalse((await self.svc.discover("t_tvs"))[0]["added"])
+
+    async def test_new_device_on_a_reused_address_is_new(self):
+        self.svc.store.devices[next(d.id for d in self.svc.store.devices.values()
+                                    if d.adapter == "t_tvs")].config["mac"] = "AA:BB:CC:DD:EE:13"
+        _TVs.results = [_tv("AA:BB:CC:DD:EE:77", "10.0.0.13", mac="aa:bb:cc:dd:ee:77")]   # MACs differ
+        self.assertFalse((await self.svc.discover("t_tvs"))[0]["added"])
+
+    async def test_shared_address_is_not_used(self):
+        _TVs.results = [_tv("ch-1", "10.0.0.13"), _tv("ch-2", "10.0.0.13")]   # a hub: many devices, one address
+        r = await self.svc.discover("t_tvs")
+        self.assertEqual([f["added"] for f in r], [False, False])
+        await self.svc.add_device("t_tvs", uid="ch-1")                         # can still be added
+
+    async def test_manual_add_at_the_same_address_is_allowed(self):
+        await self.svc.add_device("t_tvs", manual={"uid": "second-channel", "ip": "10.0.0.13"})
+        with self.assertRaisesRegex(AdapterError, "Already added"):
+            await self.svc.add_device("t_tvs", manual={"uid": "uuid:1470", "ip": "10.0.0.50"})
 
 
 if __name__ == "__main__":

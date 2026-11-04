@@ -57,6 +57,7 @@ class ApiTests(unittest.TestCase):
     def test_health_and_logs(self):
         status, h = self.call("GET", "/health")
         self.assertTrue(h["ok"])
+        self.assertIn("in_container", h)
         self.assertIn("demo", h["adapters"])
         status, logs = self.call("GET", "/logs")
         self.assertEqual(status, 200)
@@ -121,6 +122,22 @@ class ApiTests(unittest.TestCase):
             self.fail("path outside the photo folder was served")
         except urllib.error.HTTPError as e:
             self.assertEqual(e.code, 404)
+
+    def test_tv_mac_address_can_be_set(self):
+        status, d = self.call("PATCH", "/devices/bd-tv", {"mac": "a4:36:c7:1:2:3"})
+        self.assertEqual((status, d["mac"]), (200, "A4:36:C7:01:02:03"))
+        status, err = self.call("PATCH", "/devices/bd-tv", {"mac": "12345"})
+        self.assertEqual(status, 400)
+        self.assertIn("MAC", err["error"])
+        _, state = self.call("GET", "/state")
+        for dev in state["devices"]:
+            self.assertNotIn("config", dev)            # only the MAC is exposed, never the rest
+
+    def test_ui_files_are_never_served_stale(self):
+        for path in ("/", "/app.css", "/js/app.js"):
+            with self.subTest(path=path), urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=5) as r:
+                self.assertEqual(r.headers.get("Cache-Control"), "no-cache")
+                self.assertTrue(r.headers.get("ETag") or r.headers.get("Last-Modified") or path == "/")
 
     def test_ui_served(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=5) as r:

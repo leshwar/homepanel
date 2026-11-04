@@ -30,6 +30,7 @@ export function applySnapshot(s) {
   store.automations = s.automations || [];
   store.presence = s.presence || [];
   store.demo = s.demo;
+  store.inContainer = !!s.in_container;
   if (store.room !== "all" && !store.rooms.includes(store.room)) store.room = "all";
   emit("all");
 }

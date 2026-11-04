@@ -24,7 +24,7 @@ from .adapter import (ADAPTERS, Action, AdapterError, Cap, Device, DeviceAdapter
                       Key, PairingRequired, missing_requirements)
 from .automations import Automations
 from .history import History
-from .net import parse_color
+from .net import in_container, normalize_mac, parse_color
 from .photos import PhotoLibrary
 from .presence import Presence
 from .store import Store
@@ -219,6 +219,8 @@ class HomeService:
         out.pop("config", None)
         out["adapter_name"] = self.adapter_meta(d.adapter).get("name", d.adapter)
         out["pairing"] = bool(d.state.get("needs_pairing"))
+        if d.kind == "tv":
+            out["mac"] = d.config.get("mac") or ""   # not secret; shown so it can be checked or entered
         return out
 
     def adapter_meta(self, aid: str) -> dict:
@@ -247,6 +249,7 @@ class HomeService:
             "automations": self.automations.list(),
             "presence": self.presence.snapshot(),
             "demo": self.demo,
+            "in_container": in_container(),
         }
 
     def get(self, device_id: str) -> Device:
@@ -271,7 +274,10 @@ class HomeService:
         if d.state.get("needs_pairing"):
             raise AdapterError(f"{d.name} needs pairing first. Open it in Settings and choose Pair.")
         ctx = CommandContext(d, adapter, action, value)
+        config_before = dict(d.config)
         changed = await self._run_pipeline(ctx) or {}
+        if d.config != config_before:
+            self.store.save()
         self._failures[d.id] = 0
         d.state.update({"online": True, **changed})
         self._publish_device(d)
@@ -315,6 +321,7 @@ class HomeService:
             self._publish_device(d)
             return
         before = dict(d.state)
+        config_before = dict(d.config)
         try:
             state = await asyncio.wait_for(adapter.refresh(d), REFRESH_TIMEOUT)
             self._failures[d.id] = 0
@@ -328,6 +335,8 @@ class HomeService:
                 d.state = {**before, "online": False, "error": _friendly(e)}
         if d.state.get("power_w") is not None and d.state.get("online"):
             await asyncio.to_thread(self.history.record, d.id, d.state["power_w"])
+        if d.config != config_before:
+            self.store.save()              # the adapter learned something (e.g. a TV's MAC address)
         if d.state != before:
             self._publish_device(d)
 
@@ -404,6 +413,15 @@ class HomeService:
         for k in ("name", "room", "icon", "kind", "keep_on"):
             if k in changes:
                 setattr(d, k, changes[k])
+        if "mac" in changes:
+            raw = str(changes["mac"] or "").strip()
+            if raw:
+                mac = normalize_mac(raw)
+                if not mac:
+                    raise AdapterError("MAC address should look like AA:BB:CC:DD:EE:FF.")
+                d.config["mac"] = mac
+            else:
+                d.config.pop("mac", None)
         if d.room and d.room not in self.store.rooms:
             self.store.rooms.append(d.room)
         self.store.save()

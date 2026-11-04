@@ -13,7 +13,7 @@ import os
 
 from ..core.adapter import (Action, AdapterError, Cap, Device, DeviceAdapter, Field, Found, Key,
                             Kind, PairingRequired, register)
-from ..core.net import http, mac_from_arp, port_open, ssdp_search, wake_on_lan
+from ..core.net import http, local_subnet_hosts, mac_from_arp, port_open, scan_ports, ssdp_search, wake_on_lan
 
 KEYS = {Key.UP: "KEY_UP", Key.DOWN: "KEY_DOWN", Key.LEFT: "KEY_LEFT", Key.RIGHT: "KEY_RIGHT",
         Key.OK: "KEY_ENTER", Key.BACK: "KEY_RETURN", Key.HOME: "KEY_HOME", Key.MENU: "KEY_MENU",
@@ -55,15 +55,21 @@ class SamsungTVAdapter(DeviceAdapter):
     # --- discovery ----------------------------------------------------------
     async def discover(self, timeout=6.0):
         hits = await ssdp_search("urn:samsung.com:device:RemoteControlReceiver:1", timeout=3)
+        candidates = [h["ip"] for h in hits]
+        if not candidates:
+            # Fallback when the network blocks discovery broadcasts: every Tizen TV
+            # answers its REST API on port 8001.
+            candidates = sorted(await scan_ports(local_subnet_hosts(), (8001,)))
         found, seen = [], set()
-        for h in hits:
-            ip = h["ip"]
+        for ip in candidates:
             if ip in seen:
                 continue
             seen.add(ip)
             try:
                 info = await http("GET", f"http://{ip}:8001/api/v2/", timeout=3)
             except Exception:
+                continue
+            if not isinstance(info, dict) or "device" not in info:
                 continue
             dev = info.get("device", {})
             found.append(Found(adapter=self.id, uid=(dev.get("wifiMac") or dev.get("id") or ip).upper(),
@@ -198,7 +204,7 @@ class SamsungTVAdapter(DeviceAdapter):
                 mac = device.config.get("mac") or mac_from_arp(device.config["ip"])
                 if not mac:
                     raise AdapterError("Can't turn this TV on: its MAC address is unknown. Add it in Settings.")
-                await wake_on_lan(mac)
+                await wake_on_lan(mac, device.config["ip"])
                 for _ in range(10):           # wait for it to come up
                     await asyncio.sleep(1.5)
                     if await port_open(device.config["ip"], 8001, 1):

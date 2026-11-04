@@ -98,6 +98,10 @@ const VIEWS = {
           <option value="">No room</option>
           ${store.rooms.map((r) => `<option ${r === d.room ? "selected" : ""}>${esc(r)}</option>`).join("")}
         </select></label>
+        ${d.kind === "tv" ? `<label class="field"><span>MAC address (used to turn the TV on)</span>
+          <input id="d-mac" value="${esc(d.mac || "")}" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off" spellcheck="false">
+          <small>${d.mac ? "Found automatically." : "Usually found automatically after the panel has talked to the TV while it's on."}
+            On the TV: Settings → General → Network → Advanced settings.</small></label>` : ""}
         ${["plug", "switch"].includes(d.kind) ? `<label class="check"><input type="checkbox" id="d-keep" ${d.keep_on ? "checked" : ""}>
           <span>Keep on during "All off" (for a fridge, router or aquarium)</span></label>` : ""}
         <div class="btn-row"><button class="btn primary" data-save-device="${esc(id)}">Save</button></div>
@@ -149,9 +153,15 @@ const VIEWS = {
           ${f.added ? `<span class="sub">Added</span>` :
             `<button class="btn small primary" data-add-uid="${esc(f.uid)}" data-name="${esc(f.name)}">Add</button>`}
         </div>`).join("")}</div>` :
-      `<div class="card"><h3>Nothing found</h3><p>Make sure the devices are set up in their own app first and are on the same Wi-Fi as this panel. You can also add one by IP address.</p></div>`) : "";
+      `<div class="card"><h3>Nothing found</h3>${store.inContainer
+        ? `<p>The panel is running inside Docker, which can't see your Wi-Fi on a Mac or Windows PC, so search can't find devices.
+             Add the device by IP address instead, or run the panel without Docker (make run).</p>`
+        : `<p>Make sure the devices are set up in their own app first and are on the same Wi-Fi as this panel.
+             If they still don't show up, add them by IP address.</p>`}</div>`) : "";
 
     page(a.name, `
+      ${store.demo ? `<div class="note">You're in demo mode, with pretend devices. To add your real ${esc(a.name)},
+        run the panel without --demo (make run) and open it at port 8080.</div>` : ""}
       ${accountCard}
       ${needsAccount ? "" : `
       <div class="card">
@@ -496,8 +506,10 @@ root.addEventListener("click", async (e) => {
   try {
     if (t("[data-save-device]")) {
       const id = t("[data-save-device]").dataset.saveDevice;
-      await api.updateDevice(id, { name: $("#d-name").value.trim() || "Device", room: $("#d-room").value,
-                                   keep_on: !!$("#d-keep")?.checked });
+      const changes = { name: $("#d-name").value.trim() || "Device", room: $("#d-room").value,
+                        keep_on: !!$("#d-keep")?.checked };
+      if ($("#d-mac")) changes.mac = $("#d-mac").value.trim();
+      await api.updateDevice(id, changes);
       toast("Saved");
       await reload();
       return back();

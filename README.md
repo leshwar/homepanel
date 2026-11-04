@@ -39,6 +39,7 @@ once — controlled directly over your Wi-Fi.
 | Globe Electric, Feit, Gosund, Treatlife, any Smart Life app device | Plugs, switches, bulbs | Local (Tuya protocol) | One-time Tuya developer key, [guide](docs/DEVICE_SETUP.md#globe-electric-and-other-tuya--smart-life-devices) |
 | Govee | Plugs | Govee cloud API | Free API key, [guide](docs/DEVICE_SETUP.md#govee) |
 | Govee | Lights with "LAN Control" | Local | Toggle LAN Control in the Govee app |
+| Govee | Scenes, DIY scenes, snapshots, music mode, RGBIC strip parts, gradient / screen sync | Govee cloud API | The same free API key, [guide](docs/DEVICE_SETUP.md#scenes-music-mode-and-strip-parts) |
 | TP-Link Kasa / Tapo | Plugs, switches, bulbs | Local | TP-Link login for newer models |
 | Shelly | Plugs, relays | Local | None |
 | WiZ / Philips WiZ | Bulbs | Local | None |

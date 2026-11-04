@@ -139,6 +139,64 @@ class UITests(unittest.TestCase):
                                      "s => document.querySelector('#sheet ' + s).getBoundingClientRect().height)")
         self.assertTrue(all(h >= 48 for h in heights), heights)
 
+    def test_light_effects_pick_a_scene_music_and_strip_parts(self):
+        self.tile("lr-strip").locator("[data-more]").click()
+        sheet = self.page.locator("#sheet")
+        self.page.wait_for_selector("#sheet:not([hidden]) [data-effect]")
+        # search narrows the chips without redrawing the sheet, then a tap picks the scene
+        self.page.fill("#sheet .fx-search", "sun")
+        self.assertEqual(sheet.locator("[data-effect]:visible").count(), 2)          # Sunrise, Sunset
+        self.page.fill("#sheet .fx-search", "zzz")
+        self.page.wait_for_selector("#sheet .fx-none:visible")
+        self.page.fill("#sheet .fx-search", "sunset")
+        self.page.click('#sheet [data-effect="scene-sunset"]')
+        self.page.wait_for_selector('#sheet [data-effect="scene-sunset"][aria-pressed="true"]')
+        self.page.wait_for_function(
+            "document.querySelector('.tile[data-id=\"lr-strip\"] .tile-status').textContent.startsWith('Sunset')")
+        self.assertEqual(self.page.input_value("#sheet .fx-search"), "sunset")     # kept across the redraw
+        self.assertEqual(sheet.locator(".fx-group-name").all_text_contents(), ["Scenes", "DIY", "Snapshots"])
+        self.assertEqual(sheet.locator("[data-fx-group]:visible").count(), 1)     # only the group with a match
+        # music: pick a mode; the scene is no longer the active one
+        self.page.click('#sheet [data-music-mode="spectrum"]')
+        self.page.wait_for_selector('#sheet [data-music-mode="spectrum"][aria-pressed="true"]')
+        self.assertEqual(sheet.locator('[data-effect][aria-pressed="true"]').count(), 0)
+        # strip parts: a color first asks for parts; tap two parts, then a color
+        self.page.click('#sheet [data-seg-color="#4f7bff"]')
+        self.page.wait_for_selector("#toast:not([hidden])")
+        self.assertIn("Tap the parts", self.page.inner_text("#toast"))
+        self.page.click('#sheet [data-seg="0"]')
+        self.page.click('#sheet [data-seg="3"]')
+        self.page.click('#sheet [data-seg-color="#4f7bff"]')
+        self.page.wait_for_selector('#sheet [data-seg="3"].lit')
+        self.assertEqual(sheet.locator(".seg-part.lit").count(), 2)
+        # a toggle switches and stays switched after the follow-up refresh
+        pressed = self.page.get_attribute('#sheet [data-toggle="sync"]', "aria-pressed")
+        self.page.click('#sheet [data-toggle="sync"]')
+        want = "false" if pressed == "true" else "true"
+        self.page.wait_for_selector(f'#sheet [data-toggle="sync"][aria-pressed="{want}"]')
+        self.page.wait_for_timeout(1800)
+        self.assertEqual(self.page.get_attribute('#sheet [data-toggle="sync"]', "aria-pressed"), want)
+        # touch targets: every effect control is at least 48 px tall (links aside)
+        small = self.page.evaluate("""[...document.querySelectorAll('#sheet .fx button, #sheet .fx input')]
+            .filter(e => e.offsetParent && !e.classList.contains('link'))
+            .map(e => e.getBoundingClientRect()).filter(r => r.height < 44 || r.width < 48).length""")
+        self.assertEqual(small, 0)
+
+    def test_light_effects_fit_phone_tablet_and_panel(self):
+        for w, h in ((393, 852), (820, 1180), (1280, 720)):
+            page = self.open(width=w, height=h, view="rooms")
+            page.locator('.tile[data-id="lr-strip"] [data-more]').click()
+            page.wait_for_selector("#sheet:not([hidden]) [data-seg]")
+            wide = page.evaluate("document.documentElement.scrollWidth > innerWidth"
+                                 " || document.querySelector('#sheet').scrollWidth > document.querySelector('#sheet').clientWidth")
+            self.assertFalse(wide, (w, h))
+            # lights without effects don't get the sections
+            page.click("#sheet [data-close]")
+            page.locator('.tile[data-id="lr-lamp"] [data-more]').click()
+            page.wait_for_selector("#sheet:not([hidden]) #wheel")
+            self.assertEqual(page.locator("#sheet .fx").count(), 0)
+            page.close()
+
     def test_add_room_and_open_add_flow(self):
         self.page.click("#open-settings")
         self.page.click("[data-go=rooms]")

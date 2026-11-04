@@ -1,0 +1,104 @@
+{
+ "requestId": "r1",
+ "msg": "success",
+ "code": 200,
+ "payload": {
+  "sku": "H605C",
+  "device": "AA:BB:CC:DD:EE:FF:00:11",
+  "capabilities": [
+   {
+    "type": "devices.capabilities.dynamic_scene",
+    "instance": "lightScene",
+    "parameters": {
+     "dataType": "ENUM",
+     "options": [
+      {
+       "name": "Dracarys",
+       "value": {
+        "paramId": 41599,
+        "id": 29884
+       }
+      },
+      {
+       "name": "Green Reign",
+       "value": {
+        "paramId": 41600,
+        "id": 29885
+       }
+      },
+      {
+       "name": "Sunny-A",
+       "value": {
+        "paramId": 38136,
+        "id": 378
+       }
+      },
+      {
+       "name": "Sunny-B",
+       "value": {
+        "paramId": 430,
+        "id": 378
+       }
+      },
+      {
+       "name": "Sunrise",
+       "value": {
+        "paramId": 110,
+        "id": 128
+       }
+      },
+      {
+       "name": "Sunset",
+       "value": {
+        "paramId": 111,
+        "id": 129
+       }
+      },
+      {
+       "name": "Forest",
+       "value": {
+        "paramId": 38106,
+        "id": 130
+       }
+      },
+      {
+       "name": "Aurora-A",
+       "value": {
+        "paramId": 38111,
+        "id": 135
+       }
+      },
+      {
+       "name": "Fire-A",
+       "value": {
+        "paramId": 38120,
+        "id": 145
+       }
+      },
+      {
+       "name": "Deep sea",
+       "value": {
+        "paramId": 130,
+        "id": 148
+       }
+      },
+      {
+       "name": "Candlelight",
+       "value": {
+        "paramId": 135,
+        "id": 153
+       }
+      },
+      {
+       "name": "Party-A",
+       "value": {
+        "paramId": 38145,
+        "id": 159
+       }
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

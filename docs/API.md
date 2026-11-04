@@ -109,6 +109,36 @@ A device looks like:
 | `locate` | — (plays a sound) | locate |
 | `set_sound_mode` | sound mode id from `meta.sound_modes` (other ids are rejected) | sound_mode |
 | `pointer` | `{"dx": 12, "dy": -4}` to move, `{"click": true}` to click, `{"scroll": 40}` to scroll (positive = down). Moves are clamped to ±400 per message. | pointer |
+| `set_effect` | id from `meta.effects` (a scene, DIY scene or snapshot) | effects |
+| `update_effects` | — (read the device's scene lists again; they're cached) | effects |
+| `set_music` | `{"mode": id from meta.music_modes, "sensitivity": 0–100}` (a bare mode id works; sensitivity defaults to 50) | music |
+| `set_segments` | `{"segments": [0, 1, 2], "color": "#rrggbb"}` and/or `"brightness": 0–100`; parts are numbered from 0 to `meta.segments − 1` | segments |
+| `set_toggle` | `{"id": id from meta.toggles, "on": true}` (`night_light`, `gradient`, `sync`) | toggles |
+
+### Light effects
+
+Lights that can play effects list them in `meta`, and the state says which one is showing:
+
+```jsonc
+"caps": ["power", "brightness", "color", "color_temp", "effects", "music", "segments", "toggles"],
+"meta": {
+  "effects": [{"id": "scene:129:111", "name": "Sunset", "group": "Scenes"},     // group: Scenes | DIY | Snapshots
+              {"id": "diy:8216931", "name": "Movie night", "group": "DIY"}],
+  "music_modes": [{"id": "1", "name": "Energic"}, {"id": "2", "name": "Rhythm"}],
+  "segments": 15,                                     // parts of an RGBIC strip that can be colored apart
+  "toggles": [{"id": "gradient", "name": "Gradient"}, {"id": "sync", "name": "Screen sync"}],
+  "hint": "Add your … API key …"                     // only when effects need something set up first
+},
+"state": {
+  "color_mode": "effect",                             // color | temp | effect | music | segments
+  "effect": "scene:129:111", "music": null, "segments": null,
+  "toggles": {"gradient": true}
+}
+```
+
+Effect ids are opaque: send back what `meta.effects` lists. Scene lists come from
+the device's brand once and are cached; `update_effects` reads them again (for
+example after making a DIY scene in the brand's app). They are never polled.
 
 `GET /devices/{id}/map` returns the floor plan as an image (SVG for Ecovacs) for
 devices with the `map` capability. The state key `map_rev` changes when the map
@@ -146,6 +176,7 @@ telly/TV, robot/hoover/vacuum, and numbers as words or digits):
 | "turn on the floor lamp", "kitchen lights off", "turn the lamp on and the TV off" | `power` |
 | "turn off the living room" | that room's All off (skips `keep_on`); "turn on the kitchen" turns on its lights |
 | "set the lamp to 30%", "dim the lamp", "make the backlight blue / warm white" | `brightness`, `color`, `color_temp` |
+| "set the backlight to sunset", "set the TV backlight to the aurora scene" | `set_effect` (names from `meta.effects`) |
 | "TV volume up", "volume 20", "mute the sound bar", "next channel", "pause the TV" | `volume`/`volume_up`, `mute`, `channel_up`, `key` |
 | "open YouTube", "put on Netflix in the bedroom", "switch to HDMI 2", "cinema mode" | `launch_app`, `set_input`, `set_sound_mode` |
 | "start the vacuum", "vacuum the kitchen and den", "mop the hall", "send the vacuum home", "set the vacuum to max", "empty the dustbin" | `clean`, `clean_rooms`, `set_clean_mode`, `dock`, `set_suction`, `station` |

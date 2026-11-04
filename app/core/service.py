@@ -86,6 +86,11 @@ async def mw_validate(ctx: CommandContext, call_next):
         return await call_next(ctx)
     if ctx.action == Action.CLEAN and ctx.value not in Clean.ALL:
         raise AdapterError(f"Unknown cleaning command '{ctx.value}'")
+    needed = Action.REQUIRES.get(ctx.action)
+    if ctx.action in Action.WORDS and needed not in ctx.device.caps:
+        raise AdapterError(f"{ctx.device.name} can't {Action.WORDS[ctx.action]}.")
+    if ctx.action == Action.SET_EFFECT and not ctx.device.meta.get("effects"):
+        raise AdapterError(f"{ctx.device.name} has no scenes yet. Tap Update list to load them.")
     if ctx.action in Action.OPTIONS:
         ids = {str(o.get("id")) for o in ctx.device.meta.get(Action.OPTIONS[ctx.action], [])}
         if str(ctx.value) not in ids:
@@ -95,7 +100,6 @@ async def mw_validate(ctx: CommandContext, call_next):
         picked = ctx.value if isinstance(ctx.value, list) else []
         if not picked or not {str(v) for v in picked} <= rooms:
             raise AdapterError("Pick at least one room from the list.")
-    needed = Action.REQUIRES.get(ctx.action)
     if needed and needed not in ctx.device.caps:
         raise AdapterError(f"{ctx.device.name} can't do '{ctx.action}'")
     return await call_next(ctx)
@@ -122,6 +126,56 @@ def normalize_pointer(value: Any) -> dict:
     raise AdapterError("Pointer commands need a move, a click or a scroll.")
 
 
+def normalize_music(d: Device, value: Any) -> dict:
+    """{"mode": id from meta["music_modes"], "sensitivity": 0-100 (default 50)}."""
+    if not isinstance(value, dict):
+        value = {"mode": value}
+    modes = {str(m.get("id")) for m in d.meta.get("music_modes", [])}
+    mode = str(value.get("mode", ""))
+    if mode not in modes:
+        raise AdapterError(f"{d.name} doesn't have the music mode '{mode}'.")
+    try:
+        sens = int(round(float(value.get("sensitivity", 50))))
+    except (TypeError, ValueError):
+        raise AdapterError("Sensitivity must be a number from 0 to 100.") from None
+    return {"mode": mode, "sensitivity": max(0, min(100, sens))}
+
+
+def normalize_segments(d: Device, value: Any) -> dict:
+    """{"segments": sorted unique indexes, "color"?: {r,g,b}, "brightness"?: 0-100}."""
+    count = int(d.meta.get("segments") or 0)
+    if not isinstance(value, dict) or not isinstance(value.get("segments"), list) or not value["segments"]:
+        raise AdapterError("Pick at least one part of the strip.")
+    try:
+        picked = sorted({int(i) for i in value["segments"]})
+    except (TypeError, ValueError):
+        raise AdapterError("Strip parts are numbered from 0.") from None
+    if picked[0] < 0 or picked[-1] >= count:
+        raise AdapterError(f"{d.name} has {count} parts, numbered 0 to {count - 1}.")
+    out: dict = {"segments": picked}
+    if value.get("color") is not None:
+        out["color"] = parse_color(value["color"])
+    if value.get("brightness") is not None:
+        try:
+            out["brightness"] = max(0, min(100, int(round(float(value["brightness"])))))
+        except (TypeError, ValueError):
+            raise AdapterError("Brightness must be a number from 0 to 100.") from None
+    if len(out) == 1:
+        raise AdapterError("Choose a color or a brightness for those parts.")
+    return out
+
+
+def normalize_toggle(d: Device, value: Any) -> dict:
+    """{"id": id from meta["toggles"], "on": bool}."""
+    if not isinstance(value, dict):
+        raise AdapterError("Say which feature to switch, and on or off.")
+    ids = {str(t.get("id")) for t in d.meta.get("toggles", [])}
+    tid = str(value.get("id", ""))
+    if tid not in ids:
+        raise AdapterError(f"{d.name} doesn't have the feature '{tid}'.")
+    return {"id": tid, "on": bool(value.get("on"))}
+
+
 async def mw_normalize(ctx: CommandContext, call_next):
     a, v = ctx.action, ctx.value
     if a == Action.TOGGLE:  # adapters only ever see POWER
@@ -140,6 +194,12 @@ async def mw_normalize(ctx: CommandContext, call_next):
         ctx.value = (not ctx.device.state.get("muted")) if v is None else bool(v)
     elif a == Action.POINTER:
         ctx.value = normalize_pointer(v)
+    elif a == Action.SET_MUSIC:
+        ctx.value = normalize_music(ctx.device, v)
+    elif a == Action.SET_SEGMENTS:
+        ctx.value = normalize_segments(ctx.device, v)
+    elif a == Action.SET_TOGGLE:
+        ctx.value = normalize_toggle(ctx.device, v)
     return await call_next(ctx)
 
 
@@ -423,10 +483,10 @@ class HomeService:
         if d.state.get("needs_pairing"):
             raise AdapterError(f"{d.name} needs pairing first. Open it in Settings and choose Pair.")
         ctx = CommandContext(d, adapter, action, value)
-        config_before = dict(d.config)
+        config_before, shape_before = dict(d.config), (list(d.caps), dict(d.meta))
         changed = await self._run_pipeline(ctx) or {}
-        if d.config != config_before:
-            self.store.save()
+        if d.config != config_before or (list(d.caps), dict(d.meta)) != shape_before:
+            self.store.save()              # e.g. a light's list of scenes was read again
         self._failures[d.id] = 0
         if action in Action.QUIET:          # nothing changed; don't flood the live events
             return self.public_device(d)

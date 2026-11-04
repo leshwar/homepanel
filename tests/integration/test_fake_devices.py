@@ -5,6 +5,7 @@ Each test starts a tiny local server that behaves like the device or service
 """
 import asyncio
 import json
+import os
 import tempfile
 import unittest
 
@@ -361,6 +362,125 @@ class HomeAssistantAdapterTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AdapterError) as cm:
             await self.adapter.discover()
         self.assertIn("token", str(cm.exception))
+
+
+class FakeGoveeCloud:
+    """A tiny stand-in for Govee's cloud API (openapi.api.govee.com/router/api/v1), answering with
+    the recorded JSON in tests/fixtures/govee and keeping what the panel asked it to do."""
+    KEY = "test-govee-key"
+    FIX = os.path.join(os.path.dirname(__file__), "..", "fixtures", "govee")
+
+    def __init__(self):
+        self.requests = []       # (method, path, body)
+        self.status = 200
+
+    def fixture(self, name):
+        with open(os.path.join(self.FIX, name), encoding="utf-8") as f:
+            return json.load(f)
+
+    async def handle(self, reader, writer):
+        head = (await reader.readuntil(b"\r\n\r\n")).decode()
+        length = int(next((ln.split(":")[1] for ln in head.split("\r\n") if ln.lower().startswith("content-length")), 0))
+        body = json.loads(await reader.readexactly(length)) if length else None
+        method, path = head.split(" ")[:2]
+        path = path.removeprefix("/router/api/v1")
+        self.requests.append((method, path, body))
+        status, payload = self.status, None
+        if f"Govee-API-Key: {self.KEY}" not in head:
+            status, payload = 401, {"code": 401, "message": "Invalid API key"}
+        elif status != 200:
+            payload = {"code": status, "message": "Too many requests"}
+        elif (method, path) == ("GET", "/user/devices"):
+            payload = self.fixture("user_devices.json")
+        elif (method, path) == ("POST", "/device/scenes"):
+            payload = self.fixture("scenes.json")
+        elif (method, path) == ("POST", "/device/diy-scenes"):
+            payload = self.fixture("diy_scenes.json")
+        elif (method, path) == ("POST", "/device/state"):
+            payload = self.fixture("state.json")
+        elif (method, path) == ("POST", "/device/control"):
+            payload = {"requestId": body["requestId"], "msg": "success", "code": 200,
+                       "capability": {**body["payload"]["capability"], "state": {"status": "success"}}}
+        else:
+            status, payload = 404, {"code": 404, "message": "Not found"}
+        data = json.dumps(payload).encode()
+        writer.write(f"HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {len(data)}\r\n\r\n".encode()
+                     + data)
+        await writer.drain()
+        writer.close()
+
+    def controls(self):
+        return [b["payload"]["capability"] for m, p, b in self.requests if p == "/device/control"]
+
+
+class GoveeCloudEffectsTests(unittest.IsolatedAsyncioTestCase):
+    """The real Govee adapter over HTTP against the fake cloud: find the light, read its scenes,
+    play one, music mode, strip parts, a toggle, and plain errors."""
+
+    async def asyncSetUp(self):
+        from app.adapters.govee import GoveeAdapter
+        self.cloud = FakeGoveeCloud()
+        self.server = await asyncio.start_server(self.cloud.handle, "127.0.0.1", 0)
+        port = self.server.sockets[0].getsockname()[1]
+        self.adapter = GoveeAdapter({"api_key": FakeGoveeCloud.KEY}, tempfile.mkdtemp())
+        self.adapter.cloud_url = f"http://127.0.0.1:{port}/router/api/v1"
+
+    async def asyncTearDown(self):
+        self.server.close()
+
+    async def added_light(self) -> Device:
+        found = await self.adapter.discover()
+        self.assertEqual(len(found), 1)
+        f = found[0]
+        d = Device(id="gv", adapter="govee", name=f.name, kind=f.kind, caps=list(f.caps), config={**f.config, "_uid": f.uid})
+        await self.adapter.setup(d)
+        return d
+
+    async def test_scenes_music_segments_and_toggles(self):
+        d = await self.added_light()
+        self.assertEqual(d.name, "TV backlight")
+        for cap in (Cap.EFFECTS, Cap.MUSIC, Cap.SEGMENTS, Cap.TOGGLES):
+            self.assertIn(cap, d.caps)
+        groups = {e["group"] for e in d.meta["effects"]}
+        self.assertEqual(groups, {"Scenes", "DIY"})
+        self.assertEqual(d.meta["segments"], 15)
+        reads = [(m, p) for m, p, _b in self.cloud.requests]
+        self.assertEqual(reads, [("GET", "/user/devices"), ("GET", "/user/devices"), ("POST", "/device/scenes"),
+                                 ("POST", "/device/diy-scenes"), ("POST", "/device/state")])
+
+        sunset = next(e["id"] for e in d.meta["effects"] if e["name"] == "Sunset")
+        movie = next(e["id"] for e in d.meta["effects"] if e["name"] == "Movie night")
+        await self.adapter.command(d, Action.SET_EFFECT, sunset)
+        await self.adapter.command(d, Action.SET_EFFECT, movie)
+        await self.adapter.command(d, Action.SET_MUSIC, {"mode": "2", "sensitivity": 60})
+        await self.adapter.command(d, Action.SET_SEGMENTS, {"segments": [0, 1], "color": {"r": 0, "g": 0, "b": 255},
+                                                            "brightness": 30})
+        out = await self.adapter.command(d, Action.SET_TOGGLE, {"id": "gradient", "on": False})
+        self.assertEqual(out["toggles"], {"gradient": False})
+        self.assertEqual(self.cloud.controls(), [
+            {"type": "devices.capabilities.dynamic_scene", "instance": "lightScene", "value": {"id": 129, "paramId": 111}},
+            {"type": "devices.capabilities.dynamic_scene", "instance": "diyScene", "value": 8216931},
+            {"type": "devices.capabilities.music_setting", "instance": "musicMode",
+             "value": {"musicMode": 2, "sensitivity": 60, "autoColor": 1}},
+            {"type": "devices.capabilities.segment_color_setting", "instance": "segmentedBrightness",
+             "value": {"segment": [0, 1], "brightness": 30}},
+            {"type": "devices.capabilities.segment_color_setting", "instance": "segmentedColorRgb",
+             "value": {"segment": [0, 1], "rgb": 255}},
+            {"type": "devices.capabilities.toggle", "instance": "gradientToggle", "value": 0},
+        ])
+        for _m, p, body in self.cloud.requests:
+            if p == "/device/control":
+                self.assertEqual((body["payload"]["sku"], body["payload"]["device"]), ("H605C", "AA:BB:CC:DD:EE:FF:00:11"))
+
+    async def test_wrong_key_and_too_many_requests_are_explained(self):
+        d = await self.added_light()
+        self.adapter.account_changed({"api_key": "wrong"})
+        with self.assertRaisesRegex(AdapterError, "rejected the API key"):
+            await self.adapter.command(d, Action.UPDATE_EFFECTS)
+        self.adapter.account_changed({"api_key": FakeGoveeCloud.KEY})
+        self.cloud.status = 429
+        with self.assertRaisesRegex(AdapterError, "Wait a minute"):
+            await self.adapter.command(d, Action.SET_EFFECT, d.meta["effects"][0]["id"])
 
 
 if __name__ == "__main__":

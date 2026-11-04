@@ -89,7 +89,7 @@ class MyBrandAdapter(DeviceAdapter):
 ### State keys the UI understands
 
 `on`, `brightness` (1–100), `color` `{r,g,b}`, `color_temp` (Kelvin),
-`color_mode` (`"color"` or `"temp"`), `volume` (0–100), `muted`, `app`,
+`color_mode` (`"color"` or `"temp"`; `"effect"`, `"music"` or `"segments"` for light effects), `volume` (0–100), `muted`, `app`,
 `input`, `sound_mode`, `power_w` (watts — recorded automatically for the energy chart).
 Robot vacuums (`Kind.VACUUM`, `Cap.CLEAN` / `Cap.DOCK`): `activity` (one of
 `Activity.ALL`: cleaning, paused, returning, docked, idle, error), `battery`
@@ -112,6 +112,16 @@ Media players without a full remote can declare `Cap.MEDIA` instead of
 `["inputs"]` as `[{id, name}]`. Sound bars and speakers use `Kind.SPEAKER`: they get the same volume,
 mute and input controls as a TV without the remote, plus sound mode chips from `Cap.SOUND_MODE` and
 `device.meta["sound_modes"]` (the service rejects ids that aren't in that list).
+
+Lights with effects declare any of `Cap.EFFECTS` (`meta["effects"]` = `[{id, name, group}]`, group one of
+`Effect.GROUPS`: Scenes, DIY, Snapshots; handle `Action.SET_EFFECT` and `Action.UPDATE_EFFECTS`),
+`Cap.MUSIC` (`meta["music_modes"]`; `Action.SET_MUSIC` gets `{mode, sensitivity}`), `Cap.SEGMENTS`
+(`meta["segments"]` = how many parts; `Action.SET_SEGMENTS` gets `{segments, color?, brightness?}`) and
+`Cap.TOGGLES` (`meta["toggles"]` from `Effect.TOGGLES`; `Action.SET_TOGGLE` gets `{id, on}`). The service
+validates and normalises all of them first. Report what's showing with `color_mode` `"effect"`, `"music"`
+or `"segments"` and the state keys `effect`, `music`, `segments` (a list of `"#rrggbb"` or `None`) and
+`toggles` (`{id: bool}`). Read effect lists once and cache them; don't poll them. Put a short
+`meta["hint"]` if effects need something set up first (e.g. an API key). See `govee.py`.
 
 ### Writing good error messages
 

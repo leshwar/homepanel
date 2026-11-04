@@ -6,6 +6,7 @@
 | `kiosk.sh` | Waits for the server, then opens Chromium full-screen on the panel UI; restarts it if it closes. Started by the desktop session. |
 | `homepanel.service` | systemd unit template (install.sh fills in user, folder and port). |
 | `collect-logs.sh` | Creates `homepanel-debug-<date>.tar.gz` with logs, journal, health and system info (no secrets) for bug reports. |
+| `dev/wt.sh` | Developer helper: one git worktree folder per branch under `.worktrees/`, and a Docker demo per branch. See `docs/DEVELOPMENT.md`. |
 | `uninstall.sh` | Removes the service and kiosk autostart. Keeps `data/`. |
 
 ## Updating the panel

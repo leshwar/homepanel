@@ -33,6 +33,12 @@ Logs: `logs/homepanel.log` (run with `--debug` for detail). In the UI: Settings 
 - `web/js/api.js` is the only UI file that calls the server.
 - No build step for the UI; no new frontend frameworks or CDN dependencies (the Pi may be offline).
 
+## Working locally
+
+Follow the `homepanel-dev` skill (`.claude/skills/homepanel-dev/SKILL.md`): the main
+clone stays on `main`; each change gets a worktree from `scripts/dev/wt.sh new <branch>`.
+See `docs/DEVELOPMENT.md`.
+
 ## Pull requests and tests
 
 - Never push to `main`; work on a branch and open a PR. CI must be green.

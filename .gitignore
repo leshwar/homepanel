@@ -5,6 +5,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
+# Worktree folders (scripts/dev/wt.sh)
+.worktrees/
+
 # Runtime data: contains API keys and device tokens — never commit
 data/
 logs/

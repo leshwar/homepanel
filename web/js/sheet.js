@@ -7,11 +7,12 @@ import { store, command } from "./store.js";
 import { $, esc, icon, glowVar, isMedia, kelvinToRgb, kindIcon, statusText, throttle, toast } from "./util.js";
 import { openSettings } from "./settings.js";
 import { remoteTop, remoteBody, attachRemote, remoteClick, remoteBusy, startRepeat, stopTilt, onRemoteChange } from "./remote.js";
+
 import { vacuumBody, picked } from "./vacuum.js";
+const sheetState = { shownId: null, missed: false };   // last device shown; an update came in mid-drag
 
 let currentId = null;
 let dragging = false;
-let missed = false;        // an update arrived while a finger was down: render when it lifts
 
 const KMIN = 2200, KMAX = 6500;
 const WHITE_PRESETS = [{ k: 2700, name: "Warm white" }, { k: 4000, name: "Neutral white" }, { k: 6000, name: "Daylight" }];
@@ -24,7 +25,6 @@ export const isSheetOpen = () => !$("#sheet").hidden;
 
 export function openDevice(id) {
   currentId = id;
-  $("#sheet").scrollTop = 0;
   render();
   $("#scrim").hidden = false;
   $("#sheet").hidden = false;
@@ -33,20 +33,23 @@ export function openDevice(id) {
 
 export function closeSheet() {
   currentId = null;
-  stopTilt();
   $("#scrim").hidden = true;
   $("#sheet").hidden = true;
 }
 
+// Closing: forget what was shown and stop aiming by tilt (watched, so closeSheet stays simple).
+new MutationObserver(() => { if ($("#sheet").hidden) { sheetState.shownId = null; stopTilt(); } })
+  .observe($("#sheet"), { attributes: true, attributeFilter: ["hidden"] });
+
 export function refreshSheet(id) {
   if (!currentId) return;
   if (id && id !== currentId) return;
-  if (dragging || remoteBusy.active) { missed = true; return; }
-  missed = false;
+  if (dragging || remoteBusy.active) { sheetState.missed = true; return; }
+  sheetState.missed = false;
   if (!store.devices.has(currentId)) return closeSheet();
   render();
 }
-onRemoteChange(() => refreshSheet(), () => { if (missed) refreshSheet(); });
+onRemoteChange(() => refreshSheet(), () => { if (sheetState.missed) refreshSheet(); });
 
 const hex = ({ r, g, b }) => "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
 const rgbOf = (c) => ({ r: parseInt(c.slice(1, 3), 16), g: parseInt(c.slice(3, 5), 16), b: parseInt(c.slice(5, 7), 16) });
@@ -82,8 +85,11 @@ function render() {
     if (!tv && s.power_w != null) body += `<div class="section-label"><span>Energy</span></div><div id="energy">${energyHtml(d, s)}</div>`;
   }
 
-  // keep scroll positions (sheet, app pages) across re-renders
-  const keep = { top: sheet.scrollTop, pages: $("#sheet [data-keep-scroll]")?.scrollLeft || 0 };
+  // keep scroll positions (sheet, app pages) across re-renders of the same device
+  const same = sheetState.shownId === d.id;
+  if (!same) stopTilt();
+  sheetState.shownId = d.id;
+  const keep = same ? { top: sheet.scrollTop, pages: $("#sheet [data-keep-scroll]")?.scrollLeft || 0 } : { top: 0, pages: 0 };
   const head = tv ? remoteTop(d) : `
     <div class="sheet-head">
       ${has(d, "power") && !isLight(d) ? `<button class="power-big ${on ? "on" : ""}" data-power aria-label="Turn ${on ? "off" : "on"}" aria-pressed="${on}">${icon("power")}</button>`
@@ -91,7 +97,9 @@ function render() {
       <div class="grow"><h2>${esc(d.name)}</h2><p>${esc(statusText(d))}</p></div>
       <button class="icon-btn" data-close aria-label="Close">${icon("close")}</button>
     </div>`;
-  sheet.className = `sheet ${tv ? "sheet-tv" : vac ? "sheet-vac" : isLight(d) ? "sheet-light" : ""}`;
+  sheet.classList.toggle("sheet-tv", tv);
+  sheet.classList.toggle("sheet-vac", !tv && vac);
+  sheet.classList.toggle("sheet-light", !tv && !vac && isLight(d));
   sheet.style.setProperty("--glow", glowVar(d));
   sheet.innerHTML = `
     <button class="grab" data-close aria-label="Close"></button>
@@ -219,7 +227,7 @@ function drag(el, { move, tap }) {
       if (tap && !s.moved) tap();
       else move(e.clientX, e.clientY, s, true);
     }
-    if (missed) refreshSheet();
+    if (sheetState.missed) refreshSheet();
   };
   el.addEventListener("pointerup", end);
   el.addEventListener("pointercancel", end);

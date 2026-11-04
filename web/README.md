@@ -7,17 +7,17 @@ internet needed at runtime — edit a file and reload the browser.
 web/
 ├── index.html      page shell + the SVG icon set (<symbol id="i-…">)
 ├── app.css         all styles; design tokens at the top (:root)
-├── controls.css    device sheets: light pill and color wheel, TV remote, robot vacuum
 ├── photoframe.css  photo frame slideshow and its settings
 ├── clockfaces.css  resting clock faces and the face picker previews
+├── controls.css    device sheets: light pill and color wheel, TV remote, robot vacuum
 └── js/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
     ├── store.js    client state, optimistic commands, change notifications
     ├── util.js     escaping, icons, colors/glow, status text, toasts, storage
     ├── glass.js    glass transparency → CSS variable
     ├── app.js      home screen: clock, scenes, rooms, device grid, idle night clock
-    ├── sheet.js    bottom sheet: frame, light controls (brightness pill, color wheel, warm-to-cool)
-    ├── remote.js   TV remote: D-pad / touchpad / number pad, rockers, app pages, batched pointer
+    ├── sheet.js    bottom sheet: light controls and the TV remote
+    ├── remote.js   TV and speaker remote: D-pad / touchpad / number pad, rockers, apps, pointer
     ├── vacuum.js   robot vacuum: map, status, main button, rooms, Options, Maintenance
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
     ├── clockfaces.js  resting clock faces (digital, analog, words, date, night) + burn-in drift

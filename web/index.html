@@ -4,10 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <meta name="theme-color" content="#151a22">
+  <!-- "Add to Home Screen" on iPhone/iPad and Android: full screen, no browser bars -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="HomePanel">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="apple-touch-icon" href="/icon-180.png">
+  <link rel="manifest" href="/manifest.webmanifest">
   <title>HomePanel</title>
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/photoframe.css">
   <link rel="stylesheet" href="/clockfaces.css">
+  <link rel="stylesheet" href="/shell.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23151a22'/%3E%3Ccircle cx='16' cy='14' r='6' fill='%23f2b35b'/%3E%3Crect x='13' y='21' width='6' height='3' rx='1' fill='%23ede7dc'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -50,26 +59,52 @@
       <circle cx="905" cy="560" r="16" fill="url(#sh-ball)" opacity=".85"/>
       <circle cx="90" cy="420" r="10" fill="url(#sh-ball)" opacity=".8"/>
     </svg>
+    <!-- the "Sky" background (js/sky.js): follows the weather and time of day -->
+    <div class="sky">
+      <div class="sky-stars"></div>
+      <div class="sky-sun"></div>
+      <div class="sky-clouds far"></div>
+      <div class="sky-clouds near"></div>
+      <div class="sky-rain"></div>
+      <div class="sky-snow"></div>
+    </div>
     <div class="room-light"></div>
   </div>
   <div id="app" class="app">
-    <header class="top">
-      <button class="clock" id="clock" aria-label="Show ambient clock">
-        <span class="clock-time" id="clock-time">--:--</span>
-        <span class="clock-sub" id="clock-sub"></span>
-      </button>
-      <div class="top-actions">
-        <button class="btn-alloff" id="all-off" aria-label="Turn everything off">
-          <svg class="i"><use href="#i-power"/></svg><span>All off</span>
-        </button>
-        <button class="icon-btn" id="open-frame" aria-label="Photo frame"><svg class="i"><use href="#i-image"/></svg></button>
-        <button class="icon-btn" id="open-settings" aria-label="Settings"><svg class="i"><use href="#i-gear"/></svg></button>
-      </div>
-    </header>
+    <!-- wide screens (iPad, landscape panel): Home and every room down the left side -->
+    <aside class="rail" id="rail" aria-label="Rooms"></aside>
 
-    <section class="scenes" id="scenes" aria-label="Scenes"></section>
-    <nav class="rooms" id="rooms" aria-label="Rooms"></nav>
-    <main class="grid" id="grid" aria-live="polite"></main>
+    <div class="main">
+      <header class="topbar">
+        <div class="topbar-title">
+          <h1 id="title">Home</h1>
+          <p id="subtitle"></p>
+        </div>
+        <div class="topbar-actions">
+          <button class="topbar-clock" id="clock" aria-label="Show the resting clock"><span id="clock-time">--:--</span></button>
+          <button class="icon-btn" id="edit-home" aria-label="Edit Home page" hidden>
+            <svg class="i" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4"/></svg></button>
+          <button class="btn-alloff" id="all-off" aria-label="Turn everything off">
+            <svg class="i"><use href="#i-power"/></svg><span>All off</span>
+          </button>
+          <button class="icon-btn" id="open-frame" aria-label="Photo frame"><svg class="i"><use href="#i-image"/></svg></button>
+        </div>
+      </header>
+
+      <nav class="rooms" id="rooms" role="tablist" aria-label="Rooms" hidden></nav>
+      <section class="home" id="home" aria-label="Home page"></section>
+      <main class="grid" id="grid" aria-live="polite" hidden></main>
+    </div>
+
+    <!-- phones and the portrait panel: a floating dock -->
+    <nav class="dock" id="dock" aria-label="Pages">
+      <div class="dock-bar">
+        <button data-nav="home"><svg class="i"><use href="#i-home"/></svg><span>Home</span></button>
+        <button data-nav="rooms"><svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span>Rooms</span></button>
+        <button id="open-settings" data-open-settings><svg class="i"><use href="#i-gear"/></svg><span>Settings</span></button>
+      </div>
+      <button class="dock-add" data-add-device aria-label="Add a device"><svg class="i"><use href="#i-plus"/></svg></button>
+    </nav>
     <div class="conn" id="conn" hidden>Reconnecting to the panel…</div>
   </div>
 

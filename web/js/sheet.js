@@ -14,7 +14,10 @@ const KELVIN_SWATCH = { 2200: "#ffb46b", 2700: "#ffc98c", 3500: "#ffe2bf", 4500:
 
 export const isSheetOpen = () => !$("#sheet").hidden;
 
+let closing = null;
 export function openDevice(id) {
+  clearTimeout(closing);
+  $("#sheet").classList.remove("closing"); $("#scrim").classList.remove("closing");
   currentId = id;
   render();
   $("#scrim").hidden = false;
@@ -24,8 +27,14 @@ export function openDevice(id) {
 
 export function closeSheet() {
   currentId = null;
-  $("#scrim").hidden = true;
-  $("#sheet").hidden = true;
+  const sheet = $("#sheet"), scrim = $("#scrim");
+  if (sheet.hidden) return;
+  sheet.classList.add("closing"); scrim.classList.add("closing");   // slides away (shell.css), then hides
+  clearTimeout(closing);
+  closing = setTimeout(() => {
+    sheet.hidden = true; scrim.hidden = true;
+    sheet.classList.remove("closing"); scrim.classList.remove("closing");
+  }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 190);
 }
 
 export function refreshSheet(id) {

@@ -91,7 +91,23 @@ room (shown as "Other" on the panel). Returns `{"turned_off": n}`.
 | POST | `/scenes` | `{"name", "icon", "actions": [{device_id, action, value}]}` **or** `{"name", "icon", "capture": [device ids]}` to save devices as they are now |
 | DELETE | `/scenes/{id}` | — |
 | POST | `/scenes/{id}/run` | — → `{"ok": n, "failed": [messages]}` |
-| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`ocean`/`aurora`/`night`), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`), `place_name` (shown on the clock, max 40 characters), `weather_enabled` (opt-in), `temperature_unit` (`C`/`F`) |
+| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`sky` (default: follows the weather and time of day)/`ocean`/`aurora`/`night`), `home_layout` (the Home page widgets, see below; `null` = the default), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`), `place_name` (shown on the clock, max 40 characters), `weather_enabled` (opt-in), `temperature_unit` (`C`/`F`) |
+
+`home_layout` is one object, the same for every screen. `GET /state` returns the
+default (built from your devices) until someone saves one:
+
+```json
+{"version": 1, "widgets": [
+  {"id": "clock",   "type": "clock",   "size": "2x2", "hidden": false, "options": {}},
+  {"id": "zone-in", "type": "zone",    "size": "1x1", "hidden": false, "options": {"tz": "Asia/Kolkata", "label": "India"}},
+  {"id": "zone-us", "type": "zone",    "size": "1x1", "hidden": false, "options": {"tz": null, "label": "US"}},
+  {"id": "dev-lr-tv", "type": "device", "size": "2x1", "hidden": false, "options": {"device_id": "lr-tv"}}]}
+```
+
+Types: `clock`, `zone` (a clock for another place; `tz: null` = the screen's own zone
+if it's in the US, else US Eastern), `weather`, `scenes`, `rooms`, `device`. Sizes are
+grid columns × rows: `1x1`, `2x1`, `2x2`. Up to 40 widgets; a bad layout gets a 400
+that says what's wrong.
 
 ## Energy
 

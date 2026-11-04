@@ -14,6 +14,7 @@ export const store = {
   presence: [],
   demo: false,
   room: storage.get("room", "all"),
+  view: storage.get("view", "home"),     // "home" (widgets) or "rooms" (device tiles); remembered per screen
   busy: new Set(),
 };
 
@@ -68,6 +69,12 @@ export async function command(id, action, value, optimistic = {}) {
     emit("device", id);
     toast(e.message, true);
   }
+}
+
+export function setView(view) {
+  store.view = view === "rooms" ? "rooms" : "home";
+  storage.set("view", store.view);
+  emit("view");
 }
 
 export function setRoom(room) {

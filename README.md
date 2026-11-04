@@ -13,7 +13,9 @@ once — controlled directly over your Wi-Fi.
   <img src="docs/screenshots/landscape.png" width="830" alt="Home screen in landscape on a 1280x720 display">
 </p>
 
-- **Touch-first glass UI.** Frosted-glass tiles over a soft background scene (Ocean, Aurora or Night), with adjustable glass transparency. Tap a tile to switch it, long-press (or tap the arrow) for full controls. Lit lights glow in their real color, and the background warms up as lights come on.
+- **Touch-first glass UI.** A **Home page** of widgets you arrange yourself (long-press to edit): a big clock, clocks for India and the US, weather, scenes, rooms and device shortcuts, the same on every screen. A **Rooms** page with a tab for each room, down the side on an iPad or a landscape panel. Tap a tile to switch it, long-press (or tap "…") for full controls.
+- **A sky that matches outside.** The background follows the weather and time of day (or pick Ocean, Aurora or Night), under frosted-glass tiles with adjustable transparency. Lit lights glow in their real color.
+- **Works on iPhone and iPad too.** Safe areas, no sideways scrolling, and "Add to Home Screen" for a full-screen app.
 - **Many brands, one screen.** Globe Electric / Tuya / Smart Life, Govee, TP-Link Kasa & Tapo, Shelly, WiZ, Philips Hue, Samsung TVs and LG TVs.
 - **Local first.** Everything except Govee plugs is controlled directly on your network — it keeps working when the internet is down.
 - **Privacy.** The panel makes no internet calls of its own unless you turn on weather (Settings → Location and presence). Then the server asks [Open-Meteo](https://open-meteo.com) (free, no account) for the weather about every 20 minutes, sending only your location rounded to about 1 km. The place name shown on the clock is the one you type; your coordinates aren't sent anywhere to look it up.

@@ -147,7 +147,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_display_settings_defaults_and_validation(self):
         s = self.svc.store.settings
-        self.assertEqual((s["background"], s["glass_transparency"], s["glass_effect"]), ("ocean", 45, True))
+        self.assertEqual((s["background"], s["glass_transparency"], s["glass_effect"]), ("sky", 45, True))
         out = self.svc.update_settings({"glass_transparency": "150", "glass_effect": "false", "background": "aurora"})
         self.assertEqual((out["glass_transparency"], out["glass_effect"], out["background"]), (100, False, "aurora"))
         self.assertEqual(self.svc.update_settings({"glass_transparency": -5})["glass_transparency"], 0)

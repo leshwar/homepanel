@@ -1,38 +1,31 @@
-// Home screen: clock, scenes, room tabs and the device grid. Also wires up live
-// updates and the idle ambient clock.
+// The main screen: navigation (a room rail on wide screens, a dock and room tabs on
+// phones), the Home page (js/home.js) and the Rooms view with device tiles. Also
+// live updates, the idle resting clock and the sky background.
 
 import { api, connectEvents } from "./api.js";
-import { store, onChange, emit, reload, upsertDevice, command, setRoom, devicesIn } from "./store.js";
-import { $, esc, icon, kindIcon, glow, glowVar, statusText, toast } from "./util.js";
-import { openDevice, refreshSheet, closeSheet, isSheetOpen } from "./sheet.js";
+import { store, onChange, reload, upsertDevice, setRoom, setView, devicesIn } from "./store.js";
+import { $, esc, icon, glow, toast } from "./util.js";
+import { refreshSheet, closeSheet } from "./sheet.js";
 import { openSettings, isSettingsOpen, refreshSettings } from "./settings.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame, isFrameOpen } from "./photoframe.js";
 import { roomGroups, OTHER } from "./store.js";   // room tabs
 import { renderAmbient } from "./clockfaces.js";
+import { svg, roomIcon } from "./icons.js";
+import { tileHtml, updateTiles, bindTiles } from "./tiles.js";
+import { applySky, refreshWeather, onWeather } from "./sky.js";
+import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEditing } from "./home.js";
 
-const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
+const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const wide = () => matchMedia("(min-width: 768px)").matches;
 
 // ---------- clock ----------
 function renderClock() {
   const now = new Date();
   const h24 = !!store.settings.clock_24h;
-  const time = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !h24 })
-    .replace(/\s?[AP]M$/i, "");
-  const date = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
-  $("#clock-time").textContent = time;
-  $("#clock-sub").textContent = date;
+  $("#clock-time").textContent = now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !h24 });
   renderAmbient(now);
-}
-
-// ---------- scenes ----------
-function renderScenes() {
-  const el = $("#scenes");
-  const items = store.scenes.map((s) =>
-    `<button class="scene" data-scene="${esc(s.id)}">${icon(SCENE_ICONS.includes(s.icon) ? s.icon : "sparkle")}<span>${esc(s.name)}</span></button>`);
-  if (store.devices.size) items.push(`<button class="scene add" data-new-scene>${icon("plus")}<span>New scene</span></button>`);
-  el.innerHTML = items.join("");
-  el.hidden = !items.length;
+  tickHome(now);
 }
 
 // ---------- rooms ----------
@@ -48,17 +41,71 @@ function tabOrder() {
   return groups.length < 2 ? [] : ["all", ...groups];   // one group: nothing to switch between
 }
 
-function renderRooms() {
+const onCount = (r) => devicesIn(r).filter(isOn).length;
+const countBadge = (n) => (n ? `<span class="count" aria-label="${n} on">${n}</span>` : "");
+
+// Phones and the portrait panel: a row of text tabs over the tiles.
+function renderTabs() {
   const el = $("#rooms");
   const order = tabOrder();
-  if (!order.length) { el.hidden = true; if (store.room !== "all") setRoom("all"); return; }
-  if (!order.includes(store.room)) return setRoom("all");   // its devices moved away
-  el.hidden = false;
-  el.innerHTML = order.map((id) => {
-    const n = devicesIn(id).filter(isOn).length;
-    return `<button class="room" role="tab" data-room="${esc(id)}" aria-selected="${store.room === id}">${
-      esc(id === "all" ? "All" : roomLabel(id))}${n ? `<span class="count" aria-label="${n} on">${n}</span>` : ""}</button>`;
-  }).join("");
+  el.hidden = !order.length || store.view !== "rooms";
+  el.innerHTML = order.map((id) =>
+    `<button class="room" role="tab" data-room="${esc(id)}" aria-selected="${store.room === id}">${
+      esc(id === "all" ? "All" : roomLabel(id))}${countBadge(onCount(id))}</button>`).join("");
+}
+
+// iPad and the landscape panel: Home plus every room down the left side.
+function renderRail() {
+  const order = tabOrder().length ? tabOrder() : ["all"];
+  const home = store.view === "home";
+  const item = (id) => {
+    const sel = !home && store.room === id;
+    return `<button class="rail-item" role="tab" data-room="${esc(id)}" aria-selected="${sel}">${roomIcon(id)}<span>${
+      esc(id === "all" ? "All rooms" : roomLabel(id))}</span>${countBadge(onCount(id))}</button>`;
+  };
+  $("#rail").innerHTML = `
+    <div class="rail-head">${esc(store.settings.home_name || "Home")}</div>
+    <button class="rail-item" data-nav="home" aria-current="${home ? "page" : "false"}">${svg("home")}<span>Home</span></button>
+    <p class="rail-label">Rooms</p>
+    <div class="rail-rooms" role="tablist" aria-orientation="vertical" aria-label="Rooms">${order.map(item).join("")}</div>
+    <div class="rail-foot">
+      <button class="rail-item" data-add-device>${icon("plus")}<span>Add a device</span></button>
+      <button class="rail-item" data-open-settings>${svg("settings")}<span>Settings</span></button>
+    </div>`;
+}
+
+function renderDock() {
+  document.querySelectorAll("#dock [data-nav]").forEach((b) =>
+    b.setAttribute("aria-current", b.dataset.nav === store.view ? "page" : "false"));
+}
+
+function renderNav() {
+  const order = tabOrder();
+  if (store.room !== "all" && !order.includes(store.room)) { setRoom("all"); return; }   // its devices moved away
+  renderTabs();
+  renderRail();
+  renderDock();
+}
+
+// Title over the content: the greeting on Home, the room on wide screens.
+function renderTitle() {
+  const home = store.view === "home";
+  const all = [...store.devices.values()];
+  const room = store.room;
+  let title = store.settings.home_name || "Home", sub;
+  if (home) {
+    const on = all.filter(isOn).length;
+    sub = on ? `${on} ${on === 1 ? "thing is" : "things are"} on` : "Everything is off";
+  } else {
+    if (wide()) title = room === "all" ? "All rooms" : roomLabel(room);
+    const list = devicesIn(room);
+    const on = list.filter(isOn).length;
+    sub = on ? `${on} of ${list.length} on` : list.length ? "Everything is off" : "";
+  }
+  $("#title").textContent = title;
+  $("#subtitle").textContent = sub;
+  $("#edit-home").hidden = !home;
+  $("#clock").hidden = home && store.settings.home_layout?.widgets?.some((w) => w.type === "clock" && !w.hidden);
 }
 
 // Keep the chosen tab visible in the scrolling bar.
@@ -72,17 +119,18 @@ function revealTab() {
 }
 
 function goRoom(room) {
+  const fromHome = store.view === "home";
+  if (fromHome) { setRoom(room); setView("rooms"); return; }
   if (room === store.room) return;
   const order = tabOrder();
   const dir = Math.sign(order.indexOf(room) - order.indexOf(store.room));
   setRoom(room);
   revealTab();
-  // If the page was scrolled down, bring the top of the new room into view.
   const grid = $("#grid");
-  const top = grid.getBoundingClientRect().top + window.scrollY - $("#rooms").offsetHeight - 8;
+  const top = grid.getBoundingClientRect().top + window.scrollY - ($("#rooms").offsetHeight || 0) - 8;
   if (window.scrollY > top) window.scrollTo({ top });
-  if (dir && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    grid.animate([{ transform: `translateX(${dir * 28}px)`, opacity: 0.3 }, { transform: "none", opacity: 1 }],
+  if (dir && !reduceMotion()) {
+    grid.animate([{ transform: `translate${wide() ? "Y" : "X"}(${dir * 24}px)`, opacity: 0.3 }, { transform: "none", opacity: 1 }],
                  { duration: 200, easing: "cubic-bezier(.2,.8,.2,1)" });
   }
 }
@@ -104,14 +152,14 @@ function roomHead(r, linked) {
     ? `<button class="room-title" data-room="${esc(r)}" aria-label="Open ${name}">${name}${icon("right")}</button>`
     : `<h2 class="room-title">${name}</h2>`;
   const status = on ? `${on} of ${list.length} on` : "Everything is off";
-  return `<div class="room-head" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>${
+  return `<div class="room-head${linked ? "" : " single"}" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>${
     offable ? `<button class="room-off" data-room-off="${esc(r)}">${icon("power")}Turn off</button>` : ""}</div>`;
 }
 
 function updateHeads() {
   document.querySelectorAll(".room-head[data-head]").forEach((el) => {
     const tmp = document.createElement("div");
-    tmp.innerHTML = roomHead(el.dataset.head, !!el.querySelector("button.room-title"));
+    tmp.innerHTML = roomHead(el.dataset.head, !el.classList.contains("single"));
     el.replaceWith(tmp.firstElementChild);
   });
 }
@@ -133,34 +181,6 @@ function openSorting() {
 }
 
 // ---------- tiles ----------
-function tileHtml(d) {
-  const s = d.state || {};
-  const on = !!s.on && s.online !== false;
-  const offline = s.online === false || s.needs_pairing;
-  const level = d.kind === "light" && s.brightness ? Math.max(0.15, s.brightness / 100) : 1;
-  const cls = ["tile", on && "on", offline && "offline", store.busy.has(d.id) && "busy", d.kind === "tv" && "wide"]
-    .filter(Boolean).join(" ");
-  const tvControls = d.kind === "tv" && on ? `
-      <div class="tile-tv-ctl">
-        <button data-act="volume_down" aria-label="Volume down">${icon("minus")}</button>
-        <button data-act="volume_up" aria-label="Volume up">${icon("plus")}</button>
-      </div>` : "";
-  return `
-    <div class="${cls}" data-id="${esc(d.id)}" role="button" tabindex="0"
-         style="--glow:${glowVar(d)};--level:${level}"
-         aria-label="${esc(d.name)}, ${esc(statusText(d))}">
-      <div class="tile-icon">${icon(offline ? "wifi-off" : kindIcon(d))}</div>
-      <button class="tile-more" data-more aria-label="${esc(d.name)} controls">${icon("right")}</button>
-      <div class="tile-tv-row">
-        <div>
-          <div class="tile-name">${esc(d.name)}</div>
-          <div class="tile-status">${esc(statusText(d))}</div>
-        </div>
-        ${tvControls}
-      </div>
-    </div>`;
-}
-
 function renderGrid() {
   const grid = $("#grid");
   if (!store.devices.size) {
@@ -171,7 +191,7 @@ function renderGrid() {
   }
   const room = store.room;
   const section = (r, linked) => `<section class="room-section" aria-label="${esc(roomLabel(r))}">${roomHead(r, linked)}${
-    r === OTHER ? sortNudge() : ""}<div class="tiles">${sortDevices(devicesIn(r)).map(tileHtml).join("")}</div></section>`;
+    r === OTHER ? sortNudge() : ""}<div class="tiles">${sortDevices(devicesIn(r)).map((d) => tileHtml(d)).join("")}</div></section>`;
   const html = room === "all" ? roomGroups().map((r) => section(r, true)).join("") : section(room, false);
   grid.innerHTML = html;
 }
@@ -179,22 +199,14 @@ function renderGrid() {
 const KIND_ORDER = { tv: 0, light: 1, switch: 2, fan: 3, plug: 4, other: 5 };
 const sortDevices = (list) => list.sort((a, b) => (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9) || a.name.localeCompare(b.name));
 
-function updateTile(id) {
-  const d = store.devices.get(id);
-  const old = document.querySelector(`.tile[data-id="${CSS.escape(id)}"]`);
-  if (!d || !old) return renderGrid();
-  const tmp = document.createElement("div");
-  tmp.innerHTML = tileHtml(d);
-  old.replaceWith(tmp.firstElementChild);
-}
-
 // The backdrop behind the glass takes on the color of the lights that are on,
 // so the whole screen gets warmer as the room does.
 function renderAmbience() {
   const root = document.documentElement;
   root.classList.toggle("glass", store.settings.glass_effect !== false);
-  root.dataset.bg = store.settings.background || "ocean";
+  root.dataset.bg = store.settings.background || "sky";
   applyTransparency(store.settings.glass_transparency ?? 45);
+  applySky();
   const lit = [...store.devices.values()].filter((d) => d.kind === "light" && d.state?.on && d.state?.online !== false);
   const warmth = Math.min(1, lit.length / 4);
   const avg = lit.length
@@ -204,44 +216,42 @@ function renderAmbience() {
   root.style.setProperty("--warmth", warmth.toFixed(2));
 }
 
+// Show Home or Rooms. `enter` plays the short entrance animation.
+function renderView(enter = false) {
+  const home = store.view === "home";
+  document.documentElement.dataset.view = store.view;
+  $("#home").hidden = !home;
+  $("#grid").hidden = home;
+  renderNav();
+  renderTitle();
+  if (home) renderHome({ enter });
+  else {
+    renderGrid();
+    if (enter && !reduceMotion()) {
+      $("#grid").animate([{ opacity: 0, transform: "translateY(10px)" }, { opacity: 1, transform: "none" }],
+                         { duration: 220, easing: "cubic-bezier(.2,.8,.2,1)" });
+    }
+  }
+}
+
 function renderAll() {
   renderAmbience();
+  refreshWeather();
+  renderView();
   renderClock();
-  renderScenes();
-  renderRooms();
-  renderGrid();
 }
 
 // ---------- interactions ----------
-function toggle(d) {
-  if (d.state?.needs_pairing) return openDevice(d.id);
-  if (d.state?.online === false) {
-    toast(`${d.name} is offline. ${d.state.error || ""}`.trim(), true);
-    return;
-  }
-  const on = !d.state?.on;
-  command(d.id, "power", on, { on });
-}
-
 function setupGrid() {
   const grid = $("#grid");
-  let pressTimer = null, longPressed = false;
 
   // Swipe sideways anywhere on the grid to change room tab.
   let start = null, swiped = false;
   grid.addEventListener("pointerdown", (e) => {
     start = { x: e.clientX, y: e.clientY };
     swiped = false;
-    const tile = e.target.closest(".tile");
-    if (!tile || e.target.closest("button")) return;
-    longPressed = false;
-    pressTimer = setTimeout(() => { longPressed = true; openDevice(tile.dataset.id); }, 480);
-  });
-  grid.addEventListener("pointermove", (e) => {
-    if (start && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 12) clearTimeout(pressTimer);
   });
   window.addEventListener("pointerup", (e) => {     // window: the finger may end up past the grid's edge
-    clearTimeout(pressTimer);
     if (!start) return;
     const dx = e.clientX - start.x, dy = e.clientY - start.y;
     start = null;
@@ -250,35 +260,18 @@ function setupGrid() {
       stepRoom(dx < 0 ? 1 : -1);
     }
   });
-  const cancel = () => { clearTimeout(pressTimer); start = null; };
-  grid.addEventListener("pointerleave", () => clearTimeout(pressTimer));
-  grid.addEventListener("pointercancel", cancel);
+  grid.addEventListener("pointercancel", () => { start = null; });
   grid.addEventListener("click", (e) => {   // a swipe isn't a tap
     if (swiped) { swiped = false; e.stopImmediatePropagation(); e.preventDefault(); }
   }, { capture: true });
-  grid.addEventListener("contextmenu", (e) => e.preventDefault());
+  bindTiles(grid);
 
   grid.addEventListener("click", (e) => {
-    if (e.target.closest("[data-add-device]")) return openSettings("add");
     if (e.target.closest("[data-sort-rooms]")) return openSorting();
     const off = e.target.closest("[data-room-off]");
     if (off) return turnOff(off.dataset.roomOff);
     const title = e.target.closest("[data-room]");
     if (title) return goRoom(title.dataset.room);
-    const tile = e.target.closest(".tile");
-    if (!tile) return;
-    if (longPressed) { longPressed = false; return; }
-    const d = store.devices.get(tile.dataset.id);
-    if (!d) return;
-    if (e.target.closest("[data-more]")) return openDevice(d.id);
-    const act = e.target.closest("[data-act]");
-    if (act) return command(d.id, act.dataset.act);
-    if (d.kind === "tv") return openDevice(d.id);   // never toggle a TV by accident
-    toggle(d);
-  });
-  grid.addEventListener("keydown", (e) => {
-    const tile = e.target.closest(".tile");
-    if (tile && e.target === tile && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); tile.click(); }
   });
 }
 
@@ -292,31 +285,30 @@ async function turnOff(room = null) {
 
 function setupChrome() {
   const bar = $("#rooms");
-  bar.addEventListener("click", (e) => {
-    const b = e.target.closest("[data-room]");
-    if (b) goRoom(b.dataset.room);
-  });
-  // The bar sticks to the top while scrolling; give it a glass backing only then.
+  // The tab bar sticks to the top while scrolling; give it a glass backing only then.
   if ("IntersectionObserver" in window) {
     new IntersectionObserver(([en]) => bar.classList.toggle("stuck", en.intersectionRatio < 1 && en.boundingClientRect.top < 1),
                              { threshold: [1] }).observe(bar);
   }
-  $("#scenes").addEventListener("click", async (e) => {
-    if (e.target.closest("[data-new-scene]")) return openSettings("scene-new");
-    const b = e.target.closest("[data-scene]");
-    if (!b) return;
-    b.classList.add("running");
-    try {
-      const r = await api.runScene(b.dataset.scene);
-      const name = store.scenes.find((s) => s.id === b.dataset.scene)?.name || "Scene";
-      toast(r.failed.length ? `${name}: ${r.failed.length} device(s) didn't respond` : `${name} is on`, !!r.failed.length);
-    } catch (err) { toast(err.message, true); }
-    b.classList.remove("running");
+  // Navigation and shared buttons, wherever they are (rail, dock, tabs, empty states).
+  document.addEventListener("click", (e) => {
+    const t = e.target;
+    if (!t.closest("#app")) return;
+    const nav = t.closest("[data-nav]");
+    if (nav) {
+      if (nav.dataset.nav === store.view && nav.dataset.nav === "rooms" && store.room !== "all") return goRoom("all");
+      return setView(nav.dataset.nav);
+    }
+    const room = t.closest("#rooms [data-room], #rail [data-room]");
+    if (room) return goRoom(room.dataset.room);
+    if (t.closest("[data-open-settings]")) return openSettings();
+    if (t.closest("[data-add-device]")) return openSettings("add");
   });
   $("#all-off").addEventListener("click", () => turnOff());   // always everything; rooms have their own button
-  $("#open-settings").addEventListener("click", () => openSettings());
   $("#open-frame").addEventListener("click", () => { closeSheet(); openFrame(); });
   $("#clock").addEventListener("click", showAmbient);
+  $("#edit-home").addEventListener("click", startEditing);
+  matchMedia("(min-width: 768px)").addEventListener?.("change", () => { renderNav(); renderTitle(); });
 }
 
 // ---------- idle ambient clock ----------
@@ -331,7 +323,7 @@ function setupIdle() {
   });
   setInterval(() => {
     const after = Number(store.settings.dim_after_seconds || 0);
-    if (!(after > 0 && Date.now() - lastActivity > after * 1000) || isSettingsOpen()) return;
+    if (!(after > 0 && Date.now() - lastActivity > after * 1000) || isSettingsOpen() || isEditing()) return;
     if (!$("#ambient").hidden || isFrameOpen()) return;
     const hour = new Date().getHours();
     const night = store.settings.frame_night_clock !== false && (hour >= 22 || hour < 7);
@@ -358,13 +350,20 @@ function setupLive() {
 
 onChange((what, id) => {
   if (what === "device") {
-    updateTile(id);
+    const d = store.devices.get(id);
+    if (!updateTiles(id, (dev, el) => (el.dataset.ctx === "home" ? dev.room || "" : "")) && store.view === "rooms") renderGrid();
     renderAmbience();
     refreshSheet(id);
-    renderRooms();
+    renderNav();
+    renderTitle();
     updateHeads();
+    if (d) refreshHomeParts(["rooms"]);
   } else if (what === "room") {
-    renderRooms(); renderGrid();
+    renderNav(); renderTitle();
+    if (store.view === "rooms") renderGrid();
+  } else if (what === "view") {
+    window.scrollTo({ top: 0 });
+    renderView(true);
   } else {
     renderAll();
     refreshSheet();
@@ -372,8 +371,13 @@ onChange((what, id) => {
   }
 });
 
+onWeather(() => refreshHomeParts(["weather"]));
+
 setupGrid();
 setupChrome();
+setupHome({ goRoom, showAmbient });
+bindTiles($("#home"), { enabled: () => !isEditing(), onLongPress: () => startEditing() });
 setupIdle();
 setInterval(renderClock, 10_000);
+setInterval(() => { applySky(); refreshWeather(); }, 60_000);
 reload().then(() => { revealTab(); setupLive(); }).catch((e) => { toast(e.message, true); setupLive(); });

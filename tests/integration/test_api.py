@@ -115,6 +115,16 @@ class ApiTests(unittest.TestCase):
         except urllib.error.HTTPError as e:
             self.assertEqual(e.code, 404)
 
+    def test_tv_mac_address_can_be_set(self):
+        status, d = self.call("PATCH", "/devices/bd-tv", {"mac": "a4:36:c7:1:2:3"})
+        self.assertEqual((status, d["mac"]), (200, "A4:36:C7:01:02:03"))
+        status, err = self.call("PATCH", "/devices/bd-tv", {"mac": "12345"})
+        self.assertEqual(status, 400)
+        self.assertIn("MAC", err["error"])
+        _, state = self.call("GET", "/state")
+        for dev in state["devices"]:
+            self.assertNotIn("config", dev)            # only the MAC is exposed, never the rest
+
     def test_ui_files_are_never_served_stale(self):
         for path in ("/", "/app.css", "/js/app.js"):
             with self.subTest(path=path), urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=5) as r:

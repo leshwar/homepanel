@@ -7,6 +7,7 @@ import ipaddress
 import json
 import math
 import os
+import re
 import socket
 import ssl
 from typing import Any
@@ -136,20 +137,43 @@ async def udp_query(host: str, port: int, payload: bytes, *, timeout: float = 2.
         transport.close()
 
 
-async def wake_on_lan(mac: str, broadcast: str = "255.255.255.255") -> None:
-    """Send a Wake-on-LAN magic packet (used to turn TVs on)."""
-    clean = mac.replace(":", "").replace("-", "").replace(".", "")
-    if len(clean) != 12:
+def wol_packet(mac: str) -> bytes:
+    clean = normalize_mac(mac)
+    if not clean:
         raise ValueError("MAC address should look like AA:BB:CC:DD:EE:FF")
-    packet = b"\xff" * 6 + bytes.fromhex(clean) * 16
+    return b"\xff" * 6 + bytes.fromhex(clean.replace(":", "")) * 16
+
+
+def wol_targets(target_ip: str | None = None) -> list[str]:
+    """Where to send the wake-up packet: the home network's own broadcast address (computers
+    with several network connections, like Macs, may not send 255.255.255.255 over Wi-Fi),
+    the general broadcast, and the device's last known address."""
+    targets = []
+    lan = local_ip()
+    if not lan.startswith("127."):
+        targets.append(str(ipaddress.ip_network(f"{lan}/24", strict=False).broadcast_address))
+    targets.append("255.255.255.255")
+    if target_ip:
+        targets.append(target_ip)
+    return list(dict.fromkeys(targets))
+
+
+async def wake_on_lan(mac: str, target_ip: str | None = None) -> None:
+    """Send Wake-on-LAN magic packets (used to turn TVs on)."""
+    packet = wol_packet(mac)
+    targets = wol_targets(target_ip)
     loop = asyncio.get_running_loop()
 
     def _send():
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
             for _ in range(3):
-                s.sendto(packet, (broadcast, 9))
-                s.sendto(packet, (broadcast, 7))
+                for host in targets:
+                    for port in (9, 7):
+                        try:
+                            s.sendto(packet, (host, port))
+                        except OSError:
+                            pass   # one unreachable target mustn't stop the others
     await loop.run_in_executor(None, _send)
 
 
@@ -208,17 +232,53 @@ async def port_open(host: str, port: int, timeout: float = 1.0) -> bool:
         return False
 
 
+MAC_RE = re.compile(r"\b([0-9A-Fa-f]{1,2}(?:[:-][0-9A-Fa-f]{1,2}){5})\b")
+
+
+def normalize_mac(value: str | None) -> str | None:
+    """'a:b:c:1:2:3', 'AA-BB-CC-01-02-03' or 'aabbcc010203' → 'AA:BB:CC:01:02:03' (None if not a MAC)."""
+    if not value:
+        return None
+    value = value.strip()
+    if re.fullmatch(r"[0-9A-Fa-f]{12}", value):
+        parts = [value[i:i + 2] for i in range(0, 12, 2)]
+    else:
+        m = MAC_RE.fullmatch(value) or MAC_RE.search(value)
+        if not m:
+            return None
+        parts = re.split(r"[:-]", m.group(1))
+    mac = ":".join(p.zfill(2) for p in parts).upper()
+    return None if mac in ("00:00:00:00:00:00", "FF:FF:FF:FF:FF:FF") else mac
+
+
+def parse_arp_output(text: str, ip: str) -> str | None:
+    """Find ip's MAC in `arp -n` output (macOS: '? (192.168.1.5) at a4:36:c7:1:2:3 on en0 …')."""
+    for line in text.splitlines():
+        if f"({ip})" in line or line.split()[:1] == [ip]:
+            mac = normalize_mac(line.split(" at ", 1)[1] if " at " in line else line)
+            if mac:
+                return mac
+    return None
+
+
 def mac_from_arp(ip: str) -> str | None:
-    """Look up a device's MAC in the Linux ARP cache (works after we've talked to it)."""
+    """Look up a device's MAC in the ARP cache (works after we've talked to it).
+    Linux reads /proc/net/arp; macOS and others ask the `arp` command."""
     try:
         with open("/proc/net/arp") as f:
             for line in f.readlines()[1:]:
                 parts = line.split()
-                if parts and parts[0] == ip and parts[3] != "00:00:00:00:00:00":
-                    return parts[3].upper()
+                if parts and parts[0] == ip:
+                    return normalize_mac(parts[3])
+        return None
     except OSError:
         pass
-    return None
+    try:
+        import subprocess
+        out = subprocess.run(["arp", "-n", ip], capture_output=True, text=True, timeout=3).stdout
+        return parse_arp_output(out, ip)
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 def local_ip() -> str:

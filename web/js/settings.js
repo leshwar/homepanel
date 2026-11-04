@@ -97,6 +97,10 @@ const VIEWS = {
           <option value="">No room</option>
           ${store.rooms.map((r) => `<option ${r === d.room ? "selected" : ""}>${esc(r)}</option>`).join("")}
         </select></label>
+        ${d.kind === "tv" ? `<label class="field"><span>MAC address (used to turn the TV on)</span>
+          <input id="d-mac" value="${esc(d.mac || "")}" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off" spellcheck="false">
+          <small>${d.mac ? "Found automatically." : "Usually found automatically after the panel has talked to the TV while it's on."}
+            On the TV: Settings → General → Network → Advanced settings.</small></label>` : ""}
         ${["plug", "switch"].includes(d.kind) ? `<label class="check"><input type="checkbox" id="d-keep" ${d.keep_on ? "checked" : ""}>
           <span>Keep on during "All off" (for a fridge, router or aquarium)</span></label>` : ""}
         <div class="btn-row"><button class="btn primary" data-save-device="${esc(id)}">Save</button></div>
@@ -490,8 +494,10 @@ root.addEventListener("click", async (e) => {
   try {
     if (t("[data-save-device]")) {
       const id = t("[data-save-device]").dataset.saveDevice;
-      await api.updateDevice(id, { name: $("#d-name").value.trim() || "Device", room: $("#d-room").value,
-                                   keep_on: !!$("#d-keep")?.checked });
+      const changes = { name: $("#d-name").value.trim() || "Device", room: $("#d-room").value,
+                        keep_on: !!$("#d-keep")?.checked };
+      if ($("#d-mac")) changes.mac = $("#d-mac").value.trim();
+      await api.updateDevice(id, changes);
       toast("Saved");
       await reload();
       return back();

@@ -121,6 +121,16 @@ class UITests(unittest.TestCase):
         self.page.wait_for_function(f"document.querySelectorAll('.thumb').length === {count + 1}")
         self.page.wait_for_selector("text=Added 1 photo")
 
+    def test_tv_settings_have_a_mac_field(self):
+        self.page.click("#open-settings")
+        self.page.click("[data-go=devices]")
+        self.page.click("[data-arg=lr-tv]")
+        self.page.fill("#d-mac", "64:e4:a5:3:4:5")
+        self.page.click("[data-save-device]")
+        self.page.wait_for_selector("text=Saved")
+        mac = self.page.evaluate("fetch('/api/v1/state').then(r => r.json()).then(s => s.devices.find(d => d.id === 'lr-tv').mac)")
+        self.assertEqual(mac, "64:E4:A5:03:04:05")
+
     def test_demo_mode_explains_how_to_add_real_devices(self):
         self.page.click("#open-settings")
         self.page.click("[data-go=add]")

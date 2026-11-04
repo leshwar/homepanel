@@ -7,6 +7,7 @@ import { $, esc, icon, kindIcon, toast } from "./util.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame } from "./photoframe.js";
 import { FACES, faceId, faceHTML, faceInfo } from "./clockfaces.js";
+import { DEVICE_ICONS, deviceIconName, svg } from "./icons.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
@@ -43,7 +44,7 @@ function page(title, body, { closeBtn = false } = {}) {
 }
 
 const row = (attrs, iconName, title, sub = "", extra = "") =>
-  `<button class="row" ${attrs}>${iconName ? icon(iconName, "dim") : ""}<span class="grow">
+  `<button class="row" ${attrs}>${iconName?.startsWith?.("<svg") ? iconName : iconName ? icon(iconName, "dim") : ""}<span class="grow">
     <span class="title">${esc(title)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}</span>${extra}${icon("right", "dim")}</button>`;
 
 function searchAllResults(r) {
@@ -98,7 +99,7 @@ const VIEWS = {
       return `<p class="group-label">${esc(r || "No room")}</p><div class="list">${list.map((d) => {
         const s = d.state || {};
         const warn = s.needs_pairing ? "Needs pairing" : s.online === false ? "Offline" : "";
-        return row(`data-go=device data-arg="${esc(d.id)}"`, kindIcon(d), d.name, d.adapter_name,
+        return row(`data-go=device data-arg="${esc(d.id)}"`, svg(deviceIconName(d), "dim"), d.name, d.adapter_name,
                    warn ? `<span class="badge">${warn}</span>` : "");
       }).join("")}</div>`;
     }).join("");
@@ -119,6 +120,13 @@ const VIEWS = {
           <option value="">No room</option>
           ${store.rooms.map((r) => `<option ${r === d.room ? "selected" : ""}>${esc(r)}</option>`).join("")}
         </select></label>
+        <span class="field"><span>Icon</span></span>
+        <div class="icon-choices" role="radiogroup" aria-label="Icon">
+          <label class="icon-choice"><input type="radio" name="d-icon" value="" ${!d.icon ? "checked" : ""}>
+            <span>${svg(deviceIconName({ ...d, icon: "" }))}<small>Auto</small></span></label>
+          ${DEVICE_ICONS.map((ic) => `<label class="icon-choice"><input type="radio" name="d-icon" value="${ic}" ${d.icon === ic ? "checked" : ""}>
+            <span aria-label="${ic}">${svg(ic)}</span></label>`).join("")}
+        </div>
         ${d.kind === "tv" ? `<label class="field"><span>MAC address (used to turn the TV on)</span>
           <input id="d-mac" value="${esc(d.mac || "")}" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off" spellcheck="false">
           <small>${d.mac ? "Found automatically." : "Usually found automatically after the panel has talked to the TV while it's on."}
@@ -441,8 +449,8 @@ const VIEWS = {
         <label class="check"><input type="checkbox" name="clock_24h" ${s.clock_24h ? "checked" : ""}><span>24-hour clock</span></label>
         <span class="field"><span>Background</span></span>
         <div class="bg-choices" role="radiogroup" aria-label="Background">
-          ${[["ocean", "Ocean"], ["aurora", "Aurora"], ["night", "Night"]].map(([v, l]) => `
-            <label class="bg-choice"><input type="radio" name="background" value="${v}" ${(s.background || "ocean") === v ? "checked" : ""}>
+          ${[["sky", "Sky"], ["ocean", "Ocean"], ["aurora", "Aurora"], ["night", "Night"]].map(([v, l]) => `
+            <label class="bg-choice"><input type="radio" name="background" value="${v}" ${(s.background || "sky") === v ? "checked" : ""}>
               <span class="bg-swatch ${v}"></span><span>${l}</span></label>`).join("")}
         </div>
         <label class="field"><span>Glass transparency <b id="glass-val">${s.glass_transparency ?? 45}%</b></span>
@@ -561,7 +569,7 @@ root.addEventListener("click", async (e) => {
     if (t("[data-save-device]")) {
       const id = t("[data-save-device]").dataset.saveDevice;
       const changes = { name: $("#d-name").value.trim() || "Device", room: $("#d-room").value,
-                        keep_on: !!$("#d-keep")?.checked };
+                        keep_on: !!$("#d-keep")?.checked, icon: $("input[name=d-icon]:checked")?.value || "" };
       if ($("#d-mac")) changes.mac = $("#d-mac").value.trim();
       await api.updateDevice(id, changes);
       toast("Saved");

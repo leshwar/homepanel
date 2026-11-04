@@ -42,11 +42,19 @@ class UITests(unittest.TestCase):
         shutil.rmtree(cls.dir, ignore_errors=True)
 
     def setUp(self):
-        self.page = self.browser.new_page(viewport={"width": 720, "height": 1280}, has_touch=True)
         self.errors = []
-        self.page.on("pageerror", lambda e: self.errors.append(str(e)))
-        self.page.goto(f"http://127.0.0.1:{self.port}/")
+        self.page = self.open(view="rooms")     # most tests work with device tiles; Home has its own tests
         self.page.wait_for_selector(".tile")
+
+    def open(self, width=720, height=1280, view=None, room=None, **kw):
+        """A new page (a new screen: its own remembered view and room)."""
+        page = self.browser.new_page(viewport={"width": width, "height": height}, has_touch=True, **kw)
+        page.on("pageerror", lambda e: self.errors.append(str(e)))
+        if view or room:
+            page.add_init_script("".join(f"localStorage.setItem({k!r}, JSON.stringify({v!r}));"
+                                         for k, v in (("view", view), ("room", room)) if v is not None))
+        page.goto(f"http://127.0.0.1:{self.port}/")
+        return page
 
     def tearDown(self):
         self.page.close()
@@ -174,7 +182,7 @@ class UITests(unittest.TestCase):
 
     def test_glass_background_and_transparency(self):
         root = "document.documentElement"
-        self.page.wait_for_function(f"{root}.dataset.bg === 'ocean' && {root}.classList.contains('glass')")
+        self.page.wait_for_function(f"{root}.dataset.bg === 'sky' && {root}.classList.contains('glass')")
         self.page.click("#open-settings")
         self.page.click("[data-go=display]")
         self.page.click(".bg-choice:has(input[value=aurora])")
@@ -187,7 +195,7 @@ class UITests(unittest.TestCase):
         self.page.wait_for_function(f"{root}.dataset.bg === 'aurora'")
         # put things back for the other tests
         self.page.evaluate("""fetch('/api/v1/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
-                              body: JSON.stringify({background: 'ocean', glass_transparency: 45})})""")
+                              body: JSON.stringify({background: 'sky', glass_transparency: 45})})""")
 
     def test_photo_frame_shows_photos_and_touch_exits(self):
         before = self.tile("lr-lamp").evaluate("el => el.classList.contains('on')")
@@ -387,6 +395,183 @@ class UITests(unittest.TestCase):
         left, top, right, bottom, w, h = box
         self.assertTrue(left >= 0 and top >= 0 and right <= w and bottom <= h, box)
         self.page.locator("#ambient").click()
+
+
+    # ---------- Home page, room rail, dock, edit mode, sky ----------
+    def home(self, **kw):
+        page = self.open(view="home", reduced_motion="reduce", **kw)   # no wiggle, so clicks land
+        page.wait_for_selector(".widget")
+        return page
+
+    def long_press(self, page, selector, ms=700):
+        box = page.locator(selector).bounding_box()
+        page.mouse.move(box["x"] + 30, box["y"] + 30)
+        page.mouse.down()
+        page.wait_for_timeout(ms)
+        page.mouse.up()
+
+    def order(self, page):
+        return page.eval_on_selector_all(".home-grid > .widget", "els => els.map(e => e.dataset.wid)")
+
+    def test_home_page_clocks_device_widgets_and_rooms(self):
+        page = self.home(timezone_id="America/Denver")
+        try:
+            page.wait_for_selector('.widget[data-wid="clock"] [data-time]')
+            for wid, tz in (("zone-in", "Asia/Kolkata"), ("zone-us", "America/Denver")):   # US = this screen's zone
+                zone = page.locator(f'.widget[data-wid="{wid}"] .w-zone')
+                self.assertEqual(zone.get_attribute("data-zone"), tz)
+                expected = page.evaluate(f"new Date().toLocaleTimeString([], {{timeZone: '{tz}', hour: 'numeric', minute: '2-digit'}})")
+                self.assertTrue(expected.startswith(zone.locator("[data-time]").inner_text()))
+            self.assertIn("India", page.inner_text('.widget[data-wid="zone-in"]'))
+
+            lamp = page.locator('.widget[data-wid="dev-lr-lamp"] .tile')
+            was_on = lamp.get_attribute("data-on")
+            lamp.locator(".tile-name").click()                                  # tap = on/off
+            page.wait_for_function(f"document.querySelector('.widget[data-wid=\"dev-lr-lamp\"] .tile').dataset.on !== '{was_on}'")
+            lamp.locator(".tile-name").click()                                  # and back
+            page.wait_for_function(f"document.querySelector('.widget[data-wid=\"dev-lr-lamp\"] .tile').dataset.on === '{was_on}'")
+            self.long_press(page, '.widget[data-wid="dev-lr-lamp"] .tile')      # long press = controls, no toggle
+            page.wait_for_selector("#sheet:not([hidden]) #bri")
+            self.assertEqual(lamp.get_attribute("data-on"), was_on)
+            page.keyboard.press("Escape")
+            page.wait_for_selector("#sheet", state="hidden")
+
+            for wid in ("dev-lr-vacuum", "dev-lr-soundbar"):                   # no on/off, or media: tap opens controls
+                page.locator(f'.widget[data-wid="{wid}"] .tile-name').click()
+                page.wait_for_selector("#sheet:not([hidden]):not(.closing)")
+                page.keyboard.press("Escape")
+                page.wait_for_selector("#sheet", state="hidden")
+
+            page.click('[data-go-room="Kitchen"]')                              # Rooms widget opens that room
+            page.wait_for_function("document.documentElement.dataset.view === 'rooms'")
+            page.wait_for_selector('#rooms [aria-selected="true"]:has-text("Kitchen")')
+            ids = set(page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id)"))
+            self.assertEqual(ids, {"kt-pendant", "kt-kettle", "kt-fridge"})
+            page.click('#dock [data-nav="home"]')
+            page.wait_for_selector('.widget[data-wid="clock"]')
+        finally:
+            page.close()
+
+    def test_us_clock_falls_back_to_eastern_outside_the_us(self):
+        page = self.home(timezone_id="Europe/London")
+        try:
+            self.assertEqual(page.get_attribute('.widget[data-wid="zone-us"] .w-zone', "data-zone"), "America/New_York")
+        finally:
+            page.close()
+
+    def test_iphone_ipad_and_panel_sizes(self):
+        sizes = [(393, 852, True), (820, 1180, False), (1180, 820, False), (720, 1280, False), (1280, 720, False)]
+        for w, h, phone in sizes:
+            with self.subTest(size=f"{w}x{h}"):
+                page = self.home(width=w, height=h, is_mobile=phone)
+                try:
+                    self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth - innerWidth"), 0)
+                    wide = w >= 768
+                    self.assertEqual(page.locator("#rail").is_visible(), wide)       # vertical room tabs
+                    self.assertEqual(page.locator("#dock").is_visible(), not wide)   # floating dock
+                    targets = page.locator("#rail button:visible, #dock button:visible, .topbar button:visible")
+                    for i in range(targets.count()):
+                        box = targets.nth(i).bounding_box()
+                        self.assertGreaterEqual(min(box["width"], box["height"]), 48, targets.nth(i).inner_text())
+                    if wide:
+                        page.click('#rail [data-room="Kitchen"]')
+                        page.wait_for_selector('#grid .tile[data-id="kt-kettle"]')
+                        self.assertEqual(page.inner_text("#title"), "Kitchen")
+                        self.assertTrue(page.locator("#rooms").is_hidden())
+                        page.click('#rail [data-nav="home"]')
+                        page.wait_for_selector(".widget")
+                finally:
+                    page.close()
+
+    def test_edit_home_page_hide_resize_move_and_save_for_every_screen(self):
+        page = self.home()
+        try:
+            self.long_press(page, '.widget[data-wid="clock"]')                 # long press the page = edit
+            page.wait_for_selector(".home.editing .editbar")
+            page.click('.widget[data-wid="scenes"] [data-hide]')
+            page.click('.widget[data-wid="weather"] [data-resize]')            # a tap on the corner: next size
+            self.assertIn("s-2x2", page.get_attribute('.widget[data-wid="weather"]', "class"))
+            page.click('.widget[data-wid="zone-us"] [data-menu]')
+            page.select_option("[data-zone-pick]", "America/Chicago")
+            page.click('[data-size-pick="2x1"]')
+            page.click(".wmenu button.btn[data-menu-close]")
+            a = page.locator('.widget[data-wid="clock"]').bounding_box()       # hold the clock and drag it down
+            t = page.locator('.widget[data-wid="rooms"]').bounding_box()
+            page.mouse.move(a["x"] + 50, a["y"] + 50)
+            page.mouse.down()
+            page.wait_for_timeout(350)
+            page.mouse.move(t["x"] + t["width"] / 2, t["y"] + t["height"] / 2, steps=10)
+            page.mouse.up()
+            self.assertNotEqual(self.order(page)[0], "clock")
+            moved = self.order(page)
+            page.click("[data-edit-done]")
+            page.wait_for_selector("text=Home page saved")
+
+            other = self.home(width=1180, height=820)                           # another screen: same Home page
+            try:
+                self.assertEqual(self.order(other), moved)
+                self.assertEqual(other.locator('.widget[data-wid="scenes"]').count(), 0)
+                self.assertIn("s-2x2", other.get_attribute('.widget[data-wid="weather"]', "class"))
+                self.assertIn("s-2x1", other.get_attribute('.widget[data-wid="zone-us"]', "class"))
+                self.assertEqual(other.get_attribute('.widget[data-wid="zone-us"] .w-zone', "data-zone"), "America/Chicago")
+            finally:
+                other.close()
+
+            page.click("#edit-home")                                           # Cancel puts it all back
+            page.click('.widget[data-wid="weather"] [data-hide]')
+            page.click("[data-add-widget]")                                    # hidden widgets can come back
+            page.wait_for_selector('.wmenu [data-unhide="scenes"]')
+            page.click('.wmenu [data-unhide="scenes"]')
+            page.wait_for_selector('.widget[data-wid="scenes"]')
+            page.click("[data-edit-cancel]")
+            page.wait_for_selector(".home:not(.editing)")
+            self.assertEqual(self.order(page), moved)
+        finally:
+            page.evaluate("fetch('/api/v1/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: '{\"home_layout\": null}'})")
+            page.close()
+
+    def test_sky_background_follows_the_weather(self):
+        source = FakeWeatherSource(temperature=28.4, code=71)                 # snow
+        os.environ["HOMEPANEL_WEATHER_URL"] = source.url
+        try:
+            self.put_settings(weather_enabled=True, latitude=40.7, longitude=-74.0, place_name="New York")
+            page = self.home()
+            try:
+                page.wait_for_function("document.documentElement.dataset.sky === 'snow'")
+                self.assertEqual(page.evaluate("document.documentElement.dataset.bg"), "sky")
+                self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.sky-snow')).opacity"), "1")
+                text = page.inner_text('.widget[data-wid="weather"]')
+                self.assertIn("28°", text)
+                self.assertIn("New York", text)
+                periods = page.evaluate("""async () => { const m = await import('/js/sky.js');
+                    return [6, 12, 18, 23].map((h) => m.periodAt(new Date(2026, 0, 5, h, 0), null)); }""")
+                self.assertEqual(periods, ["dawn", "day", "dusk", "night"])
+            finally:
+                page.close()
+        finally:
+            source.stop()
+            os.environ.pop("HOMEPANEL_WEATHER_URL", None)
+            self.put_settings(weather_enabled=False, latitude=None, longitude=None, place_name="")
+
+    def test_device_icons_from_name_kind_or_choice(self):
+        names = self.page.evaluate("""async () => { const m = await import('/js/icons.js');
+            return [["Floor lamp", "light"], ["TV backlight", "light"], ["Kettle plug", "plug"], ["Fridge plug", "plug"],
+                    ["Samsung TV", "tv"], ["Robot", "vacuum"], ["Living Room Soundbar", "speaker"], ["TV sound", "speaker"],
+                    ["Deebot T8", "vacuum"], ["Hallway", "light"], ["Thing", "other"]]
+              .map(([name, kind]) => m.deviceIconName({ name, kind })); }""")
+        self.assertEqual(names, ["lamp", "strip", "kettle", "fridge", "tv", "vacuum", "soundbar", "soundbar", "vacuum", "bulb", "power"])
+        self.page.click("#open-settings")                                      # pick one in Settings → device
+        self.page.click("[data-go=devices]")
+        self.page.click("[data-arg=kt-kettle]")
+        self.page.click(".icon-choice:has(input[value=heater])")
+        self.page.click("[data-save-device]")
+        self.page.wait_for_selector("text=Saved")
+        try:
+            icon = self.page.evaluate("fetch('/api/v1/state').then(r => r.json()).then(s => s.devices.find(d => d.id === 'kt-kettle').icon)")
+            self.assertEqual(icon, "heater")
+        finally:
+            self.page.evaluate("""fetch('/api/v1/devices/kt-kettle', {method: 'PATCH', headers: {'Content-Type': 'application/json'},
+                                  body: JSON.stringify({icon: ''})})""")
 
 
 if __name__ == "__main__":

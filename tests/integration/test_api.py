@@ -53,6 +53,26 @@ class ApiTests(unittest.TestCase):
         finally:
             self.call("PATCH", "/devices/kt-kettle", {"room": "Kitchen"})
 
+    def test_home_layout_is_saved_for_every_screen(self):
+        _, s = self.call("GET", "/state")
+        default = s["settings"]["home_layout"]
+        self.assertEqual(default["widgets"][0]["type"], "clock")
+        try:
+            mine = {"widgets": [{"id": "zone-us", "type": "zone", "size": "2x1",
+                                 "options": {"tz": "America/Los_Angeles", "label": "US"}}]}
+            status, saved = self.call("PUT", "/settings", {"home_layout": mine})
+            self.assertEqual(status, 200)
+            _, s = self.call("GET", "/state")
+            self.assertEqual(s["settings"]["home_layout"], saved["home_layout"])
+            self.assertEqual(s["settings"]["home_layout"]["widgets"][0]["options"]["tz"], "America/Los_Angeles")
+            status, err = self.call("PUT", "/settings", {"home_layout": {"widgets": [{"id": "a", "type": "clock", "size": "9x9"}]}})
+            self.assertEqual(status, 400)
+            self.assertIn("Widget size", err["error"])
+        finally:
+            self.call("PUT", "/settings", {"home_layout": None})
+        _, s = self.call("GET", "/state")
+        self.assertEqual(s["settings"]["home_layout"], default)
+
     def test_command_and_errors(self):
         status, d = self.call("POST", "/devices/lr-ceiling/command", {"action": "brightness", "value": 42})
         self.assertEqual((status, d["state"]["brightness"]), (200, 42))
@@ -147,7 +167,7 @@ class ApiTests(unittest.TestCase):
         status, err = self.call("PUT", "/settings", {"background": "neon"})
         self.assertEqual(status, 400)
         self.assertIn("Background", err["error"])
-        self.call("PUT", "/settings", {"background": "ocean", "glass_transparency": 45})
+        self.call("PUT", "/settings", {"background": "sky", "glass_transparency": 45})
 
     def test_clock_face_setting(self):
         status, s = self.call("PUT", "/settings", {"clock_face": "words"})
@@ -233,6 +253,19 @@ class ApiTests(unittest.TestCase):
             self.assertIn(b"HomePanel", r.read())
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/js/app.js", timeout=5) as r:
             self.assertEqual(r.status, 200)
+
+    def test_add_to_home_screen_files(self):
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=5) as r:
+            html = r.read().decode()
+        for tag in ('name="apple-mobile-web-app-capable"', 'viewport-fit=cover', 'rel="apple-touch-icon"', 'rel="manifest"'):
+            self.assertIn(tag, html)
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/manifest.webmanifest", timeout=5) as r:
+            manifest = json.loads(r.read())
+        self.assertEqual(manifest["display"], "standalone")
+        for path in ["/icon-180.png", *(i["src"] for i in manifest["icons"])]:
+            with self.subTest(path=path), urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=5) as r:
+                self.assertEqual(r.headers.get("Content-Type"), "image/png")
+                self.assertEqual(r.read(8), b"\x89PNG\r\n\x1a\n")
 
 
 if __name__ == "__main__":

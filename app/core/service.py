@@ -25,6 +25,7 @@ from .adapter import (ADAPTERS, Action, AdapterError, Cap, Clean, Device, Device
                       Key, PairingRequired, missing_requirements, unsupported_reason)
 from .automations import Automations
 from .history import History
+from .layout import LayoutError, clean_layout, default_layout
 from .net import in_container, normalize_mac, parse_color
 from .photos import PhotoLibrary
 from .presence import Presence
@@ -34,7 +35,7 @@ from .store import Store
 log = logging.getLogger("homepanel")
 
 COMMAND_TIMEOUT = 10.0
-BACKGROUNDS = ("ocean", "aurora", "night")
+BACKGROUNDS = ("sky", "ocean", "aurora", "night")   # sky: follows the weather and time of day
 IDLE_SCREENS = ("clock", "photos")
 CLOCK_FACES = ("digital", "analog", "words", "date", "night")
 REFRESH_TIMEOUT = 8.0
@@ -271,13 +272,21 @@ class HomeService:
             "devices": [self.public_device(d) for d in self.store.devices.values()],
             "rooms": self.store.rooms,
             "scenes": self.store.scenes,
-            "settings": self.store.settings,
+            "settings": self.settings(),
             "adapters": [self.adapter_meta(a) for a in ADAPTERS if not ADAPTERS[a].hidden or self.demo],
             "automations": self.automations.list(),
             "presence": self.presence.snapshot(),
             "demo": self.demo,
             "in_container": in_container(),
         }
+
+    def settings(self) -> dict:
+        """Panel settings as the UI sees them. Until someone edits the Home page, its
+        layout is the default one built from the devices that exist now."""
+        s = dict(self.store.settings)
+        if not s.get("home_layout"):
+            s["home_layout"] = default_layout(self.store.devices.values())
+        return s
 
     def get(self, device_id: str) -> Device:
         d = self.store.devices.get(device_id)
@@ -714,6 +723,11 @@ class HomeService:
                     "weather_enabled"):
             if key in changes:
                 changes[key] = changes[key] in (True, 1, "1", "true", "on")
+        if "home_layout" in changes:
+            try:
+                changes["home_layout"] = clean_layout(changes["home_layout"]) if changes["home_layout"] else None
+            except LayoutError as e:
+                raise AdapterError(str(e)) from None
         if "presence" in changes:
             people = []
             for p in changes["presence"] or []:
@@ -724,7 +738,7 @@ class HomeService:
         self.store.settings.update(changes)
         self.store.save()
         self._publish_layout()
-        return self.store.settings
+        return self.settings()
 
     # --- demo ---------------------------------------------------------------
     async def _seed_demo(self) -> None:

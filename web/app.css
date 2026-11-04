@@ -44,13 +44,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .app { min-height: 100%; padding: calc(var(--pad) + env(safe-area-inset-top)) var(--pad) 40px;
        max-width: 1400px; margin: 0 auto; }
 
-.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
-.clock { text-align: left; display: flex; flex-direction: column; }
-.clock-time { font-size: 64px; font-weight: 300; line-height: 1; letter-spacing: -0.02em;
-              font-variant-numeric: tabular-nums; }
-.clock-sub { color: var(--haze); margin-top: 8px; font-size: 17px; }
-.top-actions { display: flex; gap: 10px; align-items: center; padding-top: 6px; }
-
 .icon-btn { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
             background: var(--dusk); color: var(--haze); }
 .icon-btn:active { background: var(--slate); color: var(--paper); }
@@ -60,10 +53,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .btn-alloff:active { background: var(--slate); }
 .btn-alloff .i { color: var(--ember); }
 
-/* ---------- scenes ---------- */
-.scenes { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--pad)) 18px;
-          padding: 2px var(--pad); }
-.scenes::-webkit-scrollbar, .rooms::-webkit-scrollbar { display: none; }
+/* ---------- scenes (Home page widget) ---------- */
+.rooms::-webkit-scrollbar { display: none; }
 .scene { flex: none; display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 20px 0 14px;
          border-radius: var(--r-ctl); background: var(--dusk); font-weight: 500; transition: transform .15s var(--ease); }
 .scene .i { color: var(--lamp); }
@@ -298,8 +289,6 @@ button.row:active { background: var(--slate); }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 @media (orientation: landscape) and (max-height: 760px) {
-  .clock-time { font-size: 48px; }
-  .top { margin-bottom: 14px; }
   .tile { min-height: 136px; }
 }
 

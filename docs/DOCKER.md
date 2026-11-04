@@ -48,6 +48,12 @@ make docker-logs      # follow its logs
 docker compose down   # stop it
 ```
 
+## Comparing branches
+
+`./scripts/dev/wt.sh demo <branch>` runs a branch's demo on its own free port, so
+two branches (for example two UI designs) can run side by side. See
+[DEVELOPMENT.md](DEVELOPMENT.md).
+
 ## Try it (any OS, pretend devices)
 
 ```bash

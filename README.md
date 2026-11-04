@@ -90,6 +90,10 @@ To control **your real devices** from your laptop (same Wi-Fi), run `make run`
 
 ## Sign-in and profiles
 
+| Profile picker (wall panel) | PIN pad (phone) | Settings → Profiles |
+|---|---|---|
+| <img src="docs/screenshots/signin-picker.png" width="300" alt="Who's using the panel? Avatars for Owner and Sam"> | <img src="docs/screenshots/signin-pin.png" width="160" alt="Sam's avatar over a round-key PIN pad"> | <img src="docs/screenshots/profiles-settings.png" width="220" alt="List of profiles with their role, devices and sign-in, plus This screen settings"> |
+
 The panel asks everyone to sign in, so a guest on your Wi-Fi, or anyone who finds
 the address, can't switch your lights or see your devices. That also makes it
 **safer to reach the panel when you're away from home** (for example over

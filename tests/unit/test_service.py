@@ -156,6 +156,15 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AdapterError):
             self.svc.update_settings({"glass_transparency": "lots"})
 
+    async def test_clock_face_default_and_validation(self):
+        self.assertEqual(self.svc.store.settings["clock_face"], "digital")
+        for face in ("digital", "analog", "words", "date", "night"):
+            self.assertEqual(self.svc.update_settings({"clock_face": face})["clock_face"], face)
+        with self.assertRaises(AdapterError) as cm:
+            self.svc.update_settings({"clock_face": "sundial"})
+        self.assertIn("Clock face", str(cm.exception))
+        self.assertEqual(self.svc.store.settings["clock_face"], "night")   # bad value didn't stick
+
     async def test_account_password_kept_when_blank(self):
         self.svc.set_account("govee", {"api_key": "secret-1"})
         self.svc.set_account("govee", {"api_key": ""})

@@ -53,6 +53,7 @@ export const api = {
   runAutomation: (id) => call("POST", `/automations/${id}/run`),
   presence: () => call("GET", "/presence"),
   sun: () => call("GET", "/sun"),
+  weather: () => call("GET", "/weather"),
 
   photos: () => call("GET", "/photos"),
   deletePhoto: (id) => call("DELETE", `/photos/${encodeURIComponent(id)}`),

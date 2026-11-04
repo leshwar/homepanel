@@ -198,7 +198,7 @@ class SamsungTVAdapter(DeviceAdapter):
                 mac = device.config.get("mac") or mac_from_arp(device.config["ip"])
                 if not mac:
                     raise AdapterError("Can't turn this TV on: its MAC address is unknown. Add it in Settings.")
-                await wake_on_lan(mac)
+                await wake_on_lan(mac, device.config["ip"])
                 for _ in range(10):           # wait for it to come up
                     await asyncio.sleep(1.5)
                     if await port_open(device.config["ip"], 8001, 1):

@@ -12,7 +12,7 @@ import asyncio
 
 from ..core.adapter import (Action, AdapterError, Cap, Device, DeviceAdapter, Field, Found, Key,
                             Kind, PairingRequired, register)
-from ..core.net import mac_from_arp, port_open, ssdp_search, wake_on_lan
+from ..core.net import mac_from_arp, normalize_mac, port_open, ssdp_search, wake_on_lan
 
 BUTTONS = {Key.UP: "UP", Key.DOWN: "DOWN", Key.LEFT: "LEFT", Key.RIGHT: "RIGHT", Key.OK: "ENTER",
            Key.BACK: "BACK", Key.HOME: "HOME", Key.MENU: "MENU", Key.SOURCE: "INPUT_HUB",
@@ -101,7 +101,7 @@ class LGTVAdapter(DeviceAdapter):
         except Exception as e:
             await self._drop(device)
             raise PairingRequired(f"Accept the prompt on the TV, then choose Pair again. ({e})")
-        device.config["mac"] = device.config.get("mac") or mac_from_arp(ip) or ""
+        await self._learn_mac(device, c)
         info = getattr(getattr(c, "tv_info", None), "system", None) or _tv(c, "system_info") or {}
         if isinstance(info, dict) and info.get("modelName"):
             device.meta["model"] = info["modelName"]
@@ -120,12 +120,27 @@ class LGTVAdapter(DeviceAdapter):
     async def forget(self, device):
         await self._drop(device)
 
+    async def _learn_mac(self, device: Device, c) -> None:
+        """Ask the TV for its own network address (needed later to switch it on)."""
+        if device.config.get("mac"):
+            return
+        info = getattr(getattr(c, "tv_info", None), "connection", None)
+        if not isinstance(info, dict) and hasattr(c, "get_connection_info"):
+            try:
+                info = await asyncio.wait_for(c.get_connection_info(), 5)
+            except Exception:
+                info = None
+        mac = mac_from_connection_info(info, device.config.get("ip")) or mac_from_arp(device.config["ip"])
+        if mac:
+            device.config["mac"] = mac
+
     async def refresh(self, device: Device) -> dict:
         ip = device.config["ip"]
         if not (await port_open(ip, 3000, 1.5) or await port_open(ip, 3001, 1.5)):
             await self._drop(device)
             return {"on": False}
         c = await self._client(device)
+        await self._learn_mac(device, c)
         if not device.meta.get("apps"):
             self._update_meta(device, c)
         app = _tv(c, "current_app_id")
@@ -138,10 +153,18 @@ class LGTVAdapter(DeviceAdapter):
         if action == Action.POWER and value:
             if device.state.get("on"):
                 return {"on": True}
-            mac = device.config.get("mac") or mac_from_arp(device.config["ip"])
+            ip = device.config["ip"]
+            mac = device.config.get("mac") or mac_from_arp(ip)
             if not mac:
-                raise AdapterError("Can't turn this TV on: its MAC address is unknown. Add it in Settings.")
-            await wake_on_lan(mac)
+                raise AdapterError(f"{device.name} can't be turned on yet because the panel doesn't know its MAC address. "
+                                   "Turn the TV on with its remote once and the panel learns it, or enter it in "
+                                   "Settings → Devices.")
+            device.config["mac"] = mac
+            await wake_on_lan(mac, ip)
+            for _ in range(10):                      # wait for the TV's network to wake up
+                if await port_open(ip, 3001, 1) or await port_open(ip, 3000, 1):
+                    break
+                await asyncio.sleep(1)
             return {"on": True}
         try:
             c = await self._client(device)
@@ -185,6 +208,32 @@ class LGTVAdapter(DeviceAdapter):
             await self._drop(device)
             raise
         return {}
+
+
+def mac_from_connection_info(info, ip: str | None = None) -> str | None:
+    """Pull the MAC out of webOS connection info ({'wifiInfo': {'macAddress': …, 'ipAddress': …}, 'wiredInfo': …}).
+    Prefers the interface the panel is talking to."""
+    if not isinstance(info, dict):
+        return None
+    found = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            if node.get("macAddress"):
+                found.append(node)
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    walk(info)
+    found.sort(key=lambda n: (n.get("ipAddress") != ip, not n.get("connected", True)))
+    for node in found:
+        mac = normalize_mac(node["macAddress"])
+        if mac:
+            return mac
+    return None
 
 
 def _connected(c) -> bool:

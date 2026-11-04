@@ -48,7 +48,7 @@ A device looks like:
 | `volume_up` / `volume_down` | — | volume |
 | `mute` | `true` / `false` (omit to toggle) | mute |
 | `channel_up` / `channel_down` | — | channel |
-| `key` | `UP DOWN LEFT RIGHT OK BACK HOME MENU SOURCE PLAY PAUSE STOP REWIND FORWARD` | remote |
+| `key` | `UP DOWN LEFT RIGHT OK BACK HOME MENU SOURCE PLAY PAUSE STOP REWIND FORWARD EXIT CHANNEL_LIST INFO` and the digits `0`–`9` | remote |
 | `launch_app` | app id from `meta.apps` | apps |
 | `set_input` | input id from `meta.inputs` | inputs |
 | `clean` | `start` / `pause` / `resume` / `stop` | clean |
@@ -59,12 +59,17 @@ A device looks like:
 | `station` | id from `meta.station_actions` (e.g. `empty_dustbin`) | station |
 | `locate` | — (plays a sound) | locate |
 | `set_sound_mode` | sound mode id from `meta.sound_modes` (other ids are rejected) | sound_mode |
+| `pointer` | `{"dx": 12, "dy": -4}` to move, `{"click": true}` to click, `{"scroll": 40}` to scroll (positive = down). Moves are clamped to ±400 per message. | pointer |
 
 `GET /devices/{id}/map` returns the floor plan as an image (SVG for Ecovacs) for
 devices with the `map` capability. The state key `map_rev` changes when the map
 does, so add it to the URL to refresh the picture.
 
-Returns the updated device. Example:
+Returns the updated device. `pointer` commands don't change the device's state, so they
+aren't broadcast as live events; the UI batches moves (one request in flight, every
+~30 ms) so the TV's pointer follows a finger smoothly.
+
+Example:
 
 ```bash
 curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \

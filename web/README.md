@@ -11,6 +11,7 @@ web/
 ├── manifest.webmanifest, icon-*.png   "Add to Home Screen" (iPhone, iPad, Android)
 ├── photoframe.css  photo frame slideshow and its settings
 ├── clockfaces.css  resting clock faces and the face picker previews
+├── controls.css    device sheets: light pill and color wheel, TV remote, robot vacuum
 └── js/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
     ├── store.js    client state, optimistic commands, change notifications
@@ -23,6 +24,8 @@ web/
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
     ├── sky.js      weather from the server → html[data-sky] / [data-period] for the Sky background
     ├── sheet.js    bottom sheet: light controls and the TV remote
+    ├── remote.js   TV and speaker remote: D-pad / touchpad / number pad, rockers, apps, pointer
+    ├── vacuum.js   robot vacuum: map, status, main button, rooms, Options, Maintenance
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
     ├── clockfaces.js  resting clock faces (digital, analog, words, date, night) + burn-in drift
     └── settings.js settings pages: add devices, edit, rooms, scenes, display, diagnostics
@@ -85,8 +88,29 @@ through `store.command()`, which updates the tile instantly, calls the API, and
 reverts with an error toast if it fails. Live updates from other screens and
 phones arrive over Server-Sent Events.
 
+## Device sheets
+
+Tap a tile's arrow (or long-press) for full controls. A sheet shows only what the
+device can do (its `caps`):
+
+- *Lights*: a tall brightness pill (tap = on/off, drag = dim, relative like Apple Home),
+  a color wheel (the rim snaps to pure colors), a warm-to-cool slider and a few presets.
+  Dragging previews live, at most one command every 300 ms, and the final value always wins.
+- *TV remote*: power, the TV's name with a "connected" dot, mute; a round D-pad with Menu,
+  Input, Exit and List around it; a switch between D-pad, touchpad (TVs with `pointer`)
+  and number pad; volume and channel rockers (hold to repeat), Home, Play/Pause, Back; and
+  swipeable pages of apps then inputs. Fits a 393×852 phone without scrolling; two columns
+  on big landscape screens. The touchpad sends pointer moves batched (one request in
+  flight, ~30 ms apart): drag to move, tap to click, two fingers to scroll. On phones,
+  **Aim** moves the pointer by tilting the phone (iOS asks for motion access first).
+- *Speakers and sound bars* use the same sheet without remote keys: power, name and mute,
+  a wide volume bar, then sound mode and input chips.
+- *Robot vacuum*: map, status and battery, one main button (start, pause, keep cleaning,
+  or clean the picked rooms), rooms as chips, Options (suction, mode, station jobs) and
+  parts wear folded behind Maintenance.
+
 ## Adding a control for a new capability
 
 1. Add the capability/action in `app/core/adapter.py` (`Cap`, `Action`).
-2. Render it in `sheet.js` → `render()` guarded by `has("your_cap")`.
+2. Render it in `sheet.js` (TVs: `remote.js`, vacuums: `vacuum.js`), guarded by the cap.
 3. Send it with `command(d.id, "your_action", value, {optimistic state})`.

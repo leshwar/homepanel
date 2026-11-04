@@ -59,12 +59,29 @@ class LGTVAdapter(DeviceAdapter):
             if ip in seen:
                 continue
             seen.add(ip)
-            found.append(Found(adapter=self.id, uid=(h.get("usn", "").split("::")[0] or ip),
-                               name="LG TV", kind=Kind.TV, caps=CAPS, config={"ip": ip, "mac": mac_from_arp(ip) or ""},
-                               detail=f"{ip} · webOS", needs_pairing=True))
+            uuid = h.get("usn", "").split("::")[0]
+            found.append(self._found(ip, await self._mac_for(ip), uuid, detail=f"{ip} · webOS"))
         if not found:
             found = await self._scan_for_tvs(seen)
         return found
+
+    def _found(self, ip: str, mac: str | None, uuid: str = "", *, detail: str) -> Found:
+        """The same TV gets the same uid however it was found: its MAC when the panel can learn it.
+        The SSDP uuid (the uid used before) is kept as an alias so TVs saved earlier still match."""
+        uid = mac or uuid or ip
+        config = {"ip": ip, "mac": mac or ""}
+        if uuid:
+            config["uuid"] = uuid
+        return Found(adapter=self.id, uid=uid, name="LG TV", kind=Kind.TV, caps=CAPS, config=config,
+                     detail=detail, needs_pairing=True, aliases=[uuid] if uuid and uuid != uid else [])
+
+    async def _mac_for(self, ip: str) -> str | None:
+        """The TV's MAC from the ARP cache. An SSDP reply doesn't always put the TV there,
+        so knock on its remote-control port once and look again."""
+        mac = mac_from_arp(ip)
+        if not mac and (await port_open(ip, 3000, 1.0) or await port_open(ip, 3001, 1.0)):
+            mac = mac_from_arp(ip)
+        return normalize_mac(mac)
 
     async def _scan_for_tvs(self, skip: set) -> list[Found]:
         """Fallback when the network blocks discovery broadcasts (common with mesh Wi-Fi and
@@ -75,11 +92,13 @@ class LGTVAdapter(DeviceAdapter):
         for ip in sorted(open_hosts):
             if not await self._looks_like_webos(ip):
                 continue
-            mac = mac_from_arp(ip) or ""
-            found.append(Found(adapter=self.id, uid=mac or ip, name="LG TV", kind=Kind.TV, caps=CAPS,
-                               config={"ip": ip, "mac": mac}, detail=f"{ip} · found by network scan",
-                               needs_pairing=True))
+            found.append(self._found(ip, await self._mac_for(ip), detail=f"{ip} · found by network scan"))
         return found
+
+    def known_ids(self, device: Device) -> set[str]:
+        """Also match TVs saved under their SSDP uuid by the MAC learned after pairing, and the reverse."""
+        extra = {normalize_mac(device.config.get("mac")), device.config.get("uuid")}
+        return super().known_ids(device) | {i for i in extra if i}
 
     async def _looks_like_webos(self, ip: str) -> bool:
         """webOS answers plain HTTP on port 3000 with a short 'Hello world' page."""
@@ -92,8 +111,10 @@ class LGTVAdapter(DeviceAdapter):
     def from_manual(self, values):
         if not values.get("ip"):
             raise AdapterError("IP address is required.")
-        return Found(adapter=self.id, uid=values["ip"], name=values.get("name") or "LG TV", kind=Kind.TV,
-                     caps=CAPS, config={"ip": values["ip"], "mac": values.get("mac", "")}, needs_pairing=True)
+        mac = normalize_mac(values.get("mac"))
+        return Found(adapter=self.id, uid=mac or values["ip"], name=values.get("name") or "LG TV", kind=Kind.TV,
+                     caps=CAPS, config={"ip": values["ip"], "mac": mac or values.get("mac", "")}, needs_pairing=True,
+                     aliases=[values["ip"]] if mac else [])
 
     async def _client(self, device: Device, *, pairing=False):
         c = self._clients.get(device.id)

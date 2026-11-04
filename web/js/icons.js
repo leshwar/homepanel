@@ -59,7 +59,7 @@ export const DEVICE_ICONS = ["bulb", "lamp", "ceiling", "strip", "plug", "switch
   "kettle", "fridge", "coffee", "heater", "ac", "purifier", "washer", "vacuum", "router", "camera", "lock", "blinds", "power"];
 
 const KIND = { light: "bulb", plug: "plug", switch: "switch", tv: "tv", fan: "fan", vacuum: "vacuum",
-               speaker: "speaker", soundbar: "soundbar", other: "power" };
+               speaker: "soundbar", other: "power" };
 
 // Checked in order; the first word found in the device's name wins.
 const NAME_HINTS = [
@@ -80,6 +80,8 @@ export function deviceIconName(d) {
     if (!re.test(name)) continue;
     if (d.kind === "light" && !["lamp", "ceiling", "strip", "bulb"].includes(ic)) continue;
     if (d.kind === "tv" && ic !== "tv") continue;
+    if (d.kind === "speaker" && !["speaker", "soundbar"].includes(ic)) continue;   // "TV sound bar" is still a sound bar
+    if (d.kind === "vacuum" && ic !== "vacuum") continue;
     return ic;
   }
   return KIND[d.kind] || "power";

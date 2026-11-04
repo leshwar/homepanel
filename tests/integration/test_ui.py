@@ -73,6 +73,18 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector(".dpad")
         self.assertTrue(self.tile("lr-tv").evaluate("el => el.classList.contains('on')"))
 
+    def test_sound_bar_opens_media_controls_and_picks_sound_mode(self):
+        self.page.wait_for_selector('.tile[data-id="lr-soundbar"].wide')
+        self.tile("lr-soundbar").locator(".tile-name").click()
+        self.page.wait_for_selector('[data-sound-mode="cinema"]')
+        self.assertTrue(self.tile("lr-soundbar").evaluate("el => el.classList.contains('on')"))  # tap didn't turn it off
+        self.assertEqual(self.page.locator(".dpad").count(), 0)       # no TV remote for a speaker
+        self.assertTrue(self.page.locator('[data-input="bt"]').is_visible())
+        self.page.locator('[data-sound-mode="cinema"]').click()
+        self.page.wait_for_selector('[data-sound-mode="cinema"][aria-pressed="true"]')
+        box = self.page.locator('[data-sound-mode="cinema"]').bounding_box()
+        self.assertGreaterEqual(box["height"], 48)
+
     def test_brightness_slider(self):
         self.tile("lr-ceiling").locator("[data-more]").click()
         box = self.page.locator("#bri").bounding_box()
@@ -224,6 +236,43 @@ class UITests(unittest.TestCase):
         self.page.click("[data-go=add]")
         self.page.click("[data-arg=shelly]")          # a brand with no extra libraries, so always available
         self.page.wait_for_selector("text=You're in demo mode")
+
+    def test_robot_vacuum_sheet(self):
+        tile = self.page.locator('.tile[data-id="lr-vacuum"]')
+        tile.click()                                         # opens controls, never starts cleaning by itself
+        self.page.wait_for_selector("#sheet:not([hidden]) [data-clean]")
+        self.assertEqual(self.page.locator("#sheet [data-power]").count(), 0)   # no on/off button
+        self.assertIn("Battery", self.page.locator("#sheet").inner_text())
+        self.page.click("#sheet [data-clean=start]")
+        self.page.wait_for_selector("#sheet [data-clean=pause]")
+        self.page.wait_for_function(
+            "document.querySelector('.tile[data-id=\"lr-vacuum\"] .tile-status').textContent.startsWith('Cleaning')")
+        self.page.click("#sheet [data-dock]")
+        self.page.wait_for_function(
+            "document.querySelector('#sheet .sheet-head p').textContent.startsWith('Going back to dock')")
+        box = self.page.locator("#sheet [data-clean]").bounding_box()
+        self.assertGreaterEqual(box["height"], 48)               # touch target
+        self.assertEqual(self.errors, [])
+
+    def test_robot_vacuum_map_rooms_and_settings(self):
+        self.page.locator('.tile[data-id="lr-vacuum"]').click()
+        self.page.wait_for_function("(() => { const i = document.querySelector('#sheet .vac-map img');"
+                                    " return i && i.complete && i.naturalWidth > 0; })()")      # the map loaded
+        self.page.click('#sheet [data-room-pick="2"]')
+        self.page.click('#sheet [data-room-pick="3"]')
+        self.page.wait_for_selector("text=Clean these 2 rooms")
+        self.page.click("#sheet [data-clean-rooms]")
+        self.page.wait_for_selector("#sheet [data-clean=pause]")
+        self.page.click('#sheet [data-suction="quiet"]')
+        self.page.wait_for_selector('#sheet [data-suction="quiet"][aria-pressed="true"]')
+        self.page.click("#sheet [data-locate]")
+        self.page.wait_for_selector("text=Your vacuum is making a sound")
+        self.assertIn("Filter", self.page.locator("#sheet .vac-parts").text_content())   # folded away until tapped
+        for sel in ('[data-room-pick="1"]', '[data-suction="quiet"]', "[data-locate]"):
+            self.assertGreaterEqual(self.page.locator(f"#sheet {sel}").bounding_box()["height"], 48)
+        self.page.click("#sheet [data-dock]")                      # leave it docked for the other tests
+        self.page.wait_for_selector("#sheet [data-clean=start]")
+        self.assertEqual(self.errors, [])
 
     def test_search_all_brands_from_add_screen(self):
         self.page.click("#open-settings")
@@ -387,6 +436,12 @@ class UITests(unittest.TestCase):
             page.keyboard.press("Escape")
             page.wait_for_selector("#sheet", state="hidden")
 
+            for wid in ("dev-lr-vacuum", "dev-lr-soundbar"):                   # no on/off, or media: tap opens controls
+                page.locator(f'.widget[data-wid="{wid}"] .tile-name').click()
+                page.wait_for_selector("#sheet:not([hidden]):not(.closing)")
+                page.keyboard.press("Escape")
+                page.wait_for_selector("#sheet", state="hidden")
+
             page.click('[data-go-room="Kitchen"]')                              # Rooms widget opens that room
             page.wait_for_function("document.documentElement.dataset.view === 'rooms'")
             page.wait_for_selector('#rooms [aria-selected="true"]:has-text("Kitchen")')
@@ -501,9 +556,10 @@ class UITests(unittest.TestCase):
     def test_device_icons_from_name_kind_or_choice(self):
         names = self.page.evaluate("""async () => { const m = await import('/js/icons.js');
             return [["Floor lamp", "light"], ["TV backlight", "light"], ["Kettle plug", "plug"], ["Fridge plug", "plug"],
-                    ["Samsung TV", "tv"], ["Robot", "vacuum"], ["Hallway", "light"], ["Thing", "other"]]
+                    ["Samsung TV", "tv"], ["Robot", "vacuum"], ["Living Room Soundbar", "speaker"], ["TV sound", "speaker"],
+                    ["Deebot T8", "vacuum"], ["Hallway", "light"], ["Thing", "other"]]
               .map(([name, kind]) => m.deviceIconName({ name, kind })); }""")
-        self.assertEqual(names, ["lamp", "strip", "kettle", "fridge", "tv", "vacuum", "bulb", "power"])
+        self.assertEqual(names, ["lamp", "strip", "kettle", "fridge", "tv", "vacuum", "soundbar", "soundbar", "vacuum", "bulb", "power"])
         self.page.click("#open-settings")                                      # pick one in Settings → device
         self.page.click("[data-go=devices]")
         self.page.click("[data-arg=kt-kettle]")

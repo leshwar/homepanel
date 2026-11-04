@@ -16,7 +16,9 @@ adapter declares.
 | `hue.py` | Philips Hue via bridge | local HTTP | — |
 | `samsung_tv.py` | Samsung Tizen TVs | local WebSocket + REST, Wake-on-LAN | samsungtvws |
 | `lg_tv.py` | LG webOS TVs | local WebSocket, Wake-on-LAN | aiowebostv |
+| `lg_soundbar.py` | LG sound bars with Wi-Fi | local TCP 9741 (AES-encrypted JSON) | cryptography |
 | `home_assistant.py` | Anything an existing Home Assistant controls | Home Assistant REST API | — |
+| `ecovacs.py` | Ecovacs Deebot robot vacuums | Ecovacs cloud (REST + MQTT) | deebot-client (Python 3.14 only) |
 
 `shelly.py` is the simplest complete example — copy it.
 
@@ -76,7 +78,8 @@ class MyBrandAdapter(DeviceAdapter):
 |---|---|---|
 | `refresh(device) -> dict` | yes | Current state. Raise `OSError`/`ConnectionError` if unreachable; the service marks it offline after 2 failures. |
 | `command(device, action, value) -> dict` | yes | `action` is already validated and normalized (toggle is converted to power; numbers are clamped; colours are `{r,g,b}`). Return the changed state keys. |
-| `discover() -> list[Found]` | for Search | `uid` must be stable (MAC or device ID) to prevent duplicates. Put secrets in `config` — they never reach the browser. |
+| `discover() -> list[Found]` | for Search | `uid` must be stable (MAC or device ID) to prevent duplicates — the **same** however the device was found (e.g. SSDP and a port-scan fallback must agree). If you change how a uid is made, list the old form in `Found.aliases` so devices saved earlier still match. Put secrets in `config` — they never reach the browser. As a safety net, a result at the same `config["ip"]` as a saved device of the same brand also counts as added (unless several devices share that address, or both know a `mac` and they differ). |
+| `known_ids(device) -> set[str]` | optional | Every id a saved device may turn up under (default: its uid and aliases). Override to add ids learned later, e.g. a MAC learned after pairing (see `lg_tv.py`). |
 | `from_manual(values) -> Found` | for "Add by IP" | Validate and raise `AdapterError` with a clear message. |
 | `setup(device)` | optional | First connection. Raise `PairingRequired` if the person must approve something (TV prompts). You may update `device.config`, `device.caps`, `device.meta`. |
 | `start()` / `stop()` | optional | Open/close shared sockets (see `govee.py`). |
@@ -87,11 +90,26 @@ class MyBrandAdapter(DeviceAdapter):
 
 `on`, `brightness` (1–100), `color` `{r,g,b}`, `color_temp` (Kelvin),
 `color_mode` (`"color"` or `"temp"`), `volume` (0–100), `muted`, `app`,
-`input`, `power_w` (watts — recorded automatically for the energy chart).
+`input`, `sound_mode`, `power_w` (watts — recorded automatically for the energy chart).
+Robot vacuums (`Kind.VACUUM`, `Cap.CLEAN` / `Cap.DOCK`): `activity` (one of
+`Activity.ALL`: cleaning, paused, returning, docked, idle, error), `battery`
+(0–100), `problem` (text to show, e.g. "Brush stuck"). Set `on` to true while
+cleaning or returning so the tile lights up. Optional extras: `suction` and
+`clean_mode` (ids from `meta["suction_levels"]` / `meta["clean_modes"]`), `parts`
+(`[{id, name, percent}]`, most worn first), `last_clean` (`{area_m2, minutes}`) and
+`map_rev` (change it when the map changes). Option lists go in `device.meta` as
+`[{id, name}]`: `rooms`, `suction_levels`, `clean_modes`, `station_actions`. The
+service checks command values against them. With `Cap.MAP`, implement
+`map_image(device) -> (content_type, bytes)`.
+
+If your brand hears about changes on its own (a live connection), call
+`self.changed(uid)` and the panel refreshes that device straight away.
 
 Media players without a full remote can declare `Cap.MEDIA` instead of
 `Cap.REMOTE`: the UI then shows play/pause but no D-pad. Put lists of TV apps/inputs in `device.meta["apps"]` /
-`["inputs"]` as `[{id, name}]`.
+`["inputs"]` as `[{id, name}]`. Sound bars and speakers use `Kind.SPEAKER`: they get the same volume,
+mute and input controls as a TV without the remote, plus sound mode chips from `Cap.SOUND_MODE` and
+`device.meta["sound_modes"]` (the service rejects ids that aren't in that list).
 
 ### Writing good error messages
 

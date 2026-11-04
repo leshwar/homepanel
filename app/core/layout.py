@@ -32,7 +32,7 @@ class LayoutError(ValueError):
 
 def default_layout(devices: Iterable[Any] = ()) -> dict:
     """The Home page before anyone edits it: big clock, India and US clocks, weather,
-    scenes, rooms, then a few devices (TVs first, then lights) as shortcuts."""
+    scenes, rooms, then up to six device shortcuts: a TV, a speaker and a vacuum, then lights."""
     widgets = [
         {"id": "clock", "type": "clock", "size": "2x2", "hidden": False, "options": {}},
         {"id": "weather", "type": "weather", "size": "2x1", "hidden": False, "options": {}},
@@ -42,11 +42,13 @@ def default_layout(devices: Iterable[Any] = ()) -> dict:
         {"id": "scenes", "type": "scenes", "size": "2x1", "hidden": False, "options": {}},
         {"id": "rooms", "type": "rooms", "size": "2x1", "hidden": False, "options": {}},
     ]
-    order = {"tv": 0, "light": 1}
-    picks = sorted((d for d in devices if getattr(d, "kind", None) in order),
-                   key=lambda d: order[d.kind])[:4]
+    devices = list(devices)
+    picks = []
+    for kind in ("tv", "speaker", "vacuum"):            # one of each, then lights
+        picks += [d for d in devices if getattr(d, "kind", None) == kind][:1]
+    picks += [d for d in devices if getattr(d, "kind", None) == "light"][:6 - len(picks)]
     for d in picks:
-        widgets.append({"id": f"dev-{d.id}", "type": "device", "size": "2x1" if d.kind == "tv" else "1x1",
+        widgets.append({"id": f"dev-{d.id}", "type": "device", "size": "2x1" if d.kind in ("tv", "speaker") else "1x1",
                         "hidden": False, "options": {"device_id": d.id}})
     return {"version": VERSION, "widgets": widgets}
 

@@ -2,10 +2,11 @@
 //
 // Tap = the obvious thing: switch it on or off. Devices that shouldn't be switched
 // by a stray tap (TVs) or have no on/off (e.g. a robot vacuum) open their controls
-// instead. Long-press or the "…" button always opens the controls.
+// instead: TVs and sound bars (media), and anything without power (a robot vacuum).
+// Long-press or the "…" button always opens the controls.
 
 import { store, command } from "./store.js";
-import { esc, icon, glowVar, statusText, toast } from "./util.js";
+import { esc, icon, isMedia, glowVar, statusText, toast } from "./util.js";
 import { openDevice } from "./sheet.js";
 import { deviceIcon, svg } from "./icons.js";
 
@@ -14,7 +15,7 @@ export function haptic(ms = 10) {
   try { navigator.vibrate?.(ms); } catch { /* not allowed here */ }
 }
 
-export const tapOpens = (d) => d.kind === "tv" || !d.caps.includes("power");
+export const tapOpens = (d) => isMedia(d) || !d.caps.includes("power");
 
 const isOn = (d) => !!d.state?.on && d.state?.online !== false;
 
@@ -25,11 +26,11 @@ export function tileHtml(d, { size = "", ctx = "rooms", sub = "" } = {}) {
   const on = isOn(d);
   const offline = s.online === false || s.needs_pairing;
   const level = d.kind === "light" && s.brightness ? Math.max(0.15, s.brightness / 100) : 1;
-  const wide = ctx === "rooms" ? d.kind === "tv" : size !== "1x1" && size !== "";
+  const wide = ctx === "rooms" ? isMedia(d) : size !== "1x1" && size !== "";
   const cls = ["tile", on && "on", offline && "offline", store.busy.has(d.id) && "busy", wide && "wide"]
     .filter(Boolean).join(" ");
   const status = statusText(d);
-  const tvControls = d.kind === "tv" && on && wide ? `
+  const tvControls = isMedia(d) && on && wide ? `
       <div class="tile-tv-ctl">
         <button data-act="volume_down" aria-label="Volume down">${icon("minus")}</button>
         <button data-act="volume_up" aria-label="Volume up">${icon("plus")}</button>
@@ -115,7 +116,7 @@ export function bindTiles(root, { enabled = () => true, onLongPress = null } = {
     if (e.target.closest("[data-more]")) return openDevice(d.id);
     const act = e.target.closest("[data-act]");
     if (act) return command(d.id, act.dataset.act);
-    if (d.kind === "tv" || !d.caps.includes("power")) return openDevice(d.id);   // never toggle a TV by accident; vacuums have no on/off
+    if (tapOpens(d)) return openDevice(d.id);   // never toggle a TV or sound bar by accident; vacuums have no on/off
     toggle(d);
   });
   root.addEventListener("keydown", (e) => {

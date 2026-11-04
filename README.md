@@ -16,7 +16,7 @@ once — controlled directly over your Wi-Fi.
 - **Touch-first glass UI.** A **Home page** of widgets you arrange yourself (long-press to edit): a big clock, clocks for India and the US, weather, scenes, rooms and device shortcuts, the same on every screen. A **Rooms** page with a tab for each room, down the side on an iPad or a landscape panel. Tap a tile to switch it, long-press (or tap "…") for full controls.
 - **A sky that matches outside.** The background follows the weather and time of day (or pick Ocean, Aurora or Night), under frosted-glass tiles with adjustable transparency. Lit lights glow in their real color.
 - **Works on iPhone and iPad too.** Safe areas, no sideways scrolling, and "Add to Home Screen" for a full-screen app.
-- **Many brands, one screen.** Globe Electric / Tuya / Smart Life, Govee, TP-Link Kasa & Tapo, Shelly, WiZ, Philips Hue, Samsung TVs and LG TVs.
+- **Many brands, one screen.** Globe Electric / Tuya / Smart Life, Govee, TP-Link Kasa & Tapo, Shelly, WiZ, Philips Hue, Samsung TVs, LG TVs and LG sound bars.
 - **Local first.** Everything except Govee plugs is controlled directly on your network — it keeps working when the internet is down.
 - **Privacy.** The panel makes no internet calls of its own unless you turn on weather (Settings → Location and presence). Then the server asks [Open-Meteo](https://open-meteo.com) (free, no account) for the weather about every 20 minutes, sending only your location rounded to about 1 km. The place name shown on the clock is the one you type; your coordinates aren't sent anywhere to look it up.
 - **Scenes and rooms.** "Movie night", "Bedtime", or "All off" for a room or the whole house.
@@ -41,7 +41,9 @@ once — controlled directly over your Wi-Fi.
 | Philips Hue | Bulbs, strips, plugs | Local via Hue Bridge | Press the bridge button once |
 | Samsung | Tizen smart TVs (2016+) | Local | Accept the prompt on the TV once |
 | LG | webOS smart TVs | Local | Accept the prompt on the TV once |
+| LG | Sound bars with Wi-Fi (2018+) | Local | None, [guide](docs/DEVICE_SETUP.md#lg-sound-bars) |
 | Home Assistant | Anything it controls: lights, switches, fans, TVs, speakers | Local (Home Assistant REST API) | Long-lived access token |
+| Ecovacs Deebot | Robot vacuums | Ecovacs cloud | Ecovacs Home app login; needs Python 3.14, [guide](docs/DEVICE_SETUP.md#ecovacs-deebot-robot-vacuums) |
 
 Want another brand? It's usually one file — see [app/adapters/README.md](app/adapters/README.md).
 
@@ -143,7 +145,7 @@ app/core/       service: registry, state, polling, scenes, middleware (validate 
                 automations (time / sun / presence), energy history (SQLite), presence
 app/core/adapter.py   the DeviceAdapter interface every brand implements
 app/adapters/   one file per brand: tuya.py, govee.py, kasa.py, shelly.py, wiz.py, hue.py, samsung_tv.py, lg_tv.py,
-                home_assistant.py
+                lg_soundbar.py, home_assistant.py, ecovacs.py
 ```
 
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture and

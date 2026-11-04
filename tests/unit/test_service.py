@@ -73,6 +73,15 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AdapterError):
             await self.svc.command("lr-tv", Action.KEY, "NOT_A_KEY")
 
+    async def test_sound_mode_must_be_one_the_device_lists(self):
+        await self.svc.refresh("lr-soundbar")       # loads the sound modes it lists
+        out = await self.svc.command("lr-soundbar", Action.SET_SOUND_MODE, "cinema")
+        self.assertEqual(out["state"]["sound_mode"], "cinema")
+        with self.assertRaises(AdapterError):
+            await self.svc.command("lr-soundbar", Action.SET_SOUND_MODE, "disco")
+        with self.assertRaises(AdapterError):
+            await self.svc.command("lr-tv", Action.SET_SOUND_MODE, "cinema")      # TVs list no sound modes
+
     async def test_values_are_clamped(self):
         out = await self.svc.command("lr-lamp", Action.BRIGHTNESS, 250)
         self.assertEqual(out["state"]["brightness"], 100)
@@ -89,8 +98,11 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.svc.get("lr-ceiling").state["on"])
 
     async def test_all_off_for_one_room_and_for_devices_without_a_room(self):
-        for did in ("lr-lamp", "kt-kettle", "bd-fan"):
+        for did in list(self.svc.store.devices):              # don't race the first poll (CI can be slow)
+            await self.svc.refresh(did)
+        for did in ("lr-lamp", "kt-kettle", "kt-fridge", "bd-fan"):
             await self.svc.command(did, Action.POWER, True)
+        await self.svc.command("kt-pendant", Action.POWER, False)
         self.svc.update_device("bd-fan", {"room": ""})            # shows under "Other" on the panel
         self.assertEqual(await self.svc.all_off(""), 1)            # "" = devices without a room
         self.assertFalse(self.svc.get("bd-fan").state["on"])

@@ -7,8 +7,10 @@ export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
 
 export const icon = (name, cls = "") => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
-export const KIND_ICON = { light: "bulb", plug: "plug", switch: "switch", tv: "tv", fan: "fan", other: "power" };
+export const KIND_ICON = { light: "bulb", plug: "plug", switch: "switch", tv: "tv", fan: "fan", speaker: "speaker", vacuum: "vacuum", other: "power" };
 export const kindIcon = (d) => d.icon || KIND_ICON[d.kind] || "power";
+// TVs and speakers share the media controls: volume, mute, inputs.
+export const isMedia = (d) => d.kind === "tv" || d.kind === "speaker";
 
 const LAMP = [242, 179, 91];
 const JADE = [124, 199, 165];
@@ -25,7 +27,7 @@ export function kelvinToRgb(k) {
 
 // The color a device "gives off" when it's on. Lights use their real color.
 export function glow(d) {
-  if (d.kind === "tv") return INDIGO;
+  if (isMedia(d)) return INDIGO;
   if (d.kind !== "light") return JADE;
   const s = d.state || {};
   if (s.color_mode === "color" && s.color) {
@@ -41,14 +43,25 @@ export function glow(d) {
 }
 export const glowVar = (d) => glow(d).join(" ");
 
+const ACTIVITY_TEXT = { cleaning: "Cleaning", paused: "Paused", returning: "Going back to dock",
+                        docked: "Docked", idle: "Ready", error: "Needs help" };
+
+export function vacuumText(s) {
+  if (!s.activity) return "Connecting…";
+  let t = ACTIVITY_TEXT[s.activity] || "Ready";
+  if (s.activity === "docked" && s.battery != null && s.battery < 100) t = "Charging";
+  return s.battery != null ? `${t}, ${s.battery}%` : t;
+}
+
 export function statusText(d, apps = []) {
   const s = d.state || {};
   if (s.needs_pairing) return "Needs pairing";
   if (s.online === false) return s.error ? "Offline" : "Offline";
-  if (s.online == null && s.on == null) return "Connecting…";
+  if (s.online == null && s.on == null && s.activity == null) return "Connecting…";
+  if (d.kind === "vacuum") return vacuumText(s);
   if (!s.on) return "Off";
   if (d.kind === "light" && s.brightness != null && d.caps.includes("brightness")) return `On, ${s.brightness}%`;
-  if (d.kind === "tv") {
+  if (isMedia(d)) {
     const app = (d.meta?.apps || apps).find((a) => a.id === s.app);
     const input = (d.meta?.inputs || []).find((x) => x.id === s.input);
     return app ? app.name : input ? input.name : "On";

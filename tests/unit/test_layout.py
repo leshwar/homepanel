@@ -11,15 +11,17 @@ from app.core.service import BACKGROUNDS, HomeService
 
 class DefaultLayoutTests(unittest.TestCase):
     def test_default_has_clock_india_and_us_clocks_weather_and_device_shortcuts(self):
-        devices = [Dev(id="p1", kind="plug"), Dev(id="l1", kind="light"), Dev(id="t1", kind="tv"),
-                   Dev(id="l2", kind="light"), Dev(id="l3", kind="light"), Dev(id="l4", kind="light")]
+        devices = [Dev(id="p1", kind="plug"), Dev(id="l1", kind="light"), Dev(id="t1", kind="tv"), Dev(id="t2", kind="tv"),
+                   Dev(id="l2", kind="light"), Dev(id="s1", kind="speaker"), Dev(id="v1", kind="vacuum"),
+                   Dev(id="l3", kind="light"), Dev(id="l4", kind="light")]
         lay = default_layout(devices)
         types = [w["type"] for w in lay["widgets"]]
         self.assertEqual(types[:6], ["clock", "weather", "zone", "zone", "scenes", "rooms"])
         zones = [w["options"] for w in lay["widgets"] if w["type"] == "zone"]
         self.assertEqual(zones, [{"tz": "Asia/Kolkata", "label": "India"}, {"tz": None, "label": "US"}])
         shortcuts = [(w["options"]["device_id"], w["size"]) for w in lay["widgets"] if w["type"] == "device"]
-        self.assertEqual(shortcuts, [("t1", "2x1"), ("l1", "1x1"), ("l2", "1x1"), ("l3", "1x1")])   # TVs first, max 4, no plugs
+        self.assertEqual(shortcuts, [("t1", "2x1"), ("s1", "2x1"), ("v1", "1x1"),     # one TV, speaker, vacuum
+                                     ("l1", "1x1"), ("l2", "1x1"), ("l3", "1x1")])  # then lights; max 6, no plugs
         self.assertEqual(clean_layout(lay), lay)          # the default passes its own checks
 
     def test_every_type_and_size_is_known(self):

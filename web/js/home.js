@@ -10,7 +10,7 @@
 
 import { api } from "./api.js";
 import { store, devicesIn, roomGroups, OTHER } from "./store.js";
-import { $, esc, icon, toast } from "./util.js";
+import { $, esc, icon, isMedia, toast } from "./util.js";
 import { openSettings } from "./settings.js";
 import { svg, roomIcon } from "./icons.js";
 import { tileHtml, haptic } from "./tiles.js";
@@ -480,7 +480,7 @@ export function setupHome({ goRoom, showAmbient }) {
     const dev = t.closest("[data-add-device-widget]");
     if (dev) {
       const id = dev.dataset.addDeviceWidget;
-      return addWidget({ id: `dev-${id}`.slice(0, 64), type: "device", size: store.devices.get(id)?.kind === "tv" ? "2x1" : "1x1",
+      return addWidget({ id: `dev-${id}`.slice(0, 64), type: "device", size: isMedia(store.devices.get(id) || {}) ? "2x1" : "1x1",
                          hidden: false, options: { device_id: id } });
     }
   });

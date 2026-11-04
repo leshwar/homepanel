@@ -1,8 +1,8 @@
-// Bottom sheet with full controls for one device: brightness, color, or a TV remote.
+// Bottom sheet with full controls for one device: brightness, color, or a TV / speaker remote.
 
 import { api } from "./api.js";
 import { store, command } from "./store.js";
-import { $, esc, icon, glowVar, statusText, throttle, toast } from "./util.js";
+import { $, esc, icon, glowVar, isMedia, kindIcon, statusText, throttle, toast } from "./util.js";
 import { openSettings } from "./settings.js";
 
 let currentId = null;
@@ -64,7 +64,8 @@ function render() {
       <button class="btn" data-refresh>${icon("search")}Try again</button>`;
   }
 
-  if (d.kind === "tv") body += tvBody(d);
+  if (isMedia(d)) body += tvBody(d);
+  else if (has("clean")) body += vacuumBody(d);
   else {
     if (has("brightness")) {
       body += `<div class="section-label"><span>Brightness</span><b id="bri-val">${on ? (s.brightness ?? 100) + "%" : "Off"}</b></div>
@@ -90,7 +91,8 @@ function render() {
   $("#sheet").innerHTML = `
     <div class="grab"></div>
     <div class="sheet-head" style="--glow:${glowVar(d)}">
-      <button class="power-big ${on ? "on" : ""}" data-power aria-label="Turn ${on ? "off" : "on"}" aria-pressed="${on}">${icon("power")}</button>
+      ${has("power") ? `<button class="power-big ${on ? "on" : ""}" data-power aria-label="Turn ${on ? "off" : "on"}" aria-pressed="${on}">${icon("power")}</button>`
+        : `<div class="power-big ${on ? "on" : ""}" aria-hidden="true">${icon(kindIcon(d))}</div>`}
       <div class="grow"><h2>${esc(d.name)}</h2><p>${esc(statusText(d))}</p></div>
       <button class="icon-btn" data-close aria-label="Close">${icon("close")}</button>
     </div>
@@ -99,6 +101,11 @@ function render() {
       <button class="link" data-edit>Edit device</button></div>`;
 
   if (s.power_w != null) loadEnergy(d.id);
+  const mapImg = $("#sheet .vac-map img");
+  if (mapImg) {
+    mapImg.addEventListener("error", () => mapImg.parentNode.classList.add("empty"));
+    mapImg.addEventListener("load", () => mapImg.parentNode.classList.remove("empty"));
+  }
   const bri = $("#bri");
   if (bri) attachSlider(bri, (v, final) => {
     $("#bri-val").textContent = `${v}%`;
@@ -147,12 +154,70 @@ async function loadEnergy(id) {
 
 const sendLive = throttle((id, v) => api.command(id, "brightness", v).catch(() => {}), 350);
 
+// Rooms picked for "Clean selected rooms", per vacuum. Kept while the sheet re-renders.
+const pickedRooms = new Map();
+const picked = (id) => { if (!pickedRooms.has(id)) pickedRooms.set(id, new Set()); return pickedRooms.get(id); };
+
+const optionChips = (list, current, attr) => `<div class="chips">${list.map((o) =>
+  `<button class="chip" ${attr}="${esc(String(o.id))}" aria-pressed="${String(current) === String(o.id)}">${esc(o.name)}</button>`).join("")}</div>`;
+
+// Robot vacuum: map, rooms, the main button that does the obvious next thing, settings and parts.
+function vacuumBody(d) {
+  const s = d.state || {};
+  const a = s.activity;
+  const m = d.meta || {};
+  const rooms = m.rooms || [];
+  const chosen = picked(d.id);
+  for (const id of [...chosen]) if (!rooms.some((r) => String(r.id) === id)) chosen.delete(id);
+  const main = a === "cleaning" ? { clean: "pause", label: "Pause", ic: "pause" }
+    : a === "paused" ? { clean: "resume", label: "Keep cleaning", ic: "play" }
+    : { clean: "start", label: "Start cleaning", ic: "play" };
+  const optimistic = { start: "cleaning", resume: "cleaning", pause: "paused" }[main.clean];
+  const last = s.last_clean;
+  return `
+    ${s.problem ? `<div class="note warn">${esc(s.problem)}</div>` : ""}
+    ${hasCap(d, "map") ? `<div class="vac-map"><img src="${api.mapUrl(d.id, s.map_rev || 0)}" alt="Map of your home"><span>The map shows up after the first clean.</span></div>` : ""}
+    ${hasCap(d, "rooms") && rooms.length ? `<div class="section-label"><span>Rooms</span>
+        <b>${chosen.size ? `${chosen.size} picked` : "Tap rooms to pick"}</b></div>
+      <div class="chips">${rooms.map((r) => `<button class="chip" data-room-pick="${esc(String(r.id))}"
+        aria-pressed="${chosen.has(String(r.id))}">${esc(r.name)}</button>`).join("")}</div>
+      ${chosen.size ? `<div class="btn-row vacuum-ctl"><button class="btn primary" data-clean-rooms>${icon("play")}Clean ${chosen.size === 1 ? "this room" : `these ${chosen.size} rooms`}</button></div>` : ""}` : ""}
+    ${s.battery != null ? `<div class="section-label"><span>Battery</span><b>${s.battery}%</b></div>
+      <div class="meter" role="meter" aria-label="Battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${s.battery}">
+        <div class="meter-fill" style="width:${s.battery}%"></div></div>` : ""}
+    <div class="btn-row vacuum-ctl">
+      <button class="btn primary" data-clean="${main.clean}" data-activity="${optimistic}">${icon(main.ic)}${main.label}</button>
+      ${hasCap(d, "dock") && a !== "docked" && a !== "returning"
+        ? `<button class="btn" data-dock>${icon("home")}Back to dock</button>` : ""}
+      ${a === "paused" ? `<button class="btn" data-clean="stop" data-activity="idle">Stop</button>` : ""}
+    </div>
+    ${hasCap(d, "suction") && m.suction_levels?.length ? `<div class="section-label"><span>Suction</span></div>
+      ${optionChips(m.suction_levels, s.suction, "data-suction")}` : ""}
+    ${hasCap(d, "clean_mode") && m.clean_modes?.length ? `<div class="section-label"><span>Mode</span></div>
+      ${optionChips(m.clean_modes, s.clean_mode, "data-clean-mode")}` : ""}
+    ${(hasCap(d, "station") && m.station_actions?.length) || hasCap(d, "locate") ? `<div class="section-label"><span>Station and more</span></div>
+      <div class="btn-row vacuum-more">
+        ${hasCap(d, "station") ? (m.station_actions || []).map((o) =>
+          `<button class="btn" data-station="${esc(String(o.id))}">${esc(o.name)}</button>`).join("") : ""}
+        ${hasCap(d, "locate") ? `<button class="btn" data-locate>${icon("vol")}Find my vacuum</button>` : ""}
+      </div>` : ""}
+    ${last && (last.area_m2 != null || last.minutes != null) ? `<div class="section-label"><span>Last clean</span>
+      <b>${[last.area_m2 != null ? `${last.area_m2} m²` : "", last.minutes != null ? `${last.minutes} min` : ""].filter(Boolean).join(", ")}</b></div>` : ""}
+    ${s.parts?.length ? `<details class="vac-parts"><summary class="section-label"><span>Parts</span>
+        <b>${s.parts[0].percent <= 10 ? `${esc(s.parts[0].name)} needs replacing` : "All good"}</b></summary>
+      ${s.parts.map((p) => `<div class="part"><span>${esc(p.name)}</span>
+        <div class="meter small"><div class="meter-fill ${p.percent <= 10 ? "low" : ""}" style="width:${p.percent}%"></div></div>
+        <b>${p.percent}%</b></div>`).join("")}</details>` : ""}`;
+}
+const hasCap = (d, c) => d.caps.includes(c);
+
 function tvBody(d) {
   const s = d.state || {};
   const on = !!s.on;
-  if (!on) return `<div class="note">The TV is off. Tap the power button to turn it on.</div>`;
+  if (!on) return `<div class="note">${d.kind === "tv" ? "The TV" : "The speaker"} is off. Tap the power button to turn it on.</div>`;
   const apps = d.meta?.apps || [];
   const inputs = d.meta?.inputs || [];
+  const modes = d.meta?.sound_modes || [];
   const has = (c) => d.caps.includes(c);
   const nav = has("remote");
   const media = has("media") || nav;
@@ -188,7 +253,9 @@ function tvBody(d) {
     ${apps.length ? `<div class="section-label"><span>Apps</span></div><div class="chips">${apps.slice(0, 12).map((a) =>
       `<button class="chip" data-app="${esc(a.id)}" aria-pressed="${s.app === a.id}">${esc(a.name)}</button>`).join("")}</div>` : ""}
     ${inputs.length ? `<div class="section-label"><span>Inputs</span></div><div class="chips">${inputs.map((x) =>
-      `<button class="chip" data-input="${esc(x.id)}" aria-pressed="${s.input === x.id}">${esc(x.name)}</button>`).join("")}</div>` : ""}`;
+      `<button class="chip" data-input="${esc(x.id)}" aria-pressed="${s.input === x.id}">${esc(x.name)}</button>`).join("")}</div>` : ""}
+    ${has("sound_mode") && modes.length ? `<div class="section-label"><span>Sound mode</span></div><div class="chips">${modes.map((m) =>
+      `<button class="chip" data-sound-mode="${esc(m.id)}" aria-pressed="${s.sound_mode === m.id}">${esc(m.name)}</button>`).join("")}</div>` : ""}`;
 }
 
 // A big, forgiving touch slider. onChange(value, isFinal).
@@ -237,11 +304,35 @@ $("#sheet").addEventListener("click", async (e) => {
     const rgb = { r: parseInt(c.slice(1, 3), 16), g: parseInt(c.slice(3, 5), 16), b: parseInt(c.slice(5, 7), 16) };
     return command(d.id, "color", c, { on: true, color: rgb, color_mode: "color" });
   }
+  if (t("[data-clean]")) {
+    const b = t("[data-clean]"); const activity = b.dataset.activity;
+    return command(d.id, "clean", b.dataset.clean, { activity, on: activity === "cleaning" });
+  }
+  if (t("[data-dock]")) return command(d.id, "dock", null, { activity: "returning", on: true });
+  if (t("[data-room-pick]")) {
+    const id = t("[data-room-pick]").dataset.roomPick; const set = picked(d.id);
+    set.has(id) ? set.delete(id) : set.add(id);
+    return render();
+  }
+  if (t("[data-clean-rooms]")) {
+    const ids = [...picked(d.id)].map((x) => (/^\d+$/.test(x) ? Number(x) : x));
+    picked(d.id).clear();
+    return command(d.id, "clean_rooms", ids, { activity: "cleaning", on: true });
+  }
+  if (t("[data-suction]")) { const v = t("[data-suction]").dataset.suction; return command(d.id, "set_suction", v, { suction: v }); }
+  if (t("[data-clean-mode]")) { const v = t("[data-clean-mode]").dataset.cleanMode; return command(d.id, "set_clean_mode", v, { clean_mode: v }); }
+  if (t("[data-station]")) {
+    const b = t("[data-station]");
+    if (await command(d.id, "station", b.dataset.station)) toast(`${b.textContent.trim()}: sent to the station`);
+    return;
+  }
+  if (t("[data-locate]")) { if (await command(d.id, "locate")) toast("Your vacuum is making a sound"); return; }
   if (t("[data-key]")) return command(d.id, "key", t("[data-key]").dataset.key);
   if (t("[data-act]")) return command(d.id, t("[data-act]").dataset.act);
   if (t("[data-mute]")) { const m = !d.state?.muted; return command(d.id, "mute", m, { muted: m }); }
   if (t("[data-app]")) { const a = t("[data-app]").dataset.app; return command(d.id, "launch_app", a, { app: a }); }
   if (t("[data-input]")) { const i = t("[data-input]").dataset.input; return command(d.id, "set_input", i, { input: i, app: null }); }
+  if (t("[data-sound-mode]")) { const m = t("[data-sound-mode]").dataset.soundMode; return command(d.id, "set_sound_mode", m, { sound_mode: m }); }
   if (t("[data-pair]")) {
     const b = t("[data-pair]");
     b.disabled = true; b.textContent = "Waiting for the device…";

@@ -99,6 +99,25 @@ Volume shows as +/− buttons (Samsung doesn't report the exact level).
    Settings → General → Devices → TV Management → **Quick Start+**, and
    Settings → General → Network → **Turn on via Wi-Fi** (menu names vary by year).
 
+## LG sound bars
+
+LG sound bars with Wi-Fi (2018 and newer, the ones the LG Sound Bar / ThinQ app
+can control) work over the local network. No account or pairing.
+
+1. Set the sound bar up on your Wi-Fi with the LG app first.
+2. **Search** finds it (it answers on port 9741). If it doesn't, choose
+   **Add by IP address**; the app shows the IP under the sound bar's settings, or
+   look it up in your router's device list.
+3. Open it on the panel for volume, mute, inputs (TV / HDMI ARC, HDMI, Bluetooth,
+   Wi-Fi …) and sound modes (AI Sound Pro, Cinema, Music …). Each model lists only
+   what it has. Newer modes the panel doesn't have a name for yet show as
+   "Sound mode 23" and so on.
+
+It works while the TV is off, and alongside the TV: volume changed with the TV
+remote shows up on the panel within about 10 seconds. The power button puts the
+sound bar in standby and wakes it, as long as its network stays on in standby
+(the default after it has been set up with the app).
+
 ## Home Assistant
 
 Already running Home Assistant? You can add its devices here:
@@ -111,6 +130,36 @@ Already running Home Assistant? You can add its devices here:
 Lights, switches, fans and media players appear, already sorted into your Home
 Assistant areas. TVs added this way get volume, inputs and play/pause; for the
 full D-pad remote, add Samsung/LG TVs directly with their own adapters.
+
+## Ecovacs Deebot robot vacuums
+
+Deebots are controlled through the Ecovacs cloud, with the same account as the
+**Ecovacs Home** app, so the panel needs internet. Set the vacuum up in that app first.
+
+This brand needs **Python 3.14** (its library, deebot-client, is only published
+for 3.14). Elsewhere it shows as "not installed" and the rest of the panel works.
+On a Mac: `brew install python@3.14`, then `make setup PY=python3.14`.
+
+1. HomePanel: Add a device → **Ecovacs Deebot** → your Ecovacs email (or phone
+   number), password and country → **Save**.
+2. Tap **Search my Wi-Fi**. If it says Ecovacs wants to confirm this panel, tap
+   **Email me a code**, type the code from the email into **Email code**, then
+   tap **Confirm code** and search again. This only happens once.
+3. Tap **Add** next to your vacuum.
+
+Tap the vacuum's tile for **Start cleaning**, **Pause**, **Keep cleaning** and
+**Back to dock**, plus the battery level. Models with a map (most current
+Deebots) also get:
+
+- the **map** of your home, from the Ecovacs app (it appears after the first clean);
+- **Rooms**: tap rooms to pick them, then **Clean these rooms**;
+- **Suction** and **Mode** (vacuum, mop, or both);
+- station jobs such as **Empty dustbin** and **Wash mop**, and **Find my vacuum**;
+- **Parts**: how worn the brushes, filter and mop pads are.
+
+Rooms come from the map you made in the Ecovacs app; rename or split them there.
+The first time the panel connects, these can take up to a minute to appear. Older models that the Ecovacs app
+lists as "legacy" (for example the N79) aren't supported.
 
 ## Schedules, sunset and "everyone left"
 

@@ -2,6 +2,7 @@
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 import urllib.error
@@ -55,6 +56,30 @@ class ApiTests(unittest.TestCase):
         status, res = self.call("POST", "/all-off", {"room": "Living room"})
         self.assertEqual(status, 200)
 
+    def test_robot_vacuum_commands(self):
+        status, d = self.call("POST", "/devices/lr-vacuum/command", {"action": "clean", "value": "start"})
+        self.assertEqual((status, d["state"]["activity"]), (200, "cleaning"))
+        status, d = self.call("POST", "/devices/lr-vacuum/command", {"action": "dock"})
+        self.assertEqual((status, d["state"]["activity"]), (200, "returning"))
+        status, err = self.call("POST", "/devices/lr-vacuum/command", {"action": "clean", "value": "turbo"})
+        self.assertEqual(status, 400)
+        self.assertIn("cleaning command", err["error"])
+        status, _ = self.call("POST", "/devices/lr-plug/command", {"action": "dock"})
+        self.assertEqual(status, 400)
+
+    def test_vacuum_rooms_suction_and_map(self):
+        status, d = self.call("POST", "/devices/lr-vacuum/command", {"action": "clean_rooms", "value": [2]})
+        self.assertEqual((status, d["state"]["activity"]), (200, "cleaning"))
+        self.assertEqual([r["name"] for r in d["meta"]["rooms"]][:2], ["Living room", "Kitchen"])
+        status, err = self.call("POST", "/devices/lr-vacuum/command", {"action": "set_suction", "value": "turbo"})
+        self.assertEqual(status, 400)
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/v1/devices/lr-vacuum/map", timeout=5) as r:
+            self.assertEqual(r.headers["Content-Type"].split(";")[0], "image/svg+xml")
+            self.assertIn("default-src 'none'", r.headers["Content-Security-Policy"])   # can't run scripts
+            self.assertTrue(r.read().startswith(b"<svg"))
+        status, _ = self.call("GET", "/devices/lr-plug/map")
+        self.assertEqual(status, 400)
+
     def test_search_all_brands_and_add_a_result(self):
         status, _ = self.call("DELETE", "/devices/bd-fan")
         self.assertIn(status, (200, 204))
@@ -73,6 +98,10 @@ class ApiTests(unittest.TestCase):
     def test_health_and_logs(self):
         status, h = self.call("GET", "/health")
         self.assertTrue(h["ok"])
+        self.assertIn("unsupported", h)
+        if sys.version_info[:2] != (3, 14):        # e.g. CI and Docker: the vacuum brand needs 3.14
+            self.assertIn("Needs Python 3.14", h["unsupported"]["ecovacs"])
+            self.assertNotIn("ecovacs", h["unavailable"])        # "not for this Python", not "not installed"
         self.assertIn("in_container", h)
         self.assertIn("demo", h["adapters"])
         status, logs = self.call("GET", "/logs")

@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import random
 
-from ..core.adapter import Action, Cap, Device, DeviceAdapter, Found, Kind, register
+from ..core.adapter import Action, Activity, Cap, Clean, Device, DeviceAdapter, Found, Kind, register
 
 LIGHT_CAPS = [Cap.POWER, Cap.BRIGHTNESS, Cap.COLOR, Cap.COLOR_TEMP]
 TV_CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.MEDIA, Cap.APPS, Cap.INPUTS]
@@ -31,7 +31,38 @@ DEMO = [
      {"on": False, "brightness": 100}),
     ("kt-kettle", "Kettle plug", Kind.PLUG, "Kitchen", [Cap.POWER], {"on": False}),
     ("kt-fridge", "Fridge plug", Kind.PLUG, "Kitchen", [Cap.POWER], {"on": True}),
+    ("lr-vacuum", "Robot vacuum", Kind.VACUUM, "Living room",
+     [Cap.CLEAN, Cap.DOCK, Cap.MAP, Cap.ROOMS, Cap.SUCTION, Cap.CLEAN_MODE, Cap.STATION, Cap.LOCATE],
+     {"on": False, "activity": Activity.DOCKED, "battery": 100, "suction": "standard", "clean_mode": "vacuum",
+      "map_rev": 1, "last_clean": {"area_m2": 46, "minutes": 38},
+      "parts": [{"id": "filter", "name": "Filter", "percent": 18}, {"id": "side_brush", "name": "Side brush", "percent": 64},
+                {"id": "brush", "name": "Main brush", "percent": 82}]}),
 ]
+
+VACUUM_META = {
+    "model": "Demo vacuum",
+    "rooms": [{"id": 1, "name": "Living room"}, {"id": 2, "name": "Kitchen"}, {"id": 3, "name": "Bedroom"},
+              {"id": 4, "name": "Hall"}],
+    "suction_levels": [{"id": "quiet", "name": "Quiet"}, {"id": "standard", "name": "Standard"},
+                       {"id": "strong", "name": "Strong"}, {"id": "max", "name": "Max+"}],
+    "clean_modes": [{"id": "vacuum", "name": "Vacuum"}, {"id": "mop", "name": "Mop"},
+                    {"id": "vacuum_and_mop", "name": "Vacuum and mop"}],
+    "station_actions": [{"id": "empty_dustbin", "name": "Empty dustbin"}, {"id": "wash_mop", "name": "Wash mop"}],
+}
+
+# A simple pretend floor plan: four rooms and the dock.
+VACUUM_MAP = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260">
+<g fill="#3b4a5c" stroke="#8fa3b8" stroke-width="3">
+<rect x="10" y="10" width="220" height="140" rx="4"/><rect x="230" y="10" width="160" height="140" rx="4"/>
+<rect x="10" y="150" width="150" height="100" rx="4"/><rect x="160" y="150" width="230" height="100" rx="4"/></g>
+<g fill="#cfd9e3" font-family="sans-serif" font-size="16" text-anchor="middle">
+<text x="120" y="85">Living room</text><text x="310" y="85">Kitchen</text>
+<text x="85" y="205">Hall</text><text x="275" y="205">Bedroom</text></g>
+<circle cx="40" cy="225" r="9" fill="#7cc7a5"/></svg>"""
+
+# What a pretend vacuum does after each cleaning command.
+CLEAN_TO_ACTIVITY = {Clean.START: Activity.CLEANING, Clean.RESUME: Activity.CLEANING,
+                     Clean.PAUSE: Activity.PAUSED, Clean.STOP: Activity.IDLE}
 
 WATTS = {"lr-plug": (6.8, 8.0), "bd-fan": (34, 42), "kt-kettle": (1450, 1550), "kt-fridge": (95, 130)}
 
@@ -69,14 +100,21 @@ class DemoAdapter(DeviceAdapter):
     async def setup(self, device: Device):
         if device.kind == Kind.TV:
             device.meta = {"apps": APPS, "inputs": INPUTS, "model": "Demo TV"}
+        elif device.kind == Kind.VACUUM:
+            device.meta = dict(VACUUM_META)
         elif device.kind == Kind.SPEAKER:
             device.meta = dict(SPEAKER_META)
         await self.refresh(device)
+
+    async def map_image(self, device: Device):
+        return ("image/svg+xml", VACUUM_MAP.encode()) if device.kind == Kind.VACUUM else None
 
     async def refresh(self, device: Device) -> dict:
         await asyncio.sleep(0.02)
         if device.kind == Kind.TV and not device.meta:
             device.meta = {"apps": APPS, "inputs": INPUTS, "model": "Demo TV"}
+        if device.kind == Kind.VACUUM and not device.meta:
+            device.meta = dict(VACUUM_META)
         if device.kind == Kind.SPEAKER and not device.meta:
             device.meta = dict(SPEAKER_META)
         state = dict(self._state.setdefault(device.config["_uid"], {"on": False}))
@@ -108,6 +146,19 @@ class DemoAdapter(DeviceAdapter):
             s.update(on=True, app=value, input=None)
         elif action == Action.SET_INPUT:
             s.update(input=value, app=None)
+        elif action == Action.CLEAN:
+            activity = CLEAN_TO_ACTIVITY[value]
+            s.update(activity=activity, on=activity == Activity.CLEANING)
+        elif action == Action.DOCK:
+            s.update(activity=Activity.RETURNING, on=True)
+        elif action == Action.CLEAN_ROOMS:
+            s.update(activity=Activity.CLEANING, on=True)
+        elif action == Action.SET_SUCTION:
+            s["suction"] = value
+        elif action == Action.SET_CLEAN_MODE:
+            s["clean_mode"] = value
+        elif action in (Action.STATION, Action.LOCATE):
+            pass
         elif action == Action.SET_SOUND_MODE:
             s["sound_mode"] = value
         elif action in (Action.KEY, Action.CHANNEL_UP, Action.CHANNEL_DOWN):

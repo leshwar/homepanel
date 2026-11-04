@@ -166,6 +166,43 @@ class UITests(unittest.TestCase):
         self.page.click("[data-arg=shelly]")          # a brand with no extra libraries, so always available
         self.page.wait_for_selector("text=You're in demo mode")
 
+    def test_robot_vacuum_sheet(self):
+        tile = self.page.locator('.tile[data-id="lr-vacuum"]')
+        tile.click()                                         # opens controls, never starts cleaning by itself
+        self.page.wait_for_selector("#sheet:not([hidden]) [data-clean]")
+        self.assertEqual(self.page.locator("#sheet [data-power]").count(), 0)   # no on/off button
+        self.assertIn("Battery", self.page.locator("#sheet").inner_text())
+        self.page.click("#sheet [data-clean=start]")
+        self.page.wait_for_selector("#sheet [data-clean=pause]")
+        self.page.wait_for_function(
+            "document.querySelector('.tile[data-id=\"lr-vacuum\"] .tile-status').textContent.startsWith('Cleaning')")
+        self.page.click("#sheet [data-dock]")
+        self.page.wait_for_function(
+            "document.querySelector('#sheet .sheet-head p').textContent.startsWith('Going back to dock')")
+        box = self.page.locator("#sheet [data-clean]").bounding_box()
+        self.assertGreaterEqual(box["height"], 48)               # touch target
+        self.assertEqual(self.errors, [])
+
+    def test_robot_vacuum_map_rooms_and_settings(self):
+        self.page.locator('.tile[data-id="lr-vacuum"]').click()
+        self.page.wait_for_function("(() => { const i = document.querySelector('#sheet .vac-map img');"
+                                    " return i && i.complete && i.naturalWidth > 0; })()")      # the map loaded
+        self.page.click('#sheet [data-room-pick="2"]')
+        self.page.click('#sheet [data-room-pick="3"]')
+        self.page.wait_for_selector("text=Clean these 2 rooms")
+        self.page.click("#sheet [data-clean-rooms]")
+        self.page.wait_for_selector("#sheet [data-clean=pause]")
+        self.page.click('#sheet [data-suction="quiet"]')
+        self.page.wait_for_selector('#sheet [data-suction="quiet"][aria-pressed="true"]')
+        self.page.click("#sheet [data-locate]")
+        self.page.wait_for_selector("text=Your vacuum is making a sound")
+        self.assertIn("Filter", self.page.locator("#sheet .vac-parts").text_content())   # folded away until tapped
+        for sel in ('[data-room-pick="1"]', '[data-suction="quiet"]', "[data-locate]"):
+            self.assertGreaterEqual(self.page.locator(f"#sheet {sel}").bounding_box()["height"], 48)
+        self.page.click("#sheet [data-dock]")                      # leave it docked for the other tests
+        self.page.wait_for_selector("#sheet [data-clean=start]")
+        self.assertEqual(self.errors, [])
+
     def test_search_all_brands_from_add_screen(self):
         self.page.click("#open-settings")
         self.page.click("[data-go=add]")

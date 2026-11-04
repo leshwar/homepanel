@@ -21,8 +21,8 @@ from collections import Counter
 from dataclasses import asdict
 from typing import Any, Awaitable, Callable
 
-from .adapter import (ADAPTERS, Action, AdapterError, Cap, Device, DeviceAdapter, Found,
-                      Key, PairingRequired, missing_requirements)
+from .adapter import (ADAPTERS, Action, AdapterError, Cap, Clean, Device, DeviceAdapter, Found,
+                      Key, PairingRequired, missing_requirements, unsupported_reason)
 from .automations import Automations
 from .history import History
 from .net import in_container, normalize_mac, parse_color
@@ -67,10 +67,17 @@ async def mw_validate(ctx: CommandContext, call_next):
         if Cap.REMOTE not in ctx.device.caps and not media_ok:
             raise AdapterError(f"{ctx.device.name} can't do '{ctx.value}'")
         return await call_next(ctx)
+    if ctx.action == Action.CLEAN and ctx.value not in Clean.ALL:
+        raise AdapterError(f"Unknown cleaning command '{ctx.value}'")
     if ctx.action in Action.OPTIONS:
         ids = {str(o.get("id")) for o in ctx.device.meta.get(Action.OPTIONS[ctx.action], [])}
         if str(ctx.value) not in ids:
             raise AdapterError(f"{ctx.device.name} doesn't have the option '{ctx.value}'")
+    if ctx.action == Action.CLEAN_ROOMS:
+        rooms = {str(r.get("id")) for r in ctx.device.meta.get("rooms", [])}
+        picked = ctx.value if isinstance(ctx.value, list) else []
+        if not picked or not {str(v) for v in picked} <= rooms:
+            raise AdapterError("Pick at least one room from the list.")
     needed = Action.REQUIRES.get(ctx.action)
     if needed and needed not in ctx.device.caps:
         raise AdapterError(f"{ctx.device.name} can't do '{ctx.action}'")
@@ -134,8 +141,10 @@ class HomeService:
         self.store = Store(os.path.join(data_dir, "demo.json" if demo else "homepanel.json"))
         self.adapters: dict[str, DeviceAdapter] = {}
         self.unavailable: dict[str, list[str]] = {}   # adapter id -> missing python modules
+        self.unsupported: dict[str, str] = {}         # adapter id -> why it can't run on this Python
         self._subscribers: set[asyncio.Queue] = set()
         self._pollers: dict[str, asyncio.Task] = {}
+        self._soon: dict[str, asyncio.TimerHandle] = {}   # pushed changes waiting to refresh
         self._failures: dict[str, int] = {}
         self._found: dict[tuple[str, str], Found] = {}
         self._found_ips: dict[str, Counter] = {}     # per brand: how many results the last search found at each address
@@ -167,6 +176,10 @@ class HomeService:
         for aid, cls in ADAPTERS.items():
             if cls.hidden and not self.demo:
                 continue
+            reason = unsupported_reason(cls)
+            if reason:
+                self.unsupported[aid] = reason
+                continue
             missing = missing_requirements(cls)
             if missing:
                 self.unavailable[aid] = missing
@@ -177,6 +190,7 @@ class HomeService:
             except Exception as e:  # one broken adapter must not stop the panel
                 log.exception("Adapter %s failed to start: %s", aid, e)
                 continue
+            inst.on_change = (lambda uid, aid=aid: self._changed(aid, uid))
             self.adapters[aid] = inst
         if self.demo and not self.store.devices:
             await self._seed_demo()
@@ -194,6 +208,9 @@ class HomeService:
     async def stop(self) -> None:
         for t in [*self._pollers.values(), *self._background]:
             t.cancel()
+        for h in self._soon.values():
+            h.cancel()
+        self._soon.clear()
         for a in self.adapters.values():
             try:
                 await a.stop()
@@ -245,6 +262,7 @@ class HomeService:
             "account_set": bool(self.store.accounts.get(aid)),
             "available": aid in self.adapters,
             "missing": self.unavailable.get(aid, []),
+            "unsupported": self.unsupported.get(aid, ""),
             "hidden": cls.hidden,
         }
 
@@ -302,6 +320,16 @@ class HomeService:
                                        return_exceptions=True)
         return sum(1 for r in results if not isinstance(r, Exception))
 
+    def _changed(self, adapter_id: str, uid: str) -> None:
+        """An adapter says a device changed on its own: refresh it shortly (bursts are merged)."""
+        loop = asyncio.get_running_loop()
+        for d in self.store.devices.values():
+            if d.adapter == adapter_id and d.config.get("_uid") == uid:
+                if (h := self._soon.pop(d.id, None)) is not None:
+                    h.cancel()
+                self._soon[d.id] = loop.call_later(
+                    0.3, lambda i=d.id: (self._soon.pop(i, None), asyncio.ensure_future(self.refresh(i))))
+
     # --- polling ------------------------------------------------------------
     def _start_poller(self, d: Device) -> None:
         if d.id in self._pollers:
@@ -331,6 +359,7 @@ class HomeService:
             return
         before = dict(d.state)
         config_before = dict(d.config)
+        shape_before = (list(d.caps), dict(d.meta))
         try:
             state = await asyncio.wait_for(adapter.refresh(d), REFRESH_TIMEOUT)
             self._failures[d.id] = 0
@@ -344,10 +373,20 @@ class HomeService:
                 d.state = {**before, "online": False, "error": _friendly(e)}
         if d.state.get("power_w") is not None and d.state.get("online"):
             await asyncio.to_thread(self.history.record, d.id, d.state["power_w"])
-        if d.config != config_before:
+        shape_changed = (list(d.caps), dict(d.meta)) != shape_before   # e.g. a vacuum's rooms arrived
+        if d.config != config_before or shape_changed:
             self.store.save()              # the adapter learned something (e.g. a TV's MAC address)
-        if d.state != before:
+        if d.state != before or shape_changed:
             self._publish_device(d)
+
+    async def map_image(self, device_id: str) -> tuple[str, bytes]:
+        d = self.get(device_id)
+        if Cap.MAP not in d.caps:
+            raise AdapterError(f"{d.name} doesn't have a map.")
+        img = await asyncio.wait_for(self._adapter_for(d).map_image(d), REFRESH_TIMEOUT)
+        if not img:
+            raise AdapterError("The map isn't ready yet. Try again in a minute.")
+        return img
 
     async def energy(self, device_id: str, days: int = 7) -> dict:
         self.get(device_id)
@@ -690,6 +729,7 @@ class HomeService:
         for f in await a.discover():
             d = Device(id=f.uid, adapter="demo", name=f.name, kind=f.kind,
                        room=f.config.get("room", ""), config={**f.config, "_uid": f.uid}, caps=f.caps)
+            await a.setup(d)                       # like adding a device: fills in meta (TV apps, vacuum rooms)
             self.store.devices[d.id] = d
         self.store.scenes = [
             {"id": "movie", "name": "Movie night", "icon": "film", "actions": [

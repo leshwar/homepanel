@@ -154,13 +154,18 @@ const VIEWS = {
       ${st.result ? searchAllResults(st.result) : ""}
       <p class="group-label">Or choose the brand. Most plugs sold as "works with Smart Life" use Tuya.</p>
       <div class="list">${list.map((a) => row(`data-go=brand data-arg="${esc(a.id)}"`, kindIcon({ kind: a.kinds[0] }), a.name,
-        a.available ? a.brands : `Not installed on this panel (needs ${a.missing.join(", ")})`)).join("")}</div>`, { closeBtn: true });
+        a.available ? a.brands : a.unsupported ? `Not available on this panel: ${a.unsupported}`
+          : `Not installed on this panel (needs ${a.missing.join(", ")})`)).join("")}</div>`, { closeBtn: true });
   },
 
   brand(id) {
     const a = store.adapters.find((x) => x.id === id);
     if (!a) return back();
     const st = brandState;
+    if (!a.available && a.unsupported) {
+      return page(a.name, `<div class="note warn">${esc(a.name)} can't run on this panel. ${esc(a.unsupported)}.
+        See docs/DEVICE_SETUP.md for how to set it up.</div>`, { closeBtn: true });
+    }
     if (!a.available) {
       return page(a.name, `<div class="note warn">Support for ${esc(a.name)} isn't installed. On the panel, run
         <b>./scripts/install.sh</b> again, or <b>pip install ${esc(a.missing.join(" "))}</b>.</div>`, { closeBtn: true });
@@ -461,7 +466,8 @@ const VIEWS = {
       const h = await api.health();
       $("#health").innerHTML = `<h3>${h.online} of ${h.devices} devices responding</h3>
         <p>Running for ${fmtDuration(h.uptime_s)}. Brands available: ${esc(h.adapters.join(", "))}.
-        ${Object.keys(h.unavailable).length ? `<br>Not installed: ${esc(Object.keys(h.unavailable).join(", "))}.` : ""}</p>`;
+        ${Object.keys(h.unavailable).length ? `<br>Not installed: ${esc(Object.keys(h.unavailable).join(", "))}.` : ""}
+        ${Object.keys(h.unsupported || {}).length ? `<br>Not available on this Python: ${esc(Object.keys(h.unsupported).join(", "))}.` : ""}</p>`;
     } catch (e) { $("#health").innerHTML = `<p>${esc(e.message)}</p>`; }
     loadLogs("");
   },
@@ -612,6 +618,8 @@ root.addEventListener("click", async (e) => {
     }
     if (t("[data-account-action]")) {
       const b = t("[data-account-action]"); b.disabled = true;
+      const form = b.closest("form");      // save what was typed first, so the action can use it
+      if (form) brandState.account = await api.saveAccount(top.arg, formValues(form));
       const r = await api.accountAction(top.arg, b.dataset.accountAction);
       brandState.account = r.account; toast(r.message); await reload(); return render();
     }

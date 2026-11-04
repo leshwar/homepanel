@@ -62,11 +62,13 @@ export async function command(id, action, value, optimistic = {}) {
     const updated = await api.command(id, action, value);
     store.busy.delete(id);
     upsertDevice(updated);
+    return true;
   } catch (e) {
     store.busy.delete(id);
     d.state = before;
     emit("device", id);
     toast(e.message, true);
+    return false;
   }
 }
 

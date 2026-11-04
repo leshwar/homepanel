@@ -101,7 +101,7 @@ function renderGrid() {
   grid.innerHTML = html;
 }
 
-const KIND_ORDER = { tv: 0, speaker: 1, light: 2, switch: 3, fan: 4, plug: 5, other: 6 };
+const KIND_ORDER = { tv: 0, speaker: 1, light: 2, switch: 3, fan: 4, plug: 5, vacuum: 6, other: 7 };
 const sortDevices = (list) => list.sort((a, b) => (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9) || a.name.localeCompare(b.name));
 
 function updateTile(id) {
@@ -174,7 +174,7 @@ function setupGrid() {
     if (e.target.closest("[data-more]")) return openDevice(d.id);
     const act = e.target.closest("[data-act]");
     if (act) return command(d.id, act.dataset.act);
-    if (isMedia(d)) return openDevice(d.id);   // never toggle a TV or sound bar by accident
+    if (isMedia(d) || !d.caps.includes("power")) return openDevice(d.id);   // never toggle a TV or sound bar by accident; vacuums have no on/off
     toggle(d);
   });
   grid.addEventListener("keydown", (e) => {

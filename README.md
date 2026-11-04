@@ -41,6 +41,7 @@ once — controlled directly over your Wi-Fi.
 | LG | webOS smart TVs | Local | Accept the prompt on the TV once |
 | LG | Sound bars with Wi-Fi (2018+) | Local | None, [guide](docs/DEVICE_SETUP.md#lg-sound-bars) |
 | Home Assistant | Anything it controls: lights, switches, fans, TVs, speakers | Local (Home Assistant REST API) | Long-lived access token |
+| Ecovacs Deebot | Robot vacuums | Ecovacs cloud | Ecovacs Home app login; needs Python 3.14, [guide](docs/DEVICE_SETUP.md#ecovacs-deebot-robot-vacuums) |
 
 Want another brand? It's usually one file — see [app/adapters/README.md](app/adapters/README.md).
 
@@ -142,7 +143,7 @@ app/core/       service: registry, state, polling, scenes, middleware (validate 
                 automations (time / sun / presence), energy history (SQLite), presence
 app/core/adapter.py   the DeviceAdapter interface every brand implements
 app/adapters/   one file per brand: tuya.py, govee.py, kasa.py, shelly.py, wiz.py, hue.py, samsung_tv.py, lg_tv.py,
-                lg_soundbar.py, home_assistant.py
+                lg_soundbar.py, home_assistant.py, ecovacs.py
 ```
 
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture and

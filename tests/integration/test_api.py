@@ -8,7 +8,8 @@ import unittest
 import urllib.error
 import urllib.request
 
-from tests.helpers import DemoServer, FakeWeatherSource
+from tests.helpers import (IPWHOIS_LYON, REVERSE_SEATTLE, DemoServer, FakeJsonServer,
+                           FakeWeatherSource)
 
 
 class ApiTests(unittest.TestCase):
@@ -202,6 +203,35 @@ class ApiTests(unittest.TestCase):
             os.environ.pop("HOMEPANEL_WEATHER_URL", None)
             self.call("PUT", "/settings", {"latitude": None, "longitude": None, "weather_enabled": False,
                                            "temperature_unit": "F"})
+
+    def test_location_lookup_device_approximate_and_errors(self):
+        svc = FakeJsonServer({"/ipapi/": (429, {"error": True, "reason": "RateLimited"}),
+                              "/ipwho/": (200, IPWHOIS_LYON), "/reverse": (200, REVERSE_SEATTLE)})
+        env = {"HOMEPANEL_GEO_IP_URLS": f"{svc.base}/ipapi/,{svc.base}/ipwho/",
+               "HOMEPANEL_GEO_REVERSE_URL": f"{svc.base}/reverse"}
+        os.environ.update(env)
+        try:
+            # coordinates from the device → only a place name is looked up, with rounded coordinates
+            status, r = self.call("POST", "/location/lookup", {"latitude": 47.60621, "longitude": -122.33207})
+            self.assertEqual((status, r), (200, {"latitude": 47.61, "longitude": -122.33,
+                                                 "place_name": "Seattle, WA", "source": "device"}))
+            self.assertEqual(svc.requests, ["/reverse?latitude=47.61&longitude=-122.33&localityLanguage=en"])
+            # no device location → first service is rate-limited, the backup answers
+            status, r = self.call("POST", "/location/lookup", {})
+            self.assertEqual((status, r["place_name"], r["source"], r["latitude"]),
+                             (200, "Lyon, France", "approximate", 45.76))
+            self.assertEqual(svc.requests[1:], ["/ipapi/", "/ipwho/"])
+            # nothing was saved
+            self.assertIsNone(self.call("GET", "/state")[1]["settings"]["latitude"])
+            status, err = self.call("POST", "/location/lookup", {"latitude": 123, "longitude": 0})
+            self.assertEqual(status, 400)
+            svc.stop()                                           # offline
+            status, err = self.call("POST", "/location/lookup", {})
+            self.assertEqual(status, 400)
+            self.assertIn("enter your location by hand", err["error"])
+        finally:
+            for k in env:
+                os.environ.pop(k, None)
 
     def _upload(self, data: bytes, content_type="image/png"):
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/v1/photos?name=test.png", data=data,

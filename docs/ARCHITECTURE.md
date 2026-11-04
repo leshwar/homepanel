@@ -23,6 +23,7 @@ how many device brands are added underneath.
 │   tuya · govee · kasa · shelly · wiz · hue · samsung_tv ·    │
 │   lg_tv · lg_soundbar · home_assistant · demo                │
 └──────────────────────────────────────────────────────────────┘
+        app/core/voice.py: spoken/typed sentences → generic commands → HomeService (rules-based; swappable Parser)
         app/core/automations.py: schedules (time, sunrise/sunset, presence) → scenes/commands
         app/core/sun.py: sunrise/sunset maths (offline)
         app/core/presence.py: who's home, from phones on the Wi-Fi

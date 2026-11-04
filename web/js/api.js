@@ -64,6 +64,8 @@ export const api = {
   removeDevice: (id) => call("DELETE", `/devices/${id}`),
   pair: (id) => call("POST", `/devices/${id}/pair`),
   refresh: (id) => call("POST", `/devices/${id}/refresh`),
+  // A spoken or typed sentence. confirm: true runs a risky one after the person said yes.
+  voice: (text, confirm = false) => call("POST", "/voice", { text, confirm }),
   allOff: (room = null) => call("POST", "/all-off", room == null ? {} : { room }),   // "" = devices with no room
 
   mapUrl: (id, rev = 0) => `${BASE}/devices/${encodeURIComponent(id)}/map?v=${encodeURIComponent(rev)}`,
@@ -86,6 +88,7 @@ export const api = {
   presence: () => call("GET", "/presence"),
   sun: () => call("GET", "/sun"),
   weather: () => call("GET", "/weather"),
+  lookupLocation: (coords = {}) => call("POST", "/location/lookup", coords),
 
   photos: () => call("GET", "/photos"),
   deletePhoto: (id) => call("DELETE", `/photos/${encodeURIComponent(id)}`),

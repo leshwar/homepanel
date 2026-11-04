@@ -445,7 +445,7 @@ export function setupHome({ goRoom, showAmbient }) {
     }
     if (t.closest("[data-edit-home]")) return startEditing();
     if (t.closest("[data-ambient]")) return showAmbient();
-    if (t.closest("[data-setup-weather]")) return openSettings("location");
+    if (t.closest("[data-setup-weather]")) return openSettings("location", "weather");
     if (t.closest("[data-new-scene]")) return openSettings("scene-new");
     const room = t.closest("[data-go-room]");
     if (room) return goRoom(room.dataset.goRoom);

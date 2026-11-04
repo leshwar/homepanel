@@ -221,6 +221,19 @@ class AccessFilterTests(unittest.IsolatedAsyncioTestCase):
         await self.svc.stop()
         shutil.rmtree(self.dir, ignore_errors=True)
 
+    async def test_voice_only_knows_what_the_member_can_see(self):
+        r = await self.svc.voice.handle("what's on in the living room")      # all hidden from Sam
+        said = json.dumps(r).lower()
+        for hidden in ("floor lamp", "ceiling light", "speaker plug", "samsung tv", "lr-"):
+            self.assertNotIn(hidden, said)
+        kettle = self.svc.store.devices["kt-kettle"].state.get("on")
+        r = await self.svc.voice.handle("turn on the kettle plug")
+        self.assertNotIn("kt-kettle", json.dumps(r))                             # not even its id
+        self.assertEqual(r["failed"], [])
+        self.assertEqual(self.svc.store.devices["kt-kettle"].state.get("on"), kettle)   # never touched
+        r = await self.svc.voice.handle("turn on the bedside lamp")
+        self.assertTrue(self.svc.store.devices["bd-lamp"].state.get("on"), r)          # a visible one works
+
     async def test_snapshot_only_has_visible_devices(self):
         snap = self.svc.snapshot()
         self.assertEqual(sorted(d["id"] for d in snap["devices"]), ["bd-fan", "bd-lamp", "bd-tv", "kt-pendant"])

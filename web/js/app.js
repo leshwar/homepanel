@@ -17,6 +17,7 @@ import { applySky, refreshWeather, onWeather } from "./sky.js";
 import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEditing, stopEditing } from "./home.js";
 import { startAuth } from "./auth.js";
 import "./profiles.js";      // Settings → Profiles
+import { setupVoice, closeVoice, isVoiceOpen } from "./voice.js";
 
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const wide = () => matchMedia("(min-width: 768px)").matches;
@@ -317,7 +318,7 @@ function setupChrome() {
 
 // ---------- idle ambient clock ----------
 let lastActivity = Date.now();
-function showAmbient() { closeSheet(); $("#ambient").hidden = false; renderAmbient(); }
+function showAmbient() { closeSheet(); closeVoice(); $("#ambient").hidden = false; renderAmbient(); }
 function setupIdle() {
   const wake = () => { lastActivity = Date.now(); };
   ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, wake, { capture: true }));
@@ -327,7 +328,7 @@ function setupIdle() {
   });
   setInterval(() => {
     const after = Number(store.settings.dim_after_seconds || 0);
-    if (!(after > 0 && Date.now() - lastActivity > after * 1000) || isSettingsOpen() || isEditing()) return;
+    if (!(after > 0 && Date.now() - lastActivity > after * 1000) || isSettingsOpen() || isEditing() || isVoiceOpen()) return;
     if (!$("#ambient").hidden || isFrameOpen()) return;
     const hour = new Date().getHours();
     const night = store.settings.frame_night_clock !== false && (hour >= 22 || hour < 7);
@@ -381,6 +382,7 @@ onWeather(() => refreshHomeParts(["weather"]));
 
 setupGrid();
 setupChrome();
+setupVoice();
 setupHome({ goRoom, showAmbient });
 bindTiles($("#home"), { enabled: () => !isEditing(), onLongPress: () => startEditing() });
 setupIdle();

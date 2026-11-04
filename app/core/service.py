@@ -27,7 +27,7 @@ from dataclasses import asdict
 from typing import Any, Awaitable, Callable
 
 from .adapter import (ADAPTERS, Action, AdapterError, Cap, Clean, Device, DeviceAdapter, Found,
-                      Key, PairingRequired, missing_requirements, unsupported_reason)
+                      Key, PairingRequired, Pointer, missing_requirements, unsupported_reason)
 from .automations import Automations
 from .history import History
 from .layout import LayoutError, clean_layout, default_layout
@@ -99,6 +99,27 @@ async def mw_validate(ctx: CommandContext, call_next):
     return await call_next(ctx)
 
 
+def normalize_pointer(value: Any) -> dict:
+    """Turn a pointer command into exactly one of {"dx","dy"}, {"click": True} or {"scroll": n}."""
+    if not isinstance(value, dict):
+        raise AdapterError("Pointer commands need a move, a click or a scroll.")
+
+    def num(v: Any, limit: int) -> int:
+        try:
+            n = int(round(float(v)))
+        except (TypeError, ValueError):
+            raise AdapterError("Pointer moves must be numbers.") from None
+        return max(-limit, min(limit, n))
+
+    if value.get("click"):
+        return {"click": True}
+    if "scroll" in value:
+        return {"scroll": num(value["scroll"], Pointer.MAX_SCROLL)}
+    if "dx" in value or "dy" in value:
+        return {"dx": num(value.get("dx", 0), Pointer.MAX_MOVE), "dy": num(value.get("dy", 0), Pointer.MAX_MOVE)}
+    raise AdapterError("Pointer commands need a move, a click or a scroll.")
+
+
 async def mw_normalize(ctx: CommandContext, call_next):
     a, v = ctx.action, ctx.value
     if a == Action.TOGGLE:  # adapters only ever see POWER
@@ -115,13 +136,15 @@ async def mw_normalize(ctx: CommandContext, call_next):
         ctx.value = parse_color(v)
     elif a == Action.MUTE:
         ctx.value = (not ctx.device.state.get("muted")) if v is None else bool(v)
+    elif a == Action.POINTER:
+        ctx.value = normalize_pointer(v)
     return await call_next(ctx)
 
 
 async def mw_log(ctx: CommandContext, call_next):
     try:
         result = await call_next(ctx)
-        log.info("%s %s=%r ok (%.0f ms)", ctx.device.name, ctx.action, ctx.value,
+        (log.debug if ctx.action in Action.QUIET else log.info)("%s %s=%r ok (%.0f ms)", ctx.device.name, ctx.action, ctx.value,
                  (time.monotonic() - ctx.started) * 1000)
         return result
     except Exception as e:
@@ -131,9 +154,11 @@ async def mw_log(ctx: CommandContext, call_next):
 
 async def mw_timeout_retry(ctx: CommandContext, call_next):
     last: Exception | None = None
-    for _attempt in range(2):
+    # A late pointer move is worse than a lost one, so those get one quick try.
+    attempts, limit = (1, 3.0) if ctx.action in Action.QUIET else (2, COMMAND_TIMEOUT)
+    for _attempt in range(attempts):
         try:
-            return await asyncio.wait_for(call_next(ctx), COMMAND_TIMEOUT)
+            return await asyncio.wait_for(call_next(ctx), limit)
         except (AdapterError, ValueError):
             raise                      # meaningful errors: don't retry
         except (asyncio.TimeoutError, OSError, ConnectionError) as e:
@@ -387,6 +412,8 @@ class HomeService:
         if d.config != config_before:
             self.store.save()
         self._failures[d.id] = 0
+        if action in Action.QUIET:          # nothing changed; don't flood the live events
+            return self.public_device(d)
         d.state.update({"online": True, **changed})
         self._publish_device(d)
         # confirm the real state shortly after (devices sometimes ignore commands)

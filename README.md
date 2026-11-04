@@ -138,6 +138,17 @@ Prefer Docker? `docker compose up -d --build` runs the server (host networking,
 so device search works on the Pi). Try it on any computer with
 `make docker-demo`. Details and Mac caveats: [docs/DOCKER.md](docs/DOCKER.md).
 
+## Use it on your phone or tablet
+
+The panel is a web page, so any phone, tablet or laptop on the same Wi-Fi can use
+it: open the panel's address in Safari or Chrome. The address is shown in
+**Settings → Diagnostics** and in the log at start-up, for example
+`http://192.168.1.20:8080`. (In Docker on a Mac, use your Mac's address from
+System Settings → Wi-Fi → Details, with the port you opened, e.g. `:8081`.)
+
+Anyone on your Wi-Fi who opens that address can control your devices; there's no
+sign-in yet. Phone apps are planned for later (see [ROADMAP](docs/ROADMAP.md)).
+
 ## Logs and debugging
 
 | What | Where |

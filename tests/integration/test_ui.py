@@ -84,12 +84,60 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector('[data-sound-mode="cinema"][aria-pressed="true"]')
         box = self.page.locator('[data-sound-mode="cinema"]').bounding_box()
         self.assertGreaterEqual(box["height"], 48)
+        # the remote's speaker layout: power, name and mute on top, a volume bar, no keys or touchpad
+        sheet = self.page.locator("#sheet")
+        for sel in (".remote-top [data-power]", ".remote-top [data-mute]", '.vol-bar [data-act="volume_up"]'):
+            self.assertEqual(sheet.locator(sel).count(), 1, sel)
+        for sel in ("[data-mode]", "#touchpad", "[data-key]", "[data-app]"):
+            self.assertEqual(sheet.locator(sel).count(), 0, sel)
+        self.page.click('#sheet [data-input="bt"]')
+        self.page.wait_for_selector('#sheet [data-input="bt"][aria-pressed="true"]')
 
-    def test_brightness_slider(self):
+    def test_brightness_pill(self):
+        # Ceiling light starts at 80%. Dragging the pill down by half its height dims it to 30%;
+        # a tap without dragging switches it off and on.
         self.tile("lr-ceiling").locator("[data-more]").click()
         box = self.page.locator("#bri").bounding_box()
-        self.page.mouse.click(box["x"] + box["width"] * 0.3, box["y"] + box["height"] / 2)
+        self.assertGreater(box["height"], box["width"])                 # a tall, vertical pill
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] * 0.4
+        self.page.mouse.move(x, y)
+        self.page.mouse.down()
+        for i in range(1, 11):
+            self.page.mouse.move(x, y + box["height"] * 0.05 * i)
+        self.page.mouse.up()
         self.page.wait_for_function("document.querySelector('#bri-val').textContent === '30%'")
+        self.page.wait_for_function(
+            "document.querySelector('.tile[data-id=\"lr-ceiling\"] .tile-status').textContent === 'On, 30%'")
+        self.page.locator("#bri").click()                                # tap = off
+        self.page.wait_for_function("document.querySelector('#bri-val').textContent === 'Off'")
+        self.page.wait_for_function("!document.querySelector('.tile[data-id=\"lr-ceiling\"]').classList.contains('on')")
+        self.page.locator("#bri").click()                                # tap again = back on
+        self.page.wait_for_function("document.querySelector('#bri-val').textContent === '30%'")
+        # this light has white temperature only: a warm-to-cool pill, no color wheel
+        self.assertEqual(self.page.locator("#sheet #wheel").count(), 0)
+        ct = self.page.locator("#sheet #ct").bounding_box()
+        self.page.mouse.click(ct["x"] + ct["width"] / 2, ct["y"] + 4)  # top = coolest
+        self.page.wait_for_function("document.querySelector('#sheet #ct').getAttribute('aria-valuenow') > 6000")
+
+    def test_light_color_wheel_and_presets(self):
+        self.tile("lr-lamp").locator("[data-more]").click()
+        wheel = self.page.locator("#sheet #wheel")
+        box = wheel.bounding_box()
+        self.page.mouse.click(box["x"] + box["width"] / 2, box["y"] + 3)    # top edge of the wheel = red
+        self.page.wait_for_function("document.querySelector('#sheet #wheel').getAttribute('aria-valuetext') === '#ff0000'")
+        self.page.wait_for_function("(() => { const s = document.querySelector('.tile[data-id=\"lr-lamp\"]').style"
+                                    ".getPropertyValue('--glow'); return s.trim() === '255 0 0'; })()")
+        self.page.click('#sheet [data-color="#5ee07a"]')
+        self.page.wait_for_selector('#sheet [data-color="#5ee07a"][aria-pressed="true"]')
+        # white strip: tapping the warm end switches back to white light
+        strip = self.page.locator("#sheet .temp-strip").bounding_box()
+        self.page.mouse.click(strip["x"] + 6, strip["y"] + strip["height"] / 2)
+        self.page.wait_for_function("document.querySelector('#sheet .temp-strip').getAttribute('aria-valuenow') < 2400")
+        self.page.wait_for_selector("#sheet .wheel-thumb.idle")
+        self.page.wait_for_timeout(1800)                                   # let the follow-up refresh settle
+        heights = self.page.evaluate("['#bri', '#wheel', '.temp-strip', '.swatch'].map("
+                                     "s => document.querySelector('#sheet ' + s).getBoundingClientRect().height)")
+        self.assertTrue(all(h >= 48 for h in heights), heights)
 
     def test_add_room_and_open_add_flow(self):
         self.page.click("#open-settings")
@@ -237,6 +285,13 @@ class UITests(unittest.TestCase):
         self.page.click("[data-arg=shelly]")          # a brand with no extra libraries, so always available
         self.page.wait_for_selector("text=You're in demo mode")
 
+    def test_diagnostics_says_where_to_open_on_a_phone(self):
+        self.page.click("#open-settings")
+        self.page.get_by_text("Diagnostics and logs").click()
+        self.page.wait_for_selector("#phone-url")
+        self.assertIn("same Wi-Fi", self.page.locator("#phone-url").inner_text())
+        self.assertEqual(self.errors, [])
+
     def test_robot_vacuum_sheet(self):
         tile = self.page.locator('.tile[data-id="lr-vacuum"]')
         tile.click()                                         # opens controls, never starts cleaning by itself
@@ -260,7 +315,7 @@ class UITests(unittest.TestCase):
                                     " return i && i.complete && i.naturalWidth > 0; })()")      # the map loaded
         self.page.click('#sheet [data-room-pick="2"]')
         self.page.click('#sheet [data-room-pick="3"]')
-        self.page.wait_for_selector("text=Clean these 2 rooms")
+        self.page.wait_for_selector("#sheet [data-clean-rooms] >> text=Clean 2 rooms")
         self.page.click("#sheet [data-clean-rooms]")
         self.page.wait_for_selector("#sheet [data-clean=pause]")
         self.page.click('#sheet [data-suction="quiet"]')
@@ -294,6 +349,138 @@ class UITests(unittest.TestCase):
         self.page.locator("#ambient").click()
         self.page.wait_for_selector("#ambient", state="hidden")
         self.assertEqual(before, self.tile("lr-lamp").evaluate("el => el.classList.contains('on')"))
+
+    # ---------- TV remote ----------
+    def commands(self):
+        """Collect the commands the page sends: [(action, value), …]."""
+        import json
+        sent = []
+        def on_request(r):
+            if r.method == "POST" and r.url.endswith("/command"):
+                body = json.loads(r.post_data or "{}")
+                sent.append((body.get("action"), body.get("value")))
+        self.page.on("request", on_request)
+        return sent
+
+    def open_tv(self, did):
+        self.tile(did).locator("[data-more]").click()
+        self.page.wait_for_selector("#sheet:not([hidden]) .remote-top")
+        if self.page.locator("#sheet .tv-off").count():
+            self.page.click("#sheet .tv-off [data-power]")
+        self.page.wait_for_selector("#sheet .remote")
+
+    def test_remote_layout_and_modes(self):
+        sent = self.commands()
+        self.open_tv("lr-tv")                       # demo "Samsung TV": no pointer
+        top = self.page.locator("#sheet .remote-top")
+        self.assertEqual(top.locator("[data-power]").count(), 1)
+        self.assertIn("Samsung TV", top.locator(".tv-pill").inner_text())
+        self.assertEqual(top.locator("[data-mute]").count(), 1)
+        for key in ("MENU", "SOURCE", "EXIT", "CHANNEL_LIST", "UP", "OK", "HOME", "BACK"):
+            self.assertEqual(self.page.locator(f'#sheet [data-key="{key}"]').count(), 1, key)
+        self.assertEqual(self.page.locator("#sheet [data-mode=touchpad]").count(), 0)   # only when the TV has a pointer
+        self.page.click('#sheet [data-key="OK"]')
+        self.page.click('#sheet [data-act="volume_up"]')
+        self.page.click("#sheet [data-mode=numbers]")
+        self.page.wait_for_selector("#sheet .numpad")
+        self.assertEqual(self.page.locator("#sheet .numpad .num").count(), 12)
+        self.page.click('#sheet .numpad [data-key="7"]')
+        self.page.wait_for_function("document.querySelector('#sheet [data-mode=numbers]').getAttribute('aria-pressed') === 'true'")
+        self.page.click("#sheet [data-mode=dpad]")
+        self.page.wait_for_selector("#sheet .dpad")
+        self.page.click("#sheet [data-app]:not([aria-pressed=true]) >> nth=0")
+        self.page.wait_for_function("() => true")
+        self.page.wait_for_timeout(300)
+        actions = [a for a in sent]
+        self.assertIn(("key", "OK"), actions)
+        self.assertIn(("volume_up", None), actions)
+        self.assertIn(("key", "7"), actions)
+        self.assertTrue(any(a == "launch_app" for a, _ in actions))
+        for sel in ("[data-key=MENU]", "[data-key=UP]", "[data-act=volume_up]", "[data-mode=dpad]", "[data-app]"):
+            box = self.page.locator(f"#sheet {sel}").first.bounding_box()
+            self.assertGreaterEqual(min(box["width"], box["height"]), 48, sel)
+
+    def test_remote_fits_a_phone_without_scrolling(self):
+        self.page.set_viewport_size({"width": 393, "height": 852})
+        self.open_tv("lr-tv")
+        self.page.wait_for_timeout(350)               # sheet animation
+        fits = self.page.evaluate("(() => { const s = document.querySelector('#sheet');"
+                                  " return s.scrollHeight <= s.clientHeight + 1 && s.getBoundingClientRect().top >= 0; })()")
+        self.assertTrue(fits)
+        width = self.page.evaluate("document.querySelector('#sheet').scrollWidth <= 393")
+        self.assertTrue(width)
+
+    def test_touchpad_moves_clicks_and_scrolls_the_pointer(self):
+        sent = self.commands()
+        self.open_tv("bd-tv")                       # demo "LG TV" has a pointer
+        self.page.click("#sheet [data-mode=touchpad]")
+        pad = self.page.locator("#sheet #touchpad")
+        pad.wait_for()
+        box = pad.bounding_box()
+        x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
+        self.page.mouse.move(x, y)
+        self.page.mouse.down()
+        for i in range(1, 16):
+            self.page.mouse.move(x + i * 6, y - i * 2)
+            self.page.wait_for_timeout(10)
+        self.page.mouse.up()
+        self.page.wait_for_timeout(200)
+        moves = [v for a, v in sent if a == "pointer" and "dx" in v]
+        self.assertTrue(moves)
+        self.assertLess(len(moves), 15)                                  # batched, not one per finger move
+        self.assertGreater(sum(m["dx"] for m in moves), 90)              # moved right (with acceleration) …
+        self.assertLess(sum(m["dy"] for m in moves), 0)                  # … and up
+        self.page.mouse.click(x, y)                                      # tap = click
+        self.page.wait_for_timeout(200)
+        self.assertIn(("pointer", {"click": True}), sent)
+        clicks = sent.count(("pointer", {"click": True}))
+        # two fingers dragging up scroll the page down
+        pad.evaluate("""el => {
+            const r = el.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+            const ev = (type, id, dy) => el.dispatchEvent(new PointerEvent(type, {
+                pointerId: id, clientX: x + id * 20, clientY: y + dy, bubbles: true, pointerType: "touch" }));
+            ev("pointerdown", 1, 0); ev("pointerdown", 2, 0);
+            for (let i = 1; i <= 6; i++) { ev("pointermove", 1, -i * 10); ev("pointermove", 2, -i * 10); }
+            ev("pointerup", 1, -60); ev("pointerup", 2, -60);
+        }""")
+        self.page.wait_for_timeout(250)
+        scrolls = [v["scroll"] for a, v in sent if a == "pointer" and "scroll" in v]
+        self.assertTrue(scrolls and sum(scrolls) > 0)
+        self.assertEqual(sent.count(("pointer", {"click": True})), clicks)   # a scroll isn't a click
+        self.page.click("#sheet [data-mode=dpad]")                       # leave the TV in D-pad mode
+        self.page.wait_for_selector("#sheet .dpad")
+
+    # ---------- robot vacuum ----------
+    def test_robot_vacuum_options_and_maintenance(self):
+        self.page.set_viewport_size({"width": 393, "height": 852})
+        self.tile("lr-vacuum").click()
+        self.page.wait_for_selector("#sheet .vac")
+        opts = self.page.locator("#sheet .opts")
+        self.assertIn("Suction", opts.inner_text())
+        self.assertIn("Mode", opts.inner_text())
+        self.assertIn("Station", opts.inner_text())
+        self.assertEqual(opts.locator("[data-clean-mode] svg").count(), 3)          # every mode has an icon
+        self.page.click('#sheet [data-clean-mode="mop"]')
+        self.page.wait_for_selector('#sheet [data-clean-mode="mop"][aria-pressed="true"]')
+        self.page.click('#sheet [data-clean-mode="vacuum"]')
+        self.page.wait_for_selector('#sheet [data-clean-mode="vacuum"][aria-pressed="true"]')
+        self.page.click('#sheet [data-station="empty_dustbin"]')
+        self.page.wait_for_selector("text=Empty dustbin: sent to the station")
+        # parts wear stays folded behind one Maintenance row
+        part = self.page.locator("#sheet .vac-parts .part").first
+        self.assertFalse(part.is_visible())
+        self.assertIn("Filter", self.page.locator("#sheet .maint-row").inner_text())
+        self.page.click("#sheet .maint-row")
+        part.wait_for(state="visible")
+        # picking rooms turns the main button into "Clean 1 room"; Clear undoes it
+        self.page.click('#sheet [data-room-pick="2"]')
+        self.page.wait_for_selector("#sheet .vac-main >> text=Clean 1 room")
+        self.page.click("#sheet [data-rooms-clear]")
+        self.page.wait_for_selector("#sheet .vac-main >> text=Start cleaning")
+        for sel in (".vac-main", "[data-locate]", '[data-suction="max"]', '[data-clean-mode="mop"]', ".maint-row"):
+            self.assertGreaterEqual(self.page.locator(f"#sheet {sel}").bounding_box()["height"], 48, sel)
+        no_overflow = self.page.evaluate("document.querySelector('#sheet').scrollWidth <= 393")
+        self.assertTrue(no_overflow)
 
 
     def test_each_clock_face_shows_and_wakes(self):

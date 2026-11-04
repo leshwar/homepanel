@@ -65,6 +65,7 @@ class Cap:
     STATION = "station"        # dock station jobs, e.g. empty dustbin (meta["station_actions"])
     LOCATE = "locate"          # play a sound to find the device
     MAP = "map"                # a picture of the floor plan: GET /devices/{id}/map
+    POINTER = "pointer"        # an on-screen pointer the panel can move, click and scroll (touchpad)
     SOUND_MODE = "sound_mode"  # set_sound_mode (meta["sound_modes"])
 
 
@@ -92,10 +93,18 @@ class Action:
     STATION = "station"                # value: id from meta["station_actions"]
     LOCATE = "locate"                  # no value
     SET_SOUND_MODE = "set_sound_mode"  # value: id from meta["sound_modes"]
+    # value: {"dx": int, "dy": int} to move, {"click": true} to click, {"scroll": int} to scroll
+    # (positive = down). The service normalizes it to exactly one of those three shapes.
+    POINTER = "pointer"
 
     ALL = (POWER, TOGGLE, BRIGHTNESS, COLOR, COLOR_TEMP, VOLUME, VOLUME_UP,
            VOLUME_DOWN, MUTE, CHANNEL_UP, CHANNEL_DOWN, KEY, LAUNCH_APP, SET_INPUT,
-           CLEAN, DOCK, CLEAN_ROOMS, SET_SUCTION, SET_CLEAN_MODE, STATION, LOCATE, SET_SOUND_MODE)
+           CLEAN, DOCK, CLEAN_ROOMS, SET_SUCTION, SET_CLEAN_MODE, STATION, LOCATE, SET_SOUND_MODE,
+           POINTER)
+
+    # Fire-and-forget actions that don't change the device's state: the service doesn't
+    # broadcast or re-read the device after them, and logs them only in debug mode.
+    QUIET = (POINTER,)
 
     # Which capability each action needs (service layer checks this).
     REQUIRES = {
@@ -105,7 +114,7 @@ class Action:
         CHANNEL_UP: Cap.CHANNEL, CHANNEL_DOWN: Cap.CHANNEL, KEY: Cap.REMOTE,
         LAUNCH_APP: Cap.APPS, SET_INPUT: Cap.INPUTS, CLEAN: Cap.CLEAN, DOCK: Cap.DOCK,
         CLEAN_ROOMS: Cap.ROOMS, SET_SUCTION: Cap.SUCTION, SET_CLEAN_MODE: Cap.CLEAN_MODE,
-        STATION: Cap.STATION, LOCATE: Cap.LOCATE, SET_SOUND_MODE: Cap.SOUND_MODE,
+        STATION: Cap.STATION, LOCATE: Cap.LOCATE, SET_SOUND_MODE: Cap.SOUND_MODE, POINTER: Cap.POINTER,
     }
 
     # Actions whose value must be one of the ids the device lists in device.meta[...].
@@ -119,10 +128,18 @@ class Key:
     BACK, HOME, MENU, SOURCE = "BACK", "HOME", "MENU", "SOURCE"
     PLAY, PAUSE, STOP = "PLAY", "PAUSE", "STOP"
     REWIND, FORWARD = "REWIND", "FORWARD"
+    EXIT, CHANNEL_LIST, INFO = "EXIT", "CHANNEL_LIST", "INFO"
+    DIGITS = tuple(str(n) for n in range(10))    # "0" … "9" for the number pad
 
     ALL = (UP, DOWN, LEFT, RIGHT, OK, BACK, HOME, MENU, SOURCE,
-           PLAY, PAUSE, STOP, REWIND, FORWARD)
+           PLAY, PAUSE, STOP, REWIND, FORWARD, EXIT, CHANNEL_LIST, INFO, *DIGITS)
     MEDIA = (PLAY, PAUSE, STOP, REWIND, FORWARD)   # allowed with Cap.MEDIA alone
+
+
+class Pointer:
+    """Limits for Action.POINTER values (pixels per message)."""
+    MAX_MOVE = 400
+    MAX_SCROLL = 400
 
 
 class Clean:

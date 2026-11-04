@@ -114,6 +114,12 @@ class ApiTests(unittest.TestCase):
         except urllib.error.HTTPError as e:
             self.assertEqual(e.code, 404)
 
+    def test_ui_files_are_never_served_stale(self):
+        for path in ("/", "/app.css", "/js/app.js"):
+            with self.subTest(path=path), urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=5) as r:
+                self.assertEqual(r.headers.get("Cache-Control"), "no-cache")
+                self.assertTrue(r.headers.get("ETag") or r.headers.get("Last-Modified") or path == "/")
+
     def test_ui_served(self):
         with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/", timeout=5) as r:
             self.assertIn(b"HomePanel", r.read())

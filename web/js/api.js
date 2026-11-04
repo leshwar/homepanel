@@ -55,6 +55,7 @@ export const api = {
   presence: () => call("GET", "/presence"),
   sun: () => call("GET", "/sun"),
   weather: () => call("GET", "/weather"),
+  lookupLocation: (coords = {}) => call("POST", "/location/lookup", coords),
 
   photos: () => call("GET", "/photos"),
   deletePhoto: (id) => call("DELETE", `/photos/${encodeURIComponent(id)}`),

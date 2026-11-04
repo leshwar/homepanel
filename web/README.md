@@ -9,6 +9,7 @@ web/
 ├── app.css         all styles; design tokens at the top (:root)
 ├── controls.css    device sheets: light pill and color wheel, TV remote, robot vacuum
 ├── photoframe.css  photo frame slideshow and its settings
+├── clockfaces.css  resting clock faces and the face picker previews
 └── js/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
     ├── store.js    client state, optimistic commands, change notifications
@@ -19,6 +20,7 @@ web/
     ├── remote.js   TV remote: D-pad / touchpad / number pad, rockers, app pages, batched pointer
     ├── vacuum.js   robot vacuum: map, status, main button, rooms, Options, Maintenance
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
+    ├── clockfaces.js  resting clock faces (digital, analog, words, date, night) + burn-in drift
     └── settings.js settings pages: add devices, edit, rooms, scenes, display, diagnostics
 ```
 
@@ -65,6 +67,8 @@ device can do (its `caps`):
   on big landscape screens. The touchpad sends pointer moves batched (one request in
   flight, ~30 ms apart): drag to move, tap to click, two fingers to scroll. On phones,
   **Aim** moves the pointer by tilting the phone (iOS asks for motion access first).
+- *Speakers and sound bars* use the same sheet without remote keys: power, name and mute,
+  a wide volume bar, then sound mode and input chips.
 - *Robot vacuum*: map, status and battery, one main button (start, pause, keep cleaning,
   or clean the picked rooms), rooms as chips, Options (suction, mode, station jobs) and
   parts wear folded behind Maintenance.

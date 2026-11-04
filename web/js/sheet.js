@@ -4,7 +4,7 @@
 
 import { api } from "./api.js";
 import { store, command } from "./store.js";
-import { $, esc, icon, glowVar, kelvinToRgb, kindIcon, statusText, throttle, toast } from "./util.js";
+import { $, esc, icon, glowVar, isMedia, kelvinToRgb, kindIcon, statusText, throttle, toast } from "./util.js";
 import { openSettings } from "./settings.js";
 import { remoteTop, remoteBody, attachRemote, remoteClick, remoteBusy, startRepeat, stopTilt, onRemoteChange } from "./remote.js";
 import { vacuumBody, picked } from "./vacuum.js";
@@ -59,13 +59,13 @@ function render() {
   const s = d.state || {};
   const on = !!s.on;
   const sheet = $("#sheet");
-  const tv = d.kind === "tv";
+  const tv = isMedia(d);              // TVs and speakers share the remote
   const vac = has(d, "clean");
   let notes = "";
 
   if (s.needs_pairing) {
     notes += `<div class="note">${esc(s.error || "This device needs to be paired.")}
-      ${tv ? "<br>Turn the TV on, tap Pair, then accept the prompt on the TV screen." : ""}</div>
+      ${d.kind === "tv" ? "<br>Turn the TV on, tap Pair, then accept the prompt on the TV screen." : ""}</div>
       <button class="btn primary" data-pair>${icon("link")}Pair now</button>`;
   } else if (s.online === false) {
     notes += `<div class="note warn">${esc(s.error || "This device isn't responding.")}
@@ -392,7 +392,7 @@ const sendKey = (d) => (action, value) => api.command(d.id, action, value).catch
 
 $("#sheet").addEventListener("pointerdown", (e) => {
   const d = store.devices.get(currentId);
-  if (d && d.kind === "tv") startRepeat(e, sendKey(d));
+  if (d && isMedia(d)) startRepeat(e, sendKey(d));
 });
 
 $("#sheet").addEventListener("click", async (e) => {
@@ -405,7 +405,8 @@ $("#sheet").addEventListener("click", async (e) => {
   if (t("[data-mute]")) { const m = !d.state?.muted; return command(d.id, "mute", m, { muted: m }); }
   if (t("[data-app]")) { const a = t("[data-app]").dataset.app; return command(d.id, "launch_app", a, { app: a, input: null }); }
   if (t("[data-input]")) { const i = t("[data-input]").dataset.input; return command(d.id, "set_input", i, { input: i, app: null }); }
-  if (d.kind === "tv") {
+  if (t("[data-sound-mode]")) { const m = t("[data-sound-mode]").dataset.soundMode; return command(d.id, "set_sound_mode", m, { sound_mode: m }); }
+  if (isMedia(d)) {
     const r = remoteClick(e, d, sendKey(d));
     if (r === "render") return render();
     if (r) return;

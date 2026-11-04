@@ -18,7 +18,7 @@ GitHub issue. It contains logs and system info but no API keys or device tokens.
 | **TV shows "Needs pairing"** | Turn the TV on, open it in the panel, tap **Pair now**, accept the prompt on the TV. |
 | **TV won't turn on** | Enable "Power On with Mobile" (Samsung) or "Turn on via Wi-Fi"/Quick Start+ (LG). Wi-Fi TVs can't always wake from deep standby — a wired TV connection is more reliable. Check the device's MAC address is known (Settings → Devices → the TV). |
 | **Device goes offline after a router restart** | Its IP changed. Reserve fixed IPs in your router, or search and re-add. |
-| **Screen goes black** | That's the night clock after inactivity (Settings → Display and clock). Touch to wake. If the screen *powers off*, re-run install.sh (it disables screen blanking). |
+| **Screen goes black** | That's the resting clock after inactivity (Settings → Display and clock, where you can also pick its face). Touch to wake. If the screen *powers off*, re-run install.sh (it disables screen blanking). |
 | **Kiosk didn't start after reboot** | Is the Pi booting to the desktop with auto-login? `sudo raspi-config` → System → Boot / Auto login → Desktop Autologin. |
 | **Exit the full-screen panel** | Plug in a keyboard and press Alt+F4, or SSH in and run `pkill chromium`. |
 | **Port 8080 in use** | `HOMEPANEL_PORT=8090 python -m app.main`, or edit `/etc/systemd/system/homepanel.service`. |

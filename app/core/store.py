@@ -17,13 +17,16 @@ DEFAULT_SETTINGS = {
     "glass_effect": True,         # frosted-glass blur; turn off if a slow screen feels sluggish
     "glass_transparency": 45,     # 0 = solid tiles, 100 = almost clear glass
     "background": "ocean",        # ocean | aurora | night
-    "idle_screen": "clock",       # what to show when idle: "clock" (dim night clock) or "photos"
+    "idle_screen": "clock",       # what to show when idle: "clock" (resting clock) or "photos"
+    "clock_face": "digital",      # resting clock face: digital | analog | words | date | night
     "frame_seconds": 15,          # photo frame: seconds per photo
     "frame_shuffle": True,
     "frame_clock": True,          # small clock over the photos
     "frame_night_clock": True,    # 10 PM–7 AM show the dim clock instead of bright photos
     "latitude": None,             # for sunrise/sunset schedules
     "longitude": None,
+    "place_name": "",             # shown on the resting clock, e.g. "Seattle"; typed by the user
+    "weather_enabled": False,     # opt-in: fetch weather for the location (the only non-device internet call)
     "presence": [],               # [{"name": "Asha", "ip": "192.168.1.23"}] phones to watch
 }
 

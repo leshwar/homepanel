@@ -14,10 +14,12 @@ once — controlled directly over your Wi-Fi.
 </p>
 
 - **Touch-first glass UI.** Frosted-glass tiles over a soft background scene (Ocean, Aurora or Night), with adjustable glass transparency. Tap a tile to switch it, long-press (or tap the arrow) for full controls. Lit lights glow in their real color, and the background warms up as lights come on.
-- **Many brands, one screen.** Globe Electric / Tuya / Smart Life, Govee, TP-Link Kasa & Tapo, Shelly, WiZ, Philips Hue, Samsung TVs and LG TVs.
+- **Many brands, one screen.** Globe Electric / Tuya / Smart Life, Govee, TP-Link Kasa & Tapo, Shelly, WiZ, Philips Hue, Samsung TVs, LG TVs and LG sound bars.
 - **Local first.** Everything except Govee plugs is controlled directly on your network — it keeps working when the internet is down.
+- **Privacy.** The panel makes no internet calls of its own unless you turn on weather (Settings → Location and presence). Then the server asks [Open-Meteo](https://open-meteo.com) (free, no account) for the weather about every 20 minutes, sending only your location rounded to about 1 km. The place name shown on the clock is the one you type; your coordinates aren't sent anywhere to look it up.
 - **Scenes and rooms.** "Movie night", "Bedtime", or "All off" for a room or the whole house.
 - **Schedules and automations.** At a time of day, at sunset/sunrise (computed locally), or when everyone leaves / someone comes home (phones on Wi-Fi).
+- **Resting clock faces.** When nobody has touched the panel for a while it shows a dim clock: big digital, analog with hands, a word clock ("It's quarter past ten"), date and day (with sunrise, sunset and lights on), or a very dim red night face. With weather turned on, the faces also show the temperature and a drawn weather icon, plus your place name. Pick one with a preview in Settings → Display and clock. The clock drifts slowly around the screen to avoid burn-in, and touching it only wakes the panel.
 - **Photo frame.** A full-screen slideshow of family photos, added from any phone's browser. It can start by itself when the panel is idle, switches to a dim clock at night, and one touch goes back to the controls.
 - **Energy history.** Plugs that measure power show watts now, kWh today and a 7-day chart.
 - **Works with Home Assistant.** Already run Home Assistant? Add its lights, switches and TVs here, rooms included.
@@ -37,6 +39,7 @@ once — controlled directly over your Wi-Fi.
 | Philips Hue | Bulbs, strips, plugs | Local via Hue Bridge | Press the bridge button once |
 | Samsung | Tizen smart TVs (2016+) | Local | Accept the prompt on the TV once |
 | LG | webOS smart TVs | Local | Accept the prompt on the TV once |
+| LG | Sound bars with Wi-Fi (2018+) | Local | None, [guide](docs/DEVICE_SETUP.md#lg-sound-bars) |
 | Home Assistant | Anything it controls: lights, switches, fans, TVs, speakers | Local (Home Assistant REST API) | Long-lived access token |
 | Ecovacs Deebot | Robot vacuums | Ecovacs cloud | Ecovacs Home app login; needs Python 3.14, [guide](docs/DEVICE_SETUP.md#ecovacs-deebot-robot-vacuums) |
 
@@ -140,7 +143,7 @@ app/core/       service: registry, state, polling, scenes, middleware (validate 
                 automations (time / sun / presence), energy history (SQLite), presence
 app/core/adapter.py   the DeviceAdapter interface every brand implements
 app/adapters/   one file per brand: tuya.py, govee.py, kasa.py, shelly.py, wiz.py, hue.py, samsung_tv.py, lg_tv.py,
-                home_assistant.py, ecovacs.py
+                lg_soundbar.py, home_assistant.py, ecovacs.py
 ```
 
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full picture and

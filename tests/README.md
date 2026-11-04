@@ -18,7 +18,8 @@ No sockets, servers or browsers. Milliseconds per test.
 | File | Covers |
 |---|---|
 | `test_service.py` | Service layer: middleware (validate, normalize, retry), commands, All off with `keep_on`, scenes, adding devices, persistence and file permissions, events, secret masking. Includes a fake adapter proving a new brand plugs in without other changes. |
-| `test_adapters.py` | Every adapter's metadata contract, TV key mappings, Tuya color maths, Govee capability parsing, color helpers. |
+| `test_adapters.py` | Every adapter's metadata contract, TV key mappings, LG sound bar wire format and state parsing, Tuya color maths, Govee capability parsing, color helpers. |
+| `test_weather.py` | Weather for the resting clock against a fake source: parsing, opt-in, rounded location, caching, back-off and stale readings, place name and unit settings. |
 | `test_automations_energy.py` | Sunrise/sunset maths, energy integration, presence events, schedules (fire once, day/window rules, validation, presence → all off), demo energy history. |
 | `test_ci_policy.py` | The "tests included" pull-request rule itself. |
 
@@ -27,8 +28,8 @@ No sockets, servers or browsers. Milliseconds per test.
 | File | Covers |
 |---|---|
 | `test_api.py` | The real server (demo mode) called over HTTP: state has no secrets, commands and error codes, scenes, automations, energy, settings validation, health, logs, static UI. |
-| `test_fake_devices.py` | Real adapters over real sockets against simulated devices: the built-in HTTP client, a Shelly Gen2 plug, and Home Assistant. |
-| `test_ui.py` | The touch UI in headless Chromium (Playwright): tap toggles, TV opens the remote, brightness slider, rooms, add flow, night clock, energy chart, creating a schedule. Skipped locally if Playwright isn't installed; **required in CI**. |
+| `test_fake_devices.py` | Real adapters over real sockets against simulated devices: the built-in HTTP client, a Shelly Gen2 plug, Home Assistant, and an LG sound bar (encrypted TCP). |
+| `test_ui.py` | The touch UI in headless Chromium (Playwright): tap toggles, TV opens the remote, sound bar sound modes, brightness slider, rooms, add flow, night clock and each clock face (with weather from a fake source, and without), energy chart, creating a schedule. Skipped locally if Playwright isn't installed; **required in CI**. |
 
 Shared helpers (free port, running the demo server) live in `tests/helpers.py`.
 

@@ -137,10 +137,24 @@
 .app-btn .i { width: 18px; height: 18px; color: var(--haze); }
 .app-btn[aria-pressed="true"] { box-shadow: inset 0 0 0 2px rgb(var(--glow)), var(--raise); }
 
+/* speakers: volume, sound mode and input only */
+.remote.simple { gap: 6px; }
+.vol-bar { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; gap: 12px; padding: 6px;
+           border-radius: 40px; background-color: var(--key); border: 1px solid var(--key-edge); box-shadow: var(--raise);
+           width: 100%; max-width: 460px; align-self: center; }
+.vol-bar .rbtn { width: 64px; height: 64px; }
+.vol-bar span { display: flex; flex-direction: column; align-items: center; color: var(--haze); font-size: 13px; line-height: 1.15; }
+.vol-bar b { color: var(--paper); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.remote-section { width: 100%; }
+.remote-col .remote-section .section-label { margin-top: 4px; }
+.remote-section .chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 26px; }
+.remote-section .chip .i { width: 18px; height: 18px; color: var(--haze); }
+
 /* big screens on their side: remote in two columns */
 @media (orientation: landscape) and (min-width: 900px) {
   .sheet-tv, .sheet-vac { max-width: 1040px; }
-  .sheet-tv .remote { --dpad: clamp(200px, 38vh, 290px); display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; }
+  .sheet-tv:has(.remote.simple) { max-width: 640px; }   /* speakers need less room */
+  .sheet-tv .remote:not(.simple) { --dpad: clamp(200px, 38vh, 290px); display: grid; grid-template-columns: 1fr 1fr; gap: 32px; align-items: center; }
   .sheet-tv .remote[data-layout="none"] { grid-template-columns: 1fr; }
 }
 

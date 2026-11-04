@@ -1,4 +1,4 @@
-// TV remote for the device sheet: a top row (power, TV name, mute), a centre area that
+// TV (and speaker) remote for the device sheet: a top row (power, TV name, mute), a centre area that
 // switches between a D-pad, a touchpad for TVs with an on-screen pointer, and a number
 // pad, then volume / channel rockers and swipeable pages of apps and inputs.
 //
@@ -54,6 +54,10 @@ export function remoteBody(d) {
         ${has(d, "power") ? `<button class="btn primary" data-power>${icon("power")}Turn on</button>` : ""}
       </div>`;
   }
+  // Sound bars and other speakers: no remote keys or apps, just volume, sound mode and input.
+  if (!has(d, "remote") && !has(d, "media") && !(has(d, "apps") && d.meta?.apps?.length)) {
+    return `<div class="remote simple">${volBar(d, s)}${soundModes(d, s)}${inputChips(d, s)}</div>`;
+  }
   const mode = modeOf(d);
   const modes = modesFor(d);
   const left = `${mode ? `<div class="remote-stage">${stage(d, mode)}</div>` : ""}
@@ -61,7 +65,7 @@ export function remoteBody(d) {
         `<button data-mode="${m.id}" aria-pressed="${m.id === mode}" aria-label="${m.label}">${m.ic ? icon(m.ic) : `<b>${m.text}</b>`}</button>`).join("")}</div>` : ""}`;
   return `<div class="remote" data-layout="${mode || "none"}">
       ${mode ? `<div class="remote-col">${left}</div>` : ""}
-      <div class="remote-col">${keys(d, s)}${appPages(d, s)}</div>
+      <div class="remote-col">${keys(d, s)}${appPages(d, s)}${soundModes(d, s)}</div>
     </div>`;
 }
 
@@ -114,6 +118,31 @@ function keys(d, s) {
   ].filter(Boolean).join("");
   if (!mid && !has(d, "volume") && !has(d, "channel")) return "";
   return `<div class="remote-keys">${vol}<div class="remote-mid">${mid}</div>${ch}</div>`;
+}
+
+function volBar(d, s) {
+  if (!has(d, "volume")) return "";
+  return `<div class="vol-bar" role="group" aria-label="Volume">
+      <button class="rbtn" data-act="volume_down" data-repeat aria-label="Volume down">${icon("minus")}</button>
+      <span><b>${s.volume ?? "–"}</b>Volume</span>
+      <button class="rbtn" data-act="volume_up" data-repeat aria-label="Volume up">${icon("plus")}</button>
+    </div>`;
+}
+
+function soundModes(d, s) {
+  const modes = has(d, "sound_mode") ? d.meta?.sound_modes || [] : [];
+  if (!modes.length) return "";
+  return `<div class="remote-section"><div class="section-label"><span>Sound mode</span></div>
+    <div class="chips">${modes.map((m) => `<button class="chip" data-sound-mode="${esc(m.id)}"
+      aria-pressed="${s.sound_mode === m.id}">${esc(m.name)}</button>`).join("")}</div></div>`;
+}
+
+function inputChips(d, s) {
+  const inputs = has(d, "inputs") ? d.meta?.inputs || [] : [];
+  if (!inputs.length) return "";
+  return `<div class="remote-section"><div class="section-label"><span>Input</span></div>
+    <div class="chips">${inputs.map((x) => `<button class="chip" data-input="${esc(x.id)}"
+      aria-pressed="${s.input === x.id}">${icon("input")}${esc(x.name)}</button>`).join("")}</div></div>`;
 }
 
 // Well-known streaming apps first (by name), then the rest A–Z, then inputs.

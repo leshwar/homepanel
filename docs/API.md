@@ -90,7 +90,7 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 | POST | `/scenes` | `{"name", "icon", "actions": [{device_id, action, value}]}` **or** `{"name", "icon", "capture": [device ids]}` to save devices as they are now |
 | DELETE | `/scenes/{id}` | — |
 | POST | `/scenes/{id}/run` | — → `{"ok": n, "failed": [messages]}` |
-| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`ocean`/`aurora`/`night`), `glass_transparency` (0–100), `glass_effect` (blur on/off) |
+| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`ocean`/`aurora`/`night`), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`), `place_name` (shown on the clock, max 40 characters), `weather_enabled` (opt-in), `temperature_unit` (`C`/`F`) |
 
 ## Energy
 
@@ -112,6 +112,7 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 | DELETE | `/automations/{id}` | — |
 | POST | `/automations/{id}/run` | run it now |
 | GET | `/sun` | today's `sunrise` / `sunset` (unix time) once a location is set |
+| GET | `/weather` | `{available, temperature, high, low, unit, condition, label, is_day, updated}`; `condition` is one of `clear`, `partly-cloudy`, `cloudy`, `fog`, `drizzle`, `rain`, `snow`, `storm`. `{available: false}` when weather is off, there's no location, or the source can't be reached. Fetched on the server and cached for 20 minutes |
 | GET | `/presence` | `{"people": [{name, ip, home, last_seen}]}` |
 
 ```json

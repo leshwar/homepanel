@@ -404,8 +404,8 @@ class EcovacsRefusalThroughTheService(unittest.IsolatedAsyncioTestCase):
             await self.svc.command("v", "clean", "start")
         self.assertEqual(self.svc.store.devices["v"].state["activity"], "docked")    # not "cleaning"
 
-        cloud.reply = lambda cmd: ({"ret": "ok", "resp": {"body": {"code": 20003, "msg": "rcp not support"}}}
-                                   if cmd.name == "clean" else {"ret": "ok", "resp": {"body": {"code": 0}}})
+        # like deebot-client with the T90: the classic command is refused and comes back empty
+        cloud.reply = lambda cmd: {} if cmd.name == "clean" else {"ret": "ok", "resp": {"body": {"code": 0}}}
         d = await self.svc.command("v", "clean", "start")
         self.assertEqual(d["state"]["activity"], "cleaning")
         self.assertTrue(self.svc.store.devices["v"].config["clean_v2"])              # saved with the device

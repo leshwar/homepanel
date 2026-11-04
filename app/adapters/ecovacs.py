@@ -415,7 +415,7 @@ class EcovacsAdapter(DeviceAdapter):
         if v2 is not None and device.config.get("clean_v2"):
             command = v2()
         problem = _reply_problem(await bot.execute_command(command))
-        if problem and problem[0] == NOT_SUPPORTED and v2 is not None and not device.config.get("clean_v2"):
+        if problem and v2 is not None and not device.config.get("clean_v2"):
             log.info("%s: classic clean command not supported, using clean_V2", device.name)
             problem = _reply_problem(await bot.execute_command(v2()))
             if not problem:
@@ -479,9 +479,12 @@ NOT_SUPPORTED = 20003      # Ecovacs: "rcp not support"
 
 
 def _reply_problem(resp) -> tuple | None:
-    """(code, message) if the vacuum or Ecovacs refused a command, None if it was accepted."""
+    """(code, message) if the vacuum or Ecovacs refused a command, None if it was accepted.
+
+    deebot-client hands back the reply only when the command succeeded; a refused or
+    failed command comes back as an empty dict (the reason is only in its own log)."""
     if not isinstance(resp, dict) or not resp:
-        return None                                   # nothing to judge (e.g. a fake in tests)
+        return ("refused", "")
     if resp.get("ret") not in (None, "ok"):
         return (f"errno {resp.get('errno')}", resp.get("error") or resp.get("debug") or "")
     body = (resp.get("resp") or resp).get("body")
@@ -492,6 +495,8 @@ def _reply_problem(resp) -> tuple | None:
 
 def _problem_text(name: str, problem: tuple) -> str:
     code, msg = problem
+    if code == "refused":
+        return f"{name} didn't do that. It may need attention in the Ecovacs Home app (for example a full dust bin or a stuck brush)."
     if code == NOT_SUPPORTED:
         return f"{name} didn't accept that command: it says it isn't supported on this model."
     if code == "errno 4200":

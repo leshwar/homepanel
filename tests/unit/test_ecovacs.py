@@ -330,8 +330,8 @@ class EcovacsAdapterTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_model_that_wants_clean_v2(self):
         """The T90 Pro Omni answers the classic clean command with 20003 "rcp not support"."""
-        refuse_classic = lambda cmd: ({"ret": "ok", "resp": {"body": {"code": 20003, "msg": "rcp not support"}}}
-                                      if cmd.name in ("clean", "clean_area") else
+        # like deebot-client: a refused command (here 20003 "rcp not support") comes back empty
+        refuse_classic = lambda cmd: ({} if cmd.name in ("clean", "clean_area") else
                                       {"ret": "ok", "resp": {"body": {"code": 0, "msg": "ok"}}})
         cloud.reply = refuse_classic
         d = self.device()
@@ -356,6 +356,16 @@ class EcovacsAdapterTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AdapterError) as e:
             await self.a.command(d, Action.DOCK)
         self.assertIn("offline", str(e.exception))
+
+    async def test_refused_by_both_forms_is_an_error(self):
+        cloud.reply = lambda cmd: {} if cmd.name.startswith("clean") else {"ret": "ok", "resp": {"body": {"code": 0}}}
+        d = self.device()
+        await self.a.refresh(d)
+        with self.assertRaises(AdapterError) as e:
+            await self.a.command(d, Action.CLEAN, Clean.START)
+        self.assertIn("didn't do that", str(e.exception))
+        self.assertNotIn("clean_v2", d.config)                              # nothing worked: nothing remembered
+        self.assertEqual(self.a._state["bot1"]["activity"], Activity.DOCKED)
 
     async def test_extra_commands(self):
         d = self.device()

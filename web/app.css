@@ -335,6 +335,11 @@ html[data-bg="ocean"] .clock-time, html[data-bg="aurora"] .clock-time { text-sha
 .scrim { background: rgb(0 4 20 / .45); }
 
 /* Display settings: background choices */
+.btn.locate { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .22); margin-top: 6px; }
+.btn.locate:disabled { opacity: .7; }
+.locate-note { margin: 10px 0 4px; }
+#locate-status { color: var(--paper); }
+#locate-status.error { color: var(--ember); }
 .bg-choices { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .bg-choice { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; }
 .bg-choice input { position: absolute; opacity: 0; pointer-events: none; }

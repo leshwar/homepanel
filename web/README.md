@@ -30,6 +30,7 @@ web/
     ├── vacuum.js   robot vacuum: map, status, main button, rooms, Options, Maintenance
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
     ├── clockfaces.js  resting clock faces (digital, analog, words, date, night) + burn-in drift
+    ├── locate.js   "Use my location": device location, else approximate from the server
     └── settings.js settings pages: add devices, edit, rooms, scenes, display, diagnostics
 ```
 

@@ -7,6 +7,7 @@ import { $, esc, icon, kindIcon, toast } from "./util.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame } from "./photoframe.js";
 import { FACES, faceId, faceHTML, faceInfo } from "./clockfaces.js";
+import { findLocation, describeFound, canUseDeviceLocation } from "./locate.js";
 import { DEVICE_ICONS, deviceIconName, svg } from "./icons.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
@@ -357,18 +358,26 @@ const VIEWS = {
     sync();
   },
 
-  async location() {
+  async location(arg) {
     const s = store.settings;
+    const forWeather = arg === "weather";      // from the Home weather card's "Turn on weather"
     page("Location and presence", `
       <form class="card" data-location>
         <h3>Your location</h3>
-        <p>Used on this panel for sunrise and sunset times and, if you turn it on, the weather. In Google Maps, long-press your home to see its coordinates.</p>
+        <p>${forWeather && s.latitude == null
+          ? "To show the weather, the panel needs to know where home is. Tap Use my location, check it, then tap Save location."
+          : "Used on this panel for sunrise and sunset times and, if you turn it on, the weather."}</p>
+        <button class="btn locate" type="button" data-locate>${PIN}<span>Use my location</span></button>
+        <p class="locate-note"><small>${canUseDeviceLocation()
+          ? "Asks this device for its location (do this at home). If it can't, the panel"
+          : "The panel"} looks up your home's approximate location from its internet address at ipapi.co (or ipwho.is), and gets the place name from BigDataCloud. Nothing is sent until you tap the button, and nothing is saved until you tap Save location. Or type it in: in Google Maps, long-press your home to see its coordinates.</small></p>
+        <p id="locate-status" role="status" hidden></p>
         <label class="field"><span>Latitude</span><input name="latitude" inputmode="decimal" value="${s.latitude ?? ""}" placeholder="47.61"></label>
         <label class="field"><span>Longitude</span><input name="longitude" inputmode="decimal" value="${s.longitude ?? ""}" placeholder="-122.33"></label>
         <p id="sun-today"></p>
         <label class="field"><span>Place name (optional)</span><input name="place_name" maxlength="40" value="${esc(s.place_name || "")}" placeholder="Seattle">
-          <small>Shown on the resting clock. Your coordinates aren't sent anywhere to look it up.</small></label>
-        <label class="check"><input type="checkbox" name="weather_enabled" ${s.weather_enabled ? "checked" : ""}>
+          <small>Shown on the resting clock. Type it, or let "Use my location" fill it in.</small></label>
+        <label class="check"><input type="checkbox" name="weather_enabled" ${s.weather_enabled || forWeather ? "checked" : ""}>
           <span>Show the weather on the resting clock</span></label>
         <p><small>The panel asks Open-Meteo (free, no account) for the weather about every 20 minutes, sending your location rounded to about 1 km. It's the panel's only internet call that isn't for a device. Without internet the clock just leaves the weather out.</small></p>
         <label class="field"><span>Temperature</span><select name="temperature_unit">
@@ -567,12 +576,40 @@ function render() {
 // ---------- events ----------
 const root = $("#settings");
 
+const PIN = `<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg>`;
+
+// Fill the location form from "Use my location". The user checks it and taps Save.
+async function useMyLocation(btn) {
+  const form = btn.closest("form");
+  const status = $("#locate-status");
+  const label = btn.querySelector("span");
+  btn.disabled = true;
+  label.textContent = "Finding your location…";
+  status.hidden = true;
+  status.classList.remove("error");
+  try {
+    const r = await findLocation();
+    form.elements.latitude.value = r.latitude;
+    form.elements.longitude.value = r.longitude;
+    if (r.place_name) form.elements.place_name.value = r.place_name;
+    status.textContent = `${describeFound(r)} Check it and tap Save location.`;
+  } catch (err) {
+    status.textContent = err.message;
+    status.classList.add("error");
+  }
+  status.hidden = false;
+  btn.disabled = false;
+  label.textContent = "Use my location";
+}
+
 root.addEventListener("click", async (e) => {
   const t = (sel) => e.target.closest(sel);
   if (t("[data-back]")) return back();
   if (t("[data-close]")) return close();
   const goEl = t("[data-go]");
   if (goEl) return go(goEl.dataset.go, goEl.dataset.arg || null);
+  const locateBtn = t("[data-locate]");
+  if (locateBtn) return useMyLocation(locateBtn);
 
   const top = stack.at(-1);
   try {

@@ -258,6 +258,17 @@ async def get_sun(request):
 
 
 @handle_errors
+async def lookup_location(request):
+    """Find the home's location (Settings → "Use my location"). Doesn't save anything."""
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    body = body if isinstance(body, dict) else {}
+    return await _svc(request).geo.lookup(body.get("latitude"), body.get("longitude"))
+
+
+@handle_errors
 async def get_weather(request):
     return await _svc(request).weather.current()
 
@@ -359,6 +370,7 @@ routes = [
     Route("/api/v1/presence", get_presence),
     Route("/api/v1/sun", get_sun),
     Route("/api/v1/weather", get_weather),
+    Route("/api/v1/location/lookup", lookup_location, methods=["POST"]),
     Route("/api/v1/photos", list_photos, methods=["GET"]),
     Route("/api/v1/photos", upload_photo, methods=["POST"]),
     Route("/api/v1/photos/{id}", delete_photo, methods=["DELETE"]),

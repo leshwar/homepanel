@@ -14,7 +14,7 @@ except ImportError:  # pragma: no cover
         raise
     sync_playwright = None
 
-from tests.helpers import DemoServer, FakeWeatherSource
+from tests.helpers import IPAPI_SEATTLE, REVERSE_SEATTLE, DemoServer, FakeJsonServer, FakeWeatherSource
 
 
 @unittest.skipIf(sync_playwright is None, "playwright not installed")
@@ -505,6 +505,82 @@ class UITests(unittest.TestCase):
         finally:
             self.page.evaluate("""fetch('/api/v1/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
                                   body: JSON.stringify({clock_face: 'digital'})})""")
+
+    def test_use_my_location_fills_form_without_saving(self):
+        svc = FakeJsonServer({"/ipapi/": (200, IPAPI_SEATTLE), "/reverse": (200, REVERSE_SEATTLE)})
+        env = {"HOMEPANEL_GEO_IP_URLS": f"{svc.base}/ipapi/", "HOMEPANEL_GEO_REVERSE_URL": f"{svc.base}/reverse"}
+        os.environ.update(env)
+        ctx = self.browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True,
+                                       geolocation={"latitude": 47.606209, "longitude": -122.332071},
+                                       permissions=["geolocation"])
+        page = ctx.new_page()
+        try:
+            def open_location(p):
+                p.goto(f"http://127.0.0.1:{self.port}/")
+                p.wait_for_selector(".tile")
+                p.click("#open-settings")
+                p.click("[data-go=location]")
+                p.wait_for_selector("[data-locate]")
+
+            # 1. the browser shares this device's location (127.0.0.1 counts as a secure page)
+            open_location(page)
+            self.assertEqual(svc.requests, [])                  # nothing sent before the tap
+            page.click("[data-locate]")
+            page.wait_for_selector("#locate-status:not([hidden])")
+            self.assertIn("Found Seattle, WA (from this device)", page.inner_text("#locate-status"))
+            self.assertEqual(page.input_value("input[name=latitude]"), "47.61")
+            self.assertEqual(page.input_value("input[name=longitude]"), "-122.33")
+            self.assertEqual(page.input_value("input[name=place_name]"), "Seattle, WA")
+            self.assertEqual(svc.requests, ["/reverse?latitude=47.61&longitude=-122.33&localityLanguage=en"])
+            self.assertIsNone(page.evaluate("fetch('/api/v1/state').then(r => r.json()).then(s => s.settings.latitude)"))
+            page.click("[data-location] button[type=submit]")    # only Save stores it
+            page.wait_for_selector("text=Location saved")
+            self.assertEqual(page.evaluate("fetch('/api/v1/state').then(r => r.json()).then(s => s.settings.place_name)"),
+                             "Seattle, WA")
+
+            # 2. location blocked (like plain HTTP over Tailscale) → approximate, from the internet address
+            self.page.click("#open-settings")
+            self.page.click("[data-go=location]")
+            self.page.fill("input[name=place_name]", "")
+            self.page.click("[data-locate]")
+            self.page.wait_for_selector("#locate-status:not([hidden])")
+            self.assertIn("approximate, from your internet address", self.page.inner_text("#locate-status"))
+            self.assertEqual(self.page.input_value("input[name=place_name]"), "Seattle, WA")
+
+            # 3. services unreachable → plain message, typing still works
+            svc.stop()
+            self.page.click("[data-locate]")
+            self.page.wait_for_selector("#locate-status.error")
+            self.assertIn("enter your location by hand", self.page.inner_text("#locate-status"))
+            self.page.fill("input[name=place_name]", "Home")
+            self.assertEqual(self.page.input_value("input[name=place_name]"), "Home")
+        finally:
+            for k in env:
+                os.environ.pop(k, None)
+            ctx.close()
+            self.put_settings(latitude=None, longitude=None, place_name="")
+
+    def test_turn_on_weather_from_home_uses_my_location(self):
+        svc = FakeJsonServer({"/ipapi/": (200, IPAPI_SEATTLE)})
+        os.environ["HOMEPANEL_GEO_IP_URLS"] = f"{svc.base}/ipapi/"
+        page = self.home()
+        try:
+            page.click("[data-setup-weather]")
+            page.wait_for_selector("[data-locate]")
+            self.assertTrue(page.is_checked("input[name=weather_enabled]"))   # that's why they came here
+            self.assertEqual(svc.requests, [])
+            page.click("[data-locate]")
+            page.wait_for_selector("#locate-status:not([hidden])")
+            page.click("[data-location] button[type=submit]")
+            page.wait_for_selector("text=Location saved")
+            s = page.evaluate("fetch('/api/v1/state').then(r => r.json()).then(s => s.settings)")
+            self.assertEqual((s["latitude"], s["longitude"], s["place_name"], s["weather_enabled"]),
+                             (47.61, -122.33, "Seattle, WA", True))
+        finally:
+            os.environ.pop("HOMEPANEL_GEO_IP_URLS", None)
+            svc.stop()
+            page.close()
+            self.put_settings(latitude=None, longitude=None, place_name="", weather_enabled=False)
 
     def put_settings(self, **s):
         import json

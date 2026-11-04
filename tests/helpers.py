@@ -71,3 +71,49 @@ class FakeWeatherSource:
     def stop(self) -> None:
         self.httpd.shutdown()
         self.httpd.server_close()
+
+
+class FakeJsonServer:
+    """A tiny local web service answering fixed JSON per path, e.g. to stand in for the
+    location lookup services. routes = {"/json/": (200, {...}), ...}; unknown paths get 404.
+    `requests` records each path asked for (with its query string)."""
+
+    def __init__(self, routes: dict):
+        import json
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        server = self
+        self.routes = routes
+        self.requests: list[str] = []
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                server.requests.append(self.path)
+                status, data = server.routes.get(self.path.split("?")[0], (404, {"error": "not found"}))
+                body = json.dumps(data).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        self.httpd = HTTPServer(("127.0.0.1", 0), Handler)
+        self.base = f"http://127.0.0.1:{self.httpd.server_address[1]}"
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def stop(self) -> None:
+        self.httpd.shutdown()
+        self.httpd.server_close()
+
+
+# Sample answers in the shape the real location services send.
+IPAPI_SEATTLE = {"ip": "203.0.113.7", "city": "Seattle", "region": "Washington", "region_code": "WA",
+                 "country_name": "United States", "country_code": "US", "latitude": 47.6062, "longitude": -122.3321}
+IPWHOIS_LYON = {"ip": "203.0.113.8", "success": True, "city": "Lyon", "region": "Auvergne-Rhône-Alpes",
+                "region_code": "ARA", "country": "France", "country_code": "FR", "latitude": 45.764, "longitude": 4.8357}
+REVERSE_SEATTLE = {"latitude": 47.61, "longitude": -122.33, "city": "Seattle", "locality": "Seattle",
+                   "principalSubdivision": "Washington", "principalSubdivisionCode": "US-WA",
+                   "countryName": "United States of America (the)", "countryCode": "US"}

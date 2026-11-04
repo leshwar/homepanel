@@ -191,6 +191,7 @@ that says what's wrong.
 | DELETE | `/automations/{id}` | — |
 | POST | `/automations/{id}/run` | run it now |
 | GET | `/sun` | today's `sunrise` / `sunset` (unix time) once a location is set |
+| POST | `/location/lookup` | Find the home's location for Settings → "Use my location". Body `{latitude, longitude}` (from the browser) → only a place name is looked up; empty body → approximate location from the panel's internet address. Returns `{latitude, longitude, place_name, source: "device"\|"approximate"}` with coordinates rounded to 2 decimals. Saves nothing. 400 with a plain message when the services are offline or busy |
 | GET | `/weather` | `{available, temperature, high, low, unit, condition, label, is_day, updated}`; `condition` is one of `clear`, `partly-cloudy`, `cloudy`, `fog`, `drizzle`, `rain`, `snow`, `storm`. `{available: false}` when weather is off, there's no location, or the source can't be reached. Fetched on the server and cached for 20 minutes |
 | GET | `/presence` | `{"people": [{name, ip, home, last_seen}]}` |
 

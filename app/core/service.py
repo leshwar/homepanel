@@ -29,6 +29,7 @@ from .layout import LayoutError, clean_layout, default_layout
 from .net import in_container, normalize_mac, parse_color
 from .photos import PhotoLibrary
 from .presence import Presence
+from .geolocate import Geolocator
 from .weather import Weather
 from .store import Store
 from .voice import Voice
@@ -180,6 +181,7 @@ class HomeService:
         self.automations = Automations(self)
         self.photos = PhotoLibrary(os.path.join(data_dir, "demo-photos" if demo else "photos"))
         self.weather = Weather(lambda: self.store.settings)
+        self.geo = Geolocator()          # only used when the user taps "Use my location"
         self.presence = Presence(lambda: self.store.settings.get("presence") or [], self.automations.on_presence)
         self.voice = Voice(self)                      # spoken/typed commands → the same command pipeline
         self._background: list[asyncio.Task] = []

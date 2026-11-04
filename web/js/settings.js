@@ -475,11 +475,21 @@ const VIEWS = {
       $("#health").innerHTML = `<h3>${h.online} of ${h.devices} devices responding</h3>
         <p>Running for ${fmtDuration(h.uptime_s)}. Brands available: ${esc(h.adapters.join(", "))}.
         ${Object.keys(h.unavailable).length ? `<br>Not installed: ${esc(Object.keys(h.unavailable).join(", "))}.` : ""}
-        ${Object.keys(h.unsupported || {}).length ? `<br>Not available on this Python: ${esc(Object.keys(h.unsupported).join(", "))}.` : ""}</p>`;
+        ${Object.keys(h.unsupported || {}).length ? `<br>Not available on this Python: ${esc(Object.keys(h.unsupported).join(", "))}.` : ""}</p>
+        <h3 class="phone-title">Use it on your phone</h3>
+        <p id="phone-url">${phoneHint(h)}</p>`;
     } catch (e) { $("#health").innerHTML = `<p>${esc(e.message)}</p>`; }
     loadLogs("");
   },
 };
+
+// Where to open the panel from a phone or tablet on the same Wi-Fi.
+function phoneHint(h) {
+  if (h.phone_url) return `On a phone or tablet on the same Wi-Fi, open <b>${esc(h.phone_url)}</b> in the browser.`;
+  const port = location.port || "80";
+  return `On a phone or tablet on the same Wi-Fi, open <b>http://</b><i>this computer's address</i><b>:${esc(port)}</b>.
+    On a Mac, find the address in System Settings → Wi-Fi → Details.`;
+}
 
 async function loadThumbs() {
   const el = $("#thumbs");

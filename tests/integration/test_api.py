@@ -136,6 +136,9 @@ class ApiTests(unittest.TestCase):
             self.assertIn("Needs Python 3.14", h["unsupported"]["ecovacs"])
             self.assertNotIn("ecovacs", h["unavailable"])        # "not for this Python", not "not installed"
         self.assertIn("in_container", h)
+        self.assertIn("phone_url", h)          # where to open the panel on a phone
+        if h["phone_url"]:
+            self.assertRegex(h["phone_url"], r"^http://[0-9.]+:\d+$")
         self.assertIn("demo", h["adapters"])
         status, logs = self.call("GET", "/logs")
         self.assertEqual(status, 200)

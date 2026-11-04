@@ -80,14 +80,18 @@ export function toast(msg, isError = false) {
   toastTimer = setTimeout(() => (t.hidden = true), isError ? 5000 : 2600);
 }
 
+// Calls fn at most every ms, with a trailing call for the latest arguments.
+// .cancel() drops a pending trailing call (e.g. when the final value is sent).
 export function throttle(fn, ms) {
   let last = 0, timer, lastArgs;
-  return (...args) => {
+  const run = (...args) => {
     lastArgs = args;
     const now = Date.now();
     if (now - last >= ms) { last = now; fn(...args); }
     else { clearTimeout(timer); timer = setTimeout(() => { last = Date.now(); fn(...lastArgs); }, ms - (now - last)); }
   };
+  run.cancel = () => clearTimeout(timer);
+  return run;
 }
 
 export const storage = {

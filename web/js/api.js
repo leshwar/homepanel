@@ -28,6 +28,8 @@ export const api = {
   logs: (level = "") => call("GET", `/logs${level ? `?level=${level}` : ""}`),
 
   command: (id, action, value) => call("POST", `/devices/${id}/command`, { action, value }),
+  // Move / click / scroll a TV's on-screen pointer: {dx, dy} | {click: true} | {scroll: dy}.
+  pointer: (id, value) => call("POST", `/devices/${id}/command`, { action: "pointer", value }),
   addDevice: (body) => call("POST", "/devices", body),
   updateDevice: (id, changes) => call("PATCH", `/devices/${id}`, changes),
   removeDevice: (id) => call("DELETE", `/devices/${id}`),

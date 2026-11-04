@@ -131,6 +131,17 @@ service), the voice sheet shows a box to type the command instead, with a few
 suggestions to tap. The commands are understood by simple rules on the panel,
 not an AI service. See `POST /api/v1/voice` in [docs/API.md](docs/API.md#voice-commands).
 
+## Use it on your phone or tablet
+
+The panel is a web page, so any phone, tablet or laptop on the same Wi-Fi can use
+it: open the panel's address in Safari or Chrome. The address is shown in
+**Settings → Diagnostics** and in the log at start-up, for example
+`http://192.168.1.20:8080`. (In Docker on a Mac, use your Mac's address from
+System Settings → Wi-Fi → Details, with the port you opened, e.g. `:8081`.)
+
+Anyone on your Wi-Fi who opens that address can control your devices; there's no
+sign-in yet. Phone apps are planned for later (see [ROADMAP](docs/ROADMAP.md)).
+
 ## Logs and debugging
 
 | What | Where |
@@ -156,6 +167,10 @@ Common fixes are in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 | Photo frame | Photo frame, landscape | Photo frame settings |
 |---|---|---|
 | <img src="docs/screenshots/photo-frame.png" width="240" alt="Full-screen photo with the time in the corner"> | <img src="docs/screenshots/photo-frame-landscape.png" width="240" alt="The slideshow in landscape"> | <img src="docs/screenshots/photo-frame-settings.png" width="240" alt="Thumbnails, Add photos, seconds per photo, shuffle, idle and night options"> |
+
+| Voice: "Which lamp?" | Voice on the panel, listening |
+|---|---|
+| <img src="docs/screenshots/voice-phone.png" width="240" alt="Voice sheet on a phone: you said set the lamp to 30 percent; the panel asks which lamp, with Floor lamp and Bedside lamp buttons"> | <img src="docs/screenshots/voice-panel.png" width="520" alt="Voice card on the landscape panel: a big mic with a glowing ring and the words heard so far"> |
 
 | Automations | New automation | Location and presence |
 |---|---|---|

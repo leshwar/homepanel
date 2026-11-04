@@ -20,8 +20,10 @@ WEBOS_PORTS = (3001, 3000)   # webOS remote control: secure, then plain (older T
 BUTTONS = {Key.UP: "UP", Key.DOWN: "DOWN", Key.LEFT: "LEFT", Key.RIGHT: "RIGHT", Key.OK: "ENTER",
            Key.BACK: "BACK", Key.HOME: "HOME", Key.MENU: "MENU", Key.SOURCE: "INPUT_HUB",
            Key.PLAY: "PLAY", Key.PAUSE: "PAUSE", Key.STOP: "STOP", Key.REWIND: "REWIND",
-           Key.FORWARD: "FASTFORWARD"}
-CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.MEDIA, Cap.APPS, Cap.INPUTS]
+           Key.FORWARD: "FASTFORWARD", Key.EXIT: "EXIT", Key.CHANNEL_LIST: "LIST", Key.INFO: "INFO",
+           **{d: d for d in Key.DIGITS}}
+CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.MEDIA, Cap.APPS, Cap.INPUTS,
+        Cap.POINTER]
 
 
 def _tv(client, name, default=None):
@@ -190,6 +192,9 @@ class LGTVAdapter(DeviceAdapter):
             return {"on": False}
         c = await self._client(device)
         await self._learn_mac(device, c)
+        for cap in CAPS:                    # TVs added before a feature existed get it too (e.g. the pointer)
+            if cap not in device.caps:
+                device.caps.append(cap)
         if not device.meta.get("apps"):
             self._update_meta(device, c)
         app = _tv(c, "current_app_id")
@@ -251,12 +256,24 @@ class LGTVAdapter(DeviceAdapter):
             elif action == Action.SET_INPUT:
                 await c.set_input(value)
                 return {"input": value, "app": None}
+            elif action == Action.POINTER:
+                await pointer(c, value)
             else:
                 raise AdapterError("Not supported")
         except (ConnectionError, OSError):
             await self._drop(device)
             raise
         return {}
+
+
+async def pointer(c, value: dict) -> None:
+    """The Magic Remote pointer, over webOS's pointer input socket (already normalized by the service)."""
+    if value.get("click"):
+        await c.click()
+    elif "scroll" in value:
+        await c.scroll(0, value["scroll"])
+    else:
+        await c.move(value.get("dx", 0), value.get("dy", 0))
 
 
 def mac_from_connection_info(info, ip: str | None = None) -> str | None:

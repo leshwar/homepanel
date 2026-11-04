@@ -14,6 +14,9 @@ DEFAULT_SETTINGS = {
     "dim_after_seconds": 90,      # show the ambient clock after this much idle time (0 = never)
     "temperature_unit": "F",
     "clock_24h": False,
+    "glass_effect": True,         # frosted-glass blur; turn off if a slow screen feels sluggish
+    "glass_transparency": 45,     # 0 = solid tiles, 100 = almost clear glass
+    "background": "ocean",        # ocean | aurora | night
     "idle_screen": "clock",       # what to show when idle: "clock" (dim night clock) or "photos"
     "frame_seconds": 15,          # photo frame: seconds per photo
     "frame_shuffle": True,

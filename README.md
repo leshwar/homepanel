@@ -13,7 +13,7 @@ once — controlled directly over your Wi-Fi.
   <img src="docs/screenshots/landscape.png" width="830" alt="Home screen in landscape on a 1280x720 display">
 </p>
 
-- **Touch-first, dark UI.** Tap a tile to switch it, long-press (or tap the arrow) for full controls. Lit lights glow in their real color.
+- **Touch-first glass UI.** Frosted-glass tiles over a soft background scene (Ocean, Aurora or Night), with adjustable glass transparency. Tap a tile to switch it, long-press (or tap the arrow) for full controls. Lit lights glow in their real color, and the background warms up as lights come on.
 - **Many brands, one screen.** Globe Electric / Tuya / Smart Life, Govee, TP-Link Kasa & Tapo, Shelly, WiZ, Philips Hue, Samsung TVs and LG TVs.
 - **Local first.** Everything except Govee plugs is controlled directly on your network — it keeps working when the internet is down.
 - **Scenes and rooms.** "Movie night", "Bedtime", or "All off" for a room or the whole house.
@@ -116,6 +116,10 @@ Common fixes are in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 | Light controls | TV remote | Energy |
 |---|---|---|
 | <img src="docs/screenshots/light.png" width="240" alt="Brightness slider, white and color swatches"> | <img src="docs/screenshots/tv.png" width="240" alt="D-pad, volume and channel rockers, apps and inputs"> | <img src="docs/screenshots/energy.png" width="240" alt="Watts now, kWh today and this week, 7-day bar chart"> |
+
+| Display: background and glass | Solid, clear, and Aurora |
+|---|---|
+| <img src="docs/screenshots/display.png" width="240" alt="Background choices Ocean, Aurora, Night, a glass transparency slider and a frosted blur switch"> | <img src="docs/screenshots/glass-compare.png" width="520" alt="Three versions of the home screen: 15% transparency, 85% transparency, and the Aurora background"> |
 
 | Photo frame | Photo frame, landscape | Photo frame settings |
 |---|---|---|

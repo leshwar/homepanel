@@ -134,6 +134,17 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ev["type"], "device")
         self.assertEqual(ev["device"]["id"], "lr-plug")
 
+    async def test_display_settings_defaults_and_validation(self):
+        s = self.svc.store.settings
+        self.assertEqual((s["background"], s["glass_transparency"], s["glass_effect"]), ("ocean", 45, True))
+        out = self.svc.update_settings({"glass_transparency": "150", "glass_effect": "false", "background": "aurora"})
+        self.assertEqual((out["glass_transparency"], out["glass_effect"], out["background"]), (100, False, "aurora"))
+        self.assertEqual(self.svc.update_settings({"glass_transparency": -5})["glass_transparency"], 0)
+        with self.assertRaises(AdapterError):
+            self.svc.update_settings({"background": "neon"})
+        with self.assertRaises(AdapterError):
+            self.svc.update_settings({"glass_transparency": "lots"})
+
     async def test_account_password_kept_when_blank(self):
         self.svc.set_account("govee", {"api_key": "secret-1"})
         self.svc.set_account("govee", {"api_key": ""})

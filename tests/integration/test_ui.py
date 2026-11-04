@@ -97,6 +97,23 @@ class UITests(unittest.TestCase):
         self.page.click("[data-auto-form] button[type=submit]")
         self.page.wait_for_selector("text=Lights out")
 
+    def test_glass_background_and_transparency(self):
+        root = "document.documentElement"
+        self.page.wait_for_function(f"{root}.dataset.bg === 'ocean' && {root}.classList.contains('glass')")
+        self.page.click("#open-settings")
+        self.page.click("[data-go=display]")
+        self.page.click(".bg-choice:has(input[value=aurora])")
+        self.page.fill("input[name=glass_transparency]", "80")   # live preview while dragging
+        alpha = float(self.page.evaluate(f"getComputedStyle({root}).getPropertyValue('--glass-alpha')"))
+        self.assertAlmostEqual(alpha, 0.92 - 80 * 0.0085, places=2)
+        self.page.click("[data-display] button[type=submit]")
+        self.page.wait_for_selector("text=Saved")
+        self.page.reload()
+        self.page.wait_for_function(f"{root}.dataset.bg === 'aurora'")
+        # put things back for the other tests
+        self.page.evaluate("""fetch('/api/v1/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify({background: 'ocean', glass_transparency: 45})})""")
+
     def test_photo_frame_shows_photos_and_touch_exits(self):
         before = self.tile("lr-lamp").evaluate("el => el.classList.contains('on')")
         self.page.click("#open-frame")

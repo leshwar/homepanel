@@ -83,6 +83,14 @@ class ApiTests(unittest.TestCase):
         status, err = self.call("PUT", "/settings", {"latitude": "200"})
         self.assertEqual(status, 400)
 
+    def test_display_settings(self):
+        status, s = self.call("PUT", "/settings", {"background": "night", "glass_transparency": 70})
+        self.assertEqual((status, s["background"], s["glass_transparency"]), (200, "night", 70))
+        status, err = self.call("PUT", "/settings", {"background": "neon"})
+        self.assertEqual(status, 400)
+        self.assertIn("Background", err["error"])
+        self.call("PUT", "/settings", {"background": "ocean", "glass_transparency": 45})
+
     def _upload(self, data: bytes, content_type="image/png"):
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/v1/photos?name=test.png", data=data,
                                      method="POST", headers={"Content-Type": content_type})

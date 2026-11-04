@@ -32,6 +32,7 @@ from .store import Store
 log = logging.getLogger("homepanel")
 
 COMMAND_TIMEOUT = 10.0
+BACKGROUNDS = ("ocean", "aurora", "night")
 IDLE_SCREENS = ("clock", "photos")
 REFRESH_TIMEOUT = 8.0
 OFFLINE_AFTER_FAILURES = 2
@@ -560,6 +561,13 @@ class HomeService:
                 changes[key] = round(v, 4)
             elif key in changes:
                 changes[key] = None
+        if "background" in changes and changes["background"] not in BACKGROUNDS:
+            raise AdapterError(f"Background should be one of: {', '.join(BACKGROUNDS)}.")
+        if "glass_transparency" in changes:
+            try:
+                changes["glass_transparency"] = max(0, min(100, int(float(changes["glass_transparency"]))))
+            except (TypeError, ValueError):
+                raise AdapterError("Glass transparency should be a number from 0 to 100.")
         if "idle_screen" in changes and changes["idle_screen"] not in IDLE_SCREENS:
             raise AdapterError("Idle screen should be 'clock' or 'photos'.")
         if "frame_seconds" in changes:
@@ -567,7 +575,7 @@ class HomeService:
                 changes["frame_seconds"] = max(5, min(300, int(float(changes["frame_seconds"]))))
             except (TypeError, ValueError):
                 raise AdapterError("Seconds per photo should be a number.")
-        for key in ("clock_24h", "frame_shuffle", "frame_clock", "frame_night_clock"):
+        for key in ("glass_effect", "clock_24h", "frame_shuffle", "frame_clock", "frame_night_clock"):
             if key in changes:
                 changes[key] = changes[key] in (True, 1, "1", "true", "on")
         if "presence" in changes:

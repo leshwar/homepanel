@@ -4,6 +4,7 @@
 import { api } from "./api.js";
 import { store, reload } from "./store.js";
 import { $, esc, icon, kindIcon, toast } from "./util.js";
+import { openFrame } from "./photoframe.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
@@ -60,6 +61,8 @@ const VIEWS = {
       <div class="list">
         ${row("data-go=location", "users", "Location and presence",
               store.settings.latitude != null ? `${store.presence.length} ${store.presence.length === 1 ? "person" : "people"} watched` : "Set your location for sunrise and sunset")}
+        ${row("data-go=photos", "image", "Photo frame", store.settings.idle_screen === "photos"
+              ? "Shows when the panel is idle" : "Slideshow of your photos")}
         ${row("data-go=display", "sun", "Display and clock")}
         ${row("data-go=diagnostics", "pulse", "Diagnostics and logs")}
       </div>
@@ -329,6 +332,40 @@ const VIEWS = {
     } catch { /* location not set */ }
   },
 
+  async photos() {
+    const s = store.settings;
+    page("Photo frame", `
+      <div class="card">
+        <h3>Photos</h3>
+        <p id="photo-count">Loading…</p>
+        <div class="thumbs" id="thumbs"></div>
+        <div class="btn-row" style="margin-top:0">
+          <label class="btn primary upload-btn">${icon("upload")}<span>Add photos</span>
+            <input type="file" id="photo-input" accept="image/*" multiple></label>
+          <button class="btn" data-start-frame>${icon("image")}Start slideshow</button>
+        </div>
+        <small class="field"><small>Easiest from your phone: open this panel's address in its browser and add photos here.
+          Photos are rotated upright, resized for the screen, and stored on the panel without location data.</small></small>
+      </div>
+      <form class="card" data-frame-settings>
+        <h3>Slideshow</h3>
+        <label class="field"><span>Each photo shows for</span><select name="frame_seconds">
+          ${[[8, "8 seconds"], [15, "15 seconds"], [30, "30 seconds"], [60, "1 minute"], [300, "5 minutes"]].map(([v, l]) =>
+            `<option value="${v}" ${Number(s.frame_seconds || 15) === v ? "selected" : ""}>${l}</option>`).join("")}
+        </select></label>
+        <label class="check"><input type="checkbox" name="frame_shuffle" ${s.frame_shuffle !== false ? "checked" : ""}><span>Shuffle</span></label>
+        <label class="check"><input type="checkbox" name="frame_clock" ${s.frame_clock !== false ? "checked" : ""}><span>Show the time over photos</span></label>
+        <label class="field" style="margin-top:12px"><span>When the panel is idle, show</span><select name="idle_screen">
+          <option value="clock" ${s.idle_screen !== "photos" ? "selected" : ""}>The dim night clock</option>
+          <option value="photos" ${s.idle_screen === "photos" ? "selected" : ""}>The photo frame</option>
+        </select><small>How long until idle is set in Display and clock.</small></label>
+        <label class="check"><input type="checkbox" name="frame_night_clock" ${s.frame_night_clock !== false ? "checked" : ""}>
+          <span>From 10 PM to 7 AM, show the dim clock instead of photos</span></label>
+        <div class="btn-row"><button class="btn primary" type="submit">Save</button></div>
+      </form>`);
+    await loadThumbs();
+  },
+
   display() {
     const s = store.settings;
     const opts = [[0, "Never"], [30, "30 seconds"], [60, "1 minute"], [90, "90 seconds"], [180, "3 minutes"], [600, "10 minutes"]];
@@ -359,6 +396,30 @@ const VIEWS = {
     loadLogs("");
   },
 };
+
+async function loadThumbs() {
+  const el = $("#thumbs");
+  if (!el) return;
+  try {
+    const { photos } = await api.photos();
+    $("#photo-count").textContent = photos.length ? `${photos.length} ${photos.length === 1 ? "photo" : "photos"} on this panel.`
+      : "No photos yet. Add some to start the slideshow.";
+    el.innerHTML = photos.map((p) => `<div class="thumb" style="background-image:url('${esc(p.url)}')">
+      <button data-del-photo="${esc(p.id)}" aria-label="Remove this photo">${icon("trash")}</button></div>`).join("");
+  } catch (e) { $("#photo-count").textContent = e.message; }
+}
+
+async function uploadFiles(files) {
+  const list = [...files];
+  let done = 0, failed = 0;
+  for (const f of list) {
+    $("#photo-count").textContent = `Adding ${done + failed + 1} of ${list.length}…`;
+    try { await api.uploadPhoto(f); done += 1; }
+    catch (e) { failed += 1; toast(`${f.name}: ${e.message}`, true); }
+  }
+  if (done) toast(`Added ${done} ${done === 1 ? "photo" : "photos"}`);
+  await loadThumbs();
+}
 
 function whenText(a) {
   const w = a.when;
@@ -474,6 +535,11 @@ root.addEventListener("click", async (e) => {
       const people = store.settings.presence.filter((_, i) => i !== +t("[data-person-del]").dataset.personDel);
       await api.saveSettings({ presence: people }); await reload(); return render();
     }
+    if (t("[data-start-frame]")) { close(); return openFrame(); }
+    if (t("[data-del-photo]")) {
+      if (!confirm("Remove this photo from the panel?")) return;
+      await api.deletePhoto(t("[data-del-photo]").dataset.delPhoto); return loadThumbs();
+    }
     if (t("[data-del-scene]")) { await api.deleteScene(t("[data-del-scene]").dataset.delScene); await reload(); return render(); }
     if (t("[data-room-del]")) {
       const rooms = store.rooms.filter((_, i) => i !== +t("[data-room-del]").dataset.roomDel);
@@ -540,12 +606,23 @@ root.addEventListener("submit", async (e) => {
     if (form.matches("[data-room-add]")) {
       await api.setRooms([...store.rooms, formValues(form).room.trim()]); await reload(); return render();
     }
+    if (form.matches("[data-frame-settings]")) {
+      const fd = new FormData(form);
+      await api.saveSettings({ frame_seconds: Number(fd.get("frame_seconds")), frame_shuffle: fd.has("frame_shuffle"),
+                               frame_clock: fd.has("frame_clock"), idle_screen: fd.get("idle_screen"),
+                               frame_night_clock: fd.has("frame_night_clock") });
+      toast("Saved"); await reload(); return back();
+    }
     if (form.matches("[data-display]")) {
       const v = formValues(form);
       await api.saveSettings({ dim_after_seconds: Number(v.dim_after_seconds), clock_24h: !!v.clock_24h });
       toast("Saved"); await reload(); return back();
     }
   } catch (err) { toast(err.message, true); }
+});
+
+root.addEventListener("change", (e) => {
+  if (e.target.id === "photo-input" && e.target.files.length) uploadFiles(e.target.files);
 });
 
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isSettingsOpen()) back(); });

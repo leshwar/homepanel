@@ -7,12 +7,14 @@ internet needed at runtime — edit a file and reload the browser.
 web/
 ├── index.html      page shell + the SVG icon set (<symbol id="i-…">)
 ├── app.css         all styles; design tokens at the top (:root)
+├── photoframe.css  photo frame slideshow and its settings
 └── js/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
     ├── store.js    client state, optimistic commands, change notifications
     ├── util.js     escaping, icons, colors/glow, status text, toasts, storage
     ├── app.js      home screen: clock, scenes, rooms, device grid, idle night clock
     ├── sheet.js    bottom sheet: light controls and the TV remote
+    ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
     └── settings.js settings pages: add devices, edit, rooms, scenes, display, diagnostics
 ```
 

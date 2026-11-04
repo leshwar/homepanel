@@ -13,12 +13,13 @@ import logging
 import time
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from starlette.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from starlette.routing import Route
 
 from ..core.adapter import AdapterError
 from ..core import logs as logmod
 from ..core.logs import ring
+from ..core.photos import MAX_UPLOAD_BYTES, PhotoError
 from ..core.service import HomeService
 
 log = logging.getLogger("homepanel.api")
@@ -40,8 +41,9 @@ def handle_errors(fn):
     async def wrapper(request: Request):
         try:
             result = await fn(request)
-            return result if isinstance(result, (JSONResponse, StreamingResponse, PlainTextResponse)) else JSONResponse(result)
-        except AdapterError as e:
+            return result if isinstance(result, (JSONResponse, StreamingResponse, PlainTextResponse, FileResponse)) \
+                else JSONResponse(result)
+        except (AdapterError, PhotoError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
         except KeyError:
             return JSONResponse({"error": "Not found"}, status_code=404)
@@ -230,6 +232,36 @@ async def get_sun(request):
     return out
 
 
+# --- photo frame -------------------------------------------------------------------
+
+@handle_errors
+async def list_photos(request):
+    photos = await asyncio.to_thread(_svc(request).photos.list)
+    return {"photos": [{**p, "url": f"/api/v1/photos/{p['id']}/image"} for p in photos]}
+
+
+@handle_errors
+async def upload_photo(request):
+    """Body is the raw image file (Content-Type image/*). One photo per request."""
+    if int(request.headers.get("content-length") or 0) > MAX_UPLOAD_BYTES:
+        raise PhotoError("That photo is too large.")
+    data = await request.body()
+    photo = await asyncio.to_thread(_svc(request).photos.add, data, request.query_params.get("name", ""))
+    return {**photo, "url": f"/api/v1/photos/{photo['id']}/image"}
+
+
+@handle_errors
+async def delete_photo(request):
+    await asyncio.to_thread(_svc(request).photos.delete, request.path_params["id"])
+    return {"ok": True}
+
+
+@handle_errors
+async def photo_image(request):
+    path, media_type = _svc(request).photos.path(request.path_params["id"])
+    return FileResponse(path, media_type=media_type, headers={"Cache-Control": "public, max-age=86400"})
+
+
 # --- diagnostics -------------------------------------------------------------------
 
 @handle_errors
@@ -289,4 +321,8 @@ routes = [
     Route("/api/v1/automations/{id}/run", run_automation, methods=["POST"]),
     Route("/api/v1/presence", get_presence),
     Route("/api/v1/sun", get_sun),
+    Route("/api/v1/photos", list_photos, methods=["GET"]),
+    Route("/api/v1/photos", upload_photo, methods=["POST"]),
+    Route("/api/v1/photos/{id}", delete_photo, methods=["DELETE"]),
+    Route("/api/v1/photos/{id}/image", photo_image, methods=["GET"]),
 ]

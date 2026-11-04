@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#151a22">
   <title>HomePanel</title>
   <link rel="stylesheet" href="/app.css">
+  <link rel="stylesheet" href="/photoframe.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23151a22'/%3E%3Ccircle cx='16' cy='14' r='6' fill='%23f2b35b'/%3E%3Crect x='13' y='21' width='6' height='3' rx='1' fill='%23ede7dc'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -19,6 +20,7 @@
         <button class="btn-alloff" id="all-off" aria-label="Turn everything off">
           <svg class="i"><use href="#i-power"/></svg><span>All off</span>
         </button>
+        <button class="icon-btn" id="open-frame" aria-label="Photo frame"><svg class="i"><use href="#i-image"/></svg></button>
         <button class="icon-btn" id="open-settings" aria-label="Settings"><svg class="i"><use href="#i-gear"/></svg></button>
       </div>
     </header>
@@ -41,6 +43,15 @@
     <div class="ambient-time" id="ambient-time"></div>
     <div class="ambient-sub" id="ambient-sub"></div>
   </div>
+
+  <!-- photo frame slideshow (js/photoframe.js) -->
+  <section class="frame" id="frame" aria-label="Photo frame. Touch to exit." hidden>
+    <div class="frame-photo"></div>
+    <div class="frame-photo"></div>
+    <div class="frame-clock" id="frame-clock"><div class="t" id="frame-time"></div><div class="d" id="frame-date"></div></div>
+    <div class="frame-hint" id="frame-hint">Touch anywhere to exit</div>
+    <div class="frame-empty" id="frame-empty" hidden></div>
+  </section>
 
   <div class="toast" id="toast" role="status" hidden></div>
 
@@ -85,6 +96,8 @@
       <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
       <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14a6.5 6.5 0 0 1 3.5 6"/></symbol>
       <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></symbol>
+      <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="1.8"/><path d="M21 16l-5-5-8 9"/></symbol>
+      <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></symbol>
       <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
     </defs>
   </svg>

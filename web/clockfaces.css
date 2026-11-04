@@ -48,3 +48,18 @@
                 box-shadow: inset 0 0 0 1px rgb(255 255 255 / .15); pointer-events: none; }
 .face-choice input:checked + .face-preview { box-shadow: 0 0 0 3px var(--paper); }
 .face-choice input:focus-visible + .face-preview { outline: 3px solid var(--indigo); outline-offset: 3px; }
+
+/* ---------- place and weather (shown when set; hidden when there's no weather) ---------- */
+.cf-wx { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0 1.4cqmin;
+         color: #6f6b65; font-weight: 400; font-size: max(var(--min-text), 3.1cqmin); line-height: 1.3;
+         margin-top: 2cqmin; max-width: 86cqw; }
+.cf-wx-icon { width: 1.5em; height: 1.5em; fill: none; stroke: currentColor; stroke-width: 1.6;
+              stroke-linecap: round; stroke-linejoin: round; color: #8b8780; flex: none; overflow: visible; }
+.cf-wx-icon .front { fill: #000; }   /* the cloud hides the sun or moon behind it */
+.cf-temp { color: #a29d95; font-weight: 300; }
+.cf-hl, .cf-dot, .cf-place { color: #5d5a55; }
+.cf-hl { flex-basis: 100%; }
+.cf-kicker { font-size: max(var(--min-text), 2.6cqmin); letter-spacing: .14em; text-transform: uppercase;
+             color: #5d5a55; font-weight: 500; margin-bottom: 2cqmin; }
+.cf-date .cf-wx { font-size: max(var(--min-text), 3.6cqmin); margin-top: 3cqmin; }
+.cf-night .cf-temp { font-size: 4cqmin; color: #3a1f17; margin-top: 2cqmin; font-weight: 400; }

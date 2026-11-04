@@ -349,10 +349,18 @@ const VIEWS = {
     page("Location and presence", `
       <form class="card" data-location>
         <h3>Your location</h3>
-        <p>Used only to work out sunrise and sunset times on this panel. In Google Maps, long-press your home to see its coordinates.</p>
+        <p>Used on this panel for sunrise and sunset times and, if you turn it on, the weather. In Google Maps, long-press your home to see its coordinates.</p>
         <label class="field"><span>Latitude</span><input name="latitude" inputmode="decimal" value="${s.latitude ?? ""}" placeholder="47.61"></label>
         <label class="field"><span>Longitude</span><input name="longitude" inputmode="decimal" value="${s.longitude ?? ""}" placeholder="-122.33"></label>
         <p id="sun-today"></p>
+        <label class="field"><span>Place name (optional)</span><input name="place_name" maxlength="40" value="${esc(s.place_name || "")}" placeholder="Seattle">
+          <small>Shown on the resting clock. Your coordinates aren't sent anywhere to look it up.</small></label>
+        <label class="check"><input type="checkbox" name="weather_enabled" ${s.weather_enabled ? "checked" : ""}>
+          <span>Show the weather on the resting clock</span></label>
+        <p><small>The panel asks Open-Meteo (free, no account) for the weather about every 20 minutes, sending your location rounded to about 1 km. It's the panel's only internet call that isn't for a device. Without internet the clock just leaves the weather out.</small></p>
+        <label class="field"><span>Temperature</span><select name="temperature_unit">
+          ${[["F", "°F (Fahrenheit)"], ["C", "°C (Celsius)"]].map(([v, l]) => `<option value="${v}" ${(s.temperature_unit || "F") === v ? "selected" : ""}>${l}</option>`).join("")}
+        </select></label>
         <div class="btn-row"><button class="btn primary" type="submit">Save location</button></div>
       </form>
       <div class="card">
@@ -677,7 +685,9 @@ root.addEventListener("submit", async (e) => {
     }
     if (form.matches("[data-location]")) {
       const v = formValues(form);
-      await api.saveSettings({ latitude: v.latitude.trim() || null, longitude: v.longitude.trim() || null });
+      await api.saveSettings({ latitude: v.latitude.trim() || null, longitude: v.longitude.trim() || null,
+                               place_name: v.place_name.trim(), weather_enabled: !!v.weather_enabled,
+                               temperature_unit: v.temperature_unit });
       toast("Location saved"); await reload(); return render();
     }
     if (form.matches("[data-person-add]")) {

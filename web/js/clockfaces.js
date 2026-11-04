@@ -46,6 +46,42 @@ export function driftOffset(ms, freeX, freeY) {
   return [Math.round(Math.sin(turns / 37) * freeX), Math.round(Math.sin(turns / 53 + 1) * freeY)];
 }
 
+// ---------- weather icons (drawn with strokes, no icon font) ----------
+const CLOUD = `<path d="M7.5 17.5h9.3a3.6 3.6 0 0 0 .5-7.15A5.2 5.2 0 0 0 7.4 9.8a3.85 3.85 0 0 0 .1 7.7z"/>`;
+const UP = (s) => `<g transform="translate(0 -3)">${s}</g>`;
+const SUN = (cx, cy, r, ray) => `<circle cx="${cx}" cy="${cy}" r="${r}"/>` + Array.from({ length: 8 }, (_, i) => {
+  const a = (i * Math.PI) / 4, c = Math.cos(a), s = Math.sin(a);
+  const p = (d) => `${(cx + c * d).toFixed(2)} ${(cy + s * d).toFixed(2)}`;
+  return `<path d="M${p(r + 2)}L${p(r + 2 + ray)}"/>`;
+}).join("");
+const MOON = (x = 0, y = 0) => `<path transform="translate(${x} ${y})" d="M15.8 4.6a7.6 7.6 0 1 0 3.6 13.1 6.2 6.2 0 0 1-3.6-13.1z"/>`;
+const ICONS = {
+  clear: (day) => (day ? SUN(12, 12, 4, 2.2) : MOON()),
+  "partly-cloudy": (day) => (day ? `<g transform="translate(-1 -1) scale(.75)">${SUN(12, 12, 4, 2.2)}</g>`
+    : `<g transform="translate(-1 -1) scale(.7)">${MOON()}</g>`) + `<g class="front" transform="translate(2 2) scale(.9)">${CLOUD}</g>`,
+  cloudy: () => CLOUD,
+  fog: () => `<path d="M4 9h16M6 13h12M4 17h16"/>`,
+  drizzle: () => UP(CLOUD) + `<path d="M9 18.5v.01M13 20v.01M17 18.5v.01M11 21.5v.01"/>`,
+  rain: () => UP(CLOUD) + `<path d="M9 17l-1 3M13 17l-1 3M17 17l-1 3"/>`,
+  snow: () => UP(CLOUD) + `<path d="M9 18v3M7.5 19.5h3M15 18v3M13.5 19.5h3"/>`,
+  storm: () => UP(CLOUD) + `<path d="M13 15l-2 3.5h3l-2 3.5"/>`,
+};
+export function weatherIcon(condition, isDay = true) {
+  const draw = ICONS[condition] || ICONS.cloudy;
+  return `<svg class="cf-wx-icon" viewBox="0 0 24 24" aria-hidden="true">${draw(isDay)}</svg>`;
+}
+
+// "54°" plus icon, label and place, for the faces that have room. Empty when there's nothing to show.
+function wxRow(info, { highLow = false } = {}) {
+  const w = info.weather;
+  const place = info.place ? `<span class="cf-place">${esc(info.place)}</span>` : "";
+  if (!w) return place ? `<div class="cf-wx">${place}</div>` : "";
+  const hl = highLow && w.high != null ? `<span class="cf-hl">High ${w.high}° · Low ${w.low}°</span>` : "";
+  return `<div class="cf-wx" data-condition="${esc(w.condition)}">${weatherIcon(w.condition, w.is_day)}
+    <span class="cf-temp">${esc(w.temperature)}°</span><span class="cf-label">${esc(w.label)}</span>${hl}
+    ${place ? `<span class="cf-dot">·</span>${place}` : ""}</div>`;
+}
+
 // ---------- drawing ----------
 const fmtTime = (now, h24) => now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !h24 })
   .replace(/\s?[AP]M$/i, "");
@@ -65,7 +101,8 @@ function analogSVG(now) {
     <circle class="cf-pin" r="4"/></svg>`;
 }
 
-// HTML for one face. `info` = { h24, lightsOn, sun: {sunrise, sunset} | null }.
+// HTML for one face. `info` = { h24, lightsOn, sun: {sunrise, sunset} | null, place: "",
+// weather: {temperature, high, low, condition, label, is_day} | null }.
 export function faceHTML(face, now, info = {}) {
   const time = fmtTime(now, info.h24);
   const date = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
@@ -73,27 +110,30 @@ export function faceHTML(face, now, info = {}) {
   const lights = on ? `${on} ${on === 1 ? "light is" : "lights are"} on` : "";
   switch (faceId(face)) {
     case "analog":
-      return `<div class="cf cf-analog">${analogSVG(now)}<div class="cf-sub">${esc(date)}</div></div>`;
+      return `<div class="cf cf-analog">${analogSVG(now)}<div class="cf-sub">${esc(date)}</div>${wxRow(info)}</div>`;
     case "words": {
       const [lead, ...rest] = wordTime(now.getHours(), now.getMinutes()).split(" ");
       return `<div class="cf cf-words"><div class="cf-phrase"><span class="cf-lead">${esc(lead)}</span> ${esc(rest.join(" "))}</div>
-        <div class="cf-sub">${esc(date)}</div></div>`;
+        <div class="cf-sub">${esc(date)}</div>${wxRow(info)}</div>`;
     }
     case "date": {
       const bits = [];
       if (info.sun?.sunrise) bits.push(`Sunrise ${fmtShort(info.sun.sunrise)}`, `Sunset ${fmtShort(info.sun.sunset)}`);
       if (lights) bits.push(lights[0].toUpperCase() + lights.slice(1));
       return `<div class="cf cf-date">
+        ${info.place ? `<div class="cf-kicker">${esc(info.place)}</div>` : ""}
         <div class="cf-weekday">${esc(now.toLocaleDateString([], { weekday: "long" }))}</div>
         <div class="cf-day">${esc(now.toLocaleDateString([], { month: "long", day: "numeric" }))}</div>
         <div class="cf-time">${esc(time)}</div>
+        ${wxRow({ ...info, place: "" }, { highLow: true })}
         ${bits.length ? `<div class="cf-sub">${bits.map(esc).join(" · ")}</div>` : ""}</div>`;
     }
     case "night":
-      return `<div class="cf cf-night"><div class="cf-time">${esc(time)}</div></div>`;
+      return `<div class="cf cf-night"><div class="cf-time">${esc(time)}</div>
+        ${info.weather ? `<div class="cf-temp">${esc(info.weather.temperature)}°</div>` : ""}</div>`;
     default:
       return `<div class="cf cf-digital"><div class="cf-time">${esc(time)}</div>
-        <div class="cf-sub">${esc(lights ? `${date}. ${lights}.` : date)}</div></div>`;
+        <div class="cf-sub">${esc(lights ? `${date}. ${lights}.` : date)}</div>${wxRow(info)}</div>`;
   }
 }
 
@@ -107,9 +147,26 @@ function refreshSun() {
   api.sun().then((s) => { sun = s; renderAmbient(); }).catch(() => { sunDay = ""; });
 }
 
+// ---------- weather (the server fetches and caches it; we ask every 10 minutes) ----------
+let weather = null;
+let weatherKey = "";
+let weatherAt = 0;
+function refreshWeather() {
+  const s = store.settings;
+  if (!s.weather_enabled || s.latitude == null) { weather = null; weatherKey = ""; return; }
+  const key = [s.latitude, s.longitude, s.temperature_unit].join();
+  if (key === weatherKey && Date.now() - weatherAt < 10 * 60e3) return;
+  if (key !== weatherKey) weather = null;
+  weatherKey = key; weatherAt = Date.now();
+  api.weather().then((w) => { weather = w?.available ? w : null; renderAmbient(); })
+    .catch(() => { weather = null; });
+}
+
 export function faceInfo() {
+  const s = store.settings;
   const lightsOn = [...store.devices.values()].filter((d) => d.kind === "light" && d.state?.on).length;
-  return { h24: !!store.settings.clock_24h, lightsOn, sun: store.settings.latitude != null ? sun : null };
+  return { h24: !!s.clock_24h, lightsOn, sun: s.latitude != null ? sun : null,
+           place: s.place_name || "", weather: s.weather_enabled ? weather : null };
 }
 
 // Draw the resting clock (if it's showing) and nudge it along its drift path.
@@ -119,6 +176,7 @@ export function renderAmbient(now = new Date()) {
   if (!root || !stage || root.hidden) return;
   const face = faceId(store.settings.clock_face);
   if (face === "date") refreshSun();
+  refreshWeather();
   root.dataset.face = face;
   stage.innerHTML = faceHTML(face, now, faceInfo());
   const freeX = Math.max(0, (root.clientWidth - stage.offsetWidth) / 2 - 16);

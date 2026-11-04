@@ -25,6 +25,8 @@ DEFAULT_SETTINGS = {
     "frame_night_clock": True,    # 10 PM–7 AM show the dim clock instead of bright photos
     "latitude": None,             # for sunrise/sunset schedules
     "longitude": None,
+    "place_name": "",             # shown on the resting clock, e.g. "Seattle"; typed by the user
+    "weather_enabled": False,     # opt-in: fetch weather for the location (the only non-device internet call)
     "presence": [],               # [{"name": "Asha", "ip": "192.168.1.23"}] phones to watch
 }
 

@@ -12,6 +12,8 @@ export const store = {
   adapters: [],
   automations: [],
   presence: [],
+  me: null,            // the signed-in profile (js/auth.js); null while signed out
+  profiles: [],        // every profile, for admins (Settings → Profiles)
   demo: false,
   room: storage.get("room", "all"),
   view: storage.get("view", "home"),     // "home" (widgets) or "rooms" (device tiles); remembered per screen
@@ -30,6 +32,8 @@ export function applySnapshot(s) {
   store.adapters = s.adapters;
   store.automations = s.automations || [];
   store.presence = s.presence || [];
+  store.me = s.me || null;
+  store.profiles = s.profiles || [];
   store.demo = s.demo;
   store.inContainer = !!s.in_container;
   if (store.room !== "all" && store.room !== OTHER && !store.rooms.includes(store.room)) store.room = "all";

@@ -1,15 +1,27 @@
 // Thin client for the HomePanel REST API (see docs/API.md).
 // Every UI action goes through here, so swapping the backend never touches the UI.
+//
+// Sign-in: the server keeps the session in an HttpOnly cookie, so this file never
+// sees a token. When the server says "sign in first" (401 with signin: true), the
+// error is thrown as usual and a "hp:signin" event goes to window (js/auth.js shows
+// the profile picker).
 
 const BASE = "/api/v1";
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  constructor(message, status = 0, data = null) { super(message); this.status = status; this.data = data; }
+}
+
+function signinNeeded(data) {
+  if (data && data.signin) window.dispatchEvent(new CustomEvent("hp:signin", { detail: data }));
+}
 
 async function call(method, path, body) {
   let res;
   try {
     res = await fetch(BASE + path, {
       method,
+      credentials: "same-origin",
       headers: body ? { "Content-Type": "application/json" } : {},
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -18,11 +30,28 @@ async function call(method, path, body) {
   }
   let data = null;
   try { data = await res.json(); } catch { /* empty body */ }
-  if (!res.ok) throw new ApiError((data && data.error) || `Request failed (${res.status})`);
+  if (!res.ok) {
+    if (res.status === 401 && !path.startsWith("/auth/")) signinNeeded(data);
+    throw new ApiError((data && data.error) || `Request failed (${res.status})`, res.status, data);
+  }
   return data;
 }
 
 export const api = {
+  // sign-in and profiles
+  session: () => call("GET", "/auth/session"),
+  signIn: (body) => call("POST", "/auth/sign-in", body),       // {profile_id, pin} | {profile_id, password} | {email, password}
+  setup: (body) => call("POST", "/auth/setup", body),
+  signOut: (forget = false) => call("POST", "/auth/sign-out", { forget }),
+  lock: () => call("POST", "/auth/lock"),
+  setPanel: (panel) => call("POST", "/auth/panel", { panel }),
+  profiles: () => call("GET", "/profiles"),
+  addProfile: (p) => call("POST", "/profiles", p),
+  updateProfile: (id, p) => call("PATCH", `/profiles/${encodeURIComponent(id)}`, p),
+  deleteProfile: (id) => call("DELETE", `/profiles/${encodeURIComponent(id)}`),
+  updateMe: (p) => call("PATCH", "/profiles/me", p),
+  saveLayout: (layout) => call("PUT", "/profiles/me/layout", { home_layout: layout }),   // null = back to the default
+
   state: () => call("GET", "/state"),
   health: () => call("GET", "/health"),
   logs: (level = "") => call("GET", `/logs${level ? `?level=${level}` : ""}`),
@@ -63,7 +92,8 @@ export const api = {
     let res;
     try {
       res = await fetch(`${BASE}/photos?name=${encodeURIComponent(file.name || "photo")}`, {
-        method: "POST", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
     } catch {
       throw new ApiError("Can't reach the panel's server. Is it running?");
     }
@@ -74,19 +104,28 @@ export const api = {
 };
 
 // Live updates. Calls onEvent(event) for each server event, onStatus(connected).
+// Returns {stop, restart}: stop while signed out, restart after switching profile
+// (the stream belongs to the session that opened it).
 export function connectEvents(onEvent, onStatus) {
   let es;
   let retry;
+  let stopped = false;
   const open = () => {
+    if (stopped) return;
     es = new EventSource(`${BASE}/events`);
     es.onopen = () => onStatus(true);
     es.onmessage = (m) => { try { onEvent(JSON.parse(m.data)); } catch { /* ignore */ } };
     es.onerror = () => {
-      onStatus(false);
       es.close();
+      if (stopped) return;
+      onStatus(false);
       clearTimeout(retry);
       retry = setTimeout(open, 2500);
     };
   };
   open();
+  return {
+    stop() { stopped = true; clearTimeout(retry); es?.close(); },
+    restart() { stopped = false; clearTimeout(retry); es?.close(); open(); },
+  };
 }

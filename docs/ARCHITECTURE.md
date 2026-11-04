@@ -29,6 +29,7 @@ how many device brands are added underneath.
         app/core/history.py: power samples → kWh per day (SQLite, data/history.db)
         app/core/net.py: shared HTTP/UDP/SSDP/Wake-on-LAN/color helpers
         app/core/store.py: JSON persistence (data/homepanel.json)
+        app/core/profiles.py + app/api/auth.py: profiles, sign-in, sessions, who sees which device
         app/core/logs.py: console + rotating file + in-memory log buffer
 ```
 
@@ -85,10 +86,33 @@ service.use(quiet_hours)
   The UI also applies optimistic updates so taps feel instant, and reverts with
   an error message if the command fails.
 
+## Profiles and sign-in
+
+```
+browser ──cookie hp_session──► app/api/auth.py (ASGI middleware, before every /api/ route)
+                                 session → profile → Viewer → current_viewer (a contextvar)
+                                 no session 401 · member on an admin route 403 · hidden device 404
+                                     │
+                                     ▼  HomeService reads current_viewer
+                       snapshot(): only that profile's devices, scenes and Home layout
+                       mw_access (first command middleware): hidden device → "not found"
+                       events: each listener's filter re-checks its session per event
+```
+
+No viewer means the panel itself is acting (polling, automations): nothing is
+filtered. Admins see everything; a member's profile lists `devices: "all"` or ids.
+Each profile keeps its own `home_layout`; `settings.home_layout` is the shared
+default for profiles that haven't made one. Sessions are random tokens kept only as
+SHA-256 hashes in `data/sessions.json`; PINs and passwords are scrypt hashes. On the
+first start after upgrading, an "Owner" admin is created with everything and the
+UI asks for a PIN or password before anything else works. Demo mode without
+`--sign-in` acts as the Owner when there's no session.
+
 ## Secrets
 
 Adapter-private data (IPs, local keys, TV tokens) lives in `device.config` and
-account keys in `store.accounts`, saved to `data/homepanel.json` (mode 600).
+account keys in `store.accounts`, saved to `data/homepanel.json` (mode 600), along
+with the profiles' PIN and password hashes (never returned by the API).
 `config` is never included in API responses, and password-type account fields
 come back masked. `data/` and `logs/` are git-ignored.
 

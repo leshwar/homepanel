@@ -1,4 +1,4 @@
-"""JSON file persistence for devices, rooms, scenes, accounts and settings."""
+"""JSON file persistence for devices, rooms, scenes, accounts, profiles and settings."""
 from __future__ import annotations
 
 import json
@@ -28,7 +28,8 @@ DEFAULT_SETTINGS = {
     "place_name": "",             # shown on the resting clock, e.g. "Seattle"; typed by the user
     "weather_enabled": False,     # opt-in: fetch weather for the location (the only non-device internet call)
     "presence": [],               # [{"name": "Asha", "ip": "192.168.1.23"}] phones to watch
-    "home_layout": None,          # Home page widgets (app/core/layout.py); None = the default layout
+    "home_layout": None,          # shared default Home page for new profiles (app/core/layout.py); None = built-in
+    "lock_after_minutes": 10,     # the wall panel goes back to the profile picker after this idle time (0 = never)
 }
 
 DEFAULT_ROOMS = ["Living room", "Bedroom", "Kitchen"]
@@ -43,6 +44,7 @@ class Store:
         self.scenes: list[dict] = []
         self.accounts: dict[str, dict] = {}
         self.automations: list[dict] = []
+        self.profiles: list[dict] = []        # app/core/profiles.py; holds PIN/password hashes
         self.settings: dict = {**DEFAULT_SETTINGS, "presence": []}
         self.load()
 
@@ -55,6 +57,7 @@ class Store:
         self.scenes = data.get("scenes", [])
         self.accounts = data.get("accounts", {})
         self.automations = data.get("automations", [])
+        self.profiles = data.get("profiles", [])
         self.settings = {**DEFAULT_SETTINGS, **data.get("settings", {})}
         for d in data.get("devices", []):
             d.pop("state", None)
@@ -68,6 +71,7 @@ class Store:
             "scenes": self.scenes,
             "automations": self.automations,
             "accounts": self.accounts,
+            "profiles": self.profiles,
             "settings": self.settings,
         }
         with self._lock:

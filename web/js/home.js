@@ -1,8 +1,9 @@
 // The Home page: a grid of widgets — big clock, clocks for other places, weather,
 // scenes, rooms and device shortcuts — and edit mode to arrange them.
 //
-// The layout is one object in panel settings (`home_layout`, checked by
-// app/core/layout.py), so every screen shows the same Home page.
+// The layout is one object (`home_layout`, checked by app/core/layout.py) kept in
+// each profile, so everyone gets their own Home page on every screen they use.
+// The server sends the signed-in profile's layout as settings.home_layout.
 //
 // Edit mode (long-press the page, or the pencil): widgets wiggle; hold one and drag
 // to move it, drag its corner (or tap it) to resize, "…" for more, "−" to hide.
@@ -238,7 +239,7 @@ export function startEditing() {
   renderHome();
 }
 
-function stopEditing() {
+export function stopEditing() {
   draft = null;
   closeMenu();
   renderHome();
@@ -247,7 +248,7 @@ function stopEditing() {
 async function saveEditing() {
   const next = draft;
   try {
-    const s = await api.saveSettings({ home_layout: next });
+    const s = await api.saveLayout(next);     // this profile's own Home page
     store.settings = { ...store.settings, ...s };
     stopEditing();
     toast("Home page saved");

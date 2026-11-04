@@ -5,13 +5,62 @@ Base URL: `http://<panel>:8080/api/v1`. JSON in, JSON out. Errors return a
 
 The API is brand-agnostic: callers never need to know which adapter a device uses.
 
+## Sign-in and profiles
+
+Every route needs a signed-in session except `/auth/session`, `/auth/sign-in`,
+`/auth/setup`, `/auth/sign-out` and a minimal `/health`. Without one you get
+`401 {"error": "Sign in to use the panel.", "signin": true}` (`"setup": true` on the
+first open after upgrading, `"locked": true` on a locked wall panel). A **member**
+gets `403 {"error": "Only an admin can do that…"}` on admin-only routes, and a
+device their profile can't see answers `404` exactly like one that doesn't exist.
+
+The session is a cookie (`hp_session`: random, HttpOnly, SameSite=Strict, Secure
+over HTTPS), stored on the panel only as a hash. Browsers stay signed in for 30
+days after they're last used; the wall panel for about a year.
+
+| Method | Path | Body / result |
+|---|---|---|
+| GET | `/auth/session` | `{signed_in, auto, setup, locked, panel, me, profiles, display, demo}`. `profiles` is the picker: `{id, name, initial, color, has_pin, has_password}` (no emails). `display` is the panel's look (background, clock face…) for the sign-in screen; it has the location only for a signed-in screen or the wall panel |
+| POST | `/auth/sign-in` | `{"profile_id", "pin"}`, `{"profile_id", "password"}` or `{"email", "password"}`; admins may add `"panel": true` (this screen is the wall panel). Sets the cookie; returns the same as `/auth/session`. Wrong: 401. Too many tries (8 in 15 minutes per address and per profile): 429 with `Retry-After` |
+| POST | `/auth/setup` | First open after upgrading only: `{"pin"}` or `{"email", "password"}`, optional `name`, `panel`. Protects the Owner profile and signs in |
+| POST | `/auth/sign-out` | `{}` ends this browser's session. On the wall panel it locks instead (back to the profile picker); `{"forget": true}` really signs it out |
+| POST | `/auth/lock` | Lock this screen now (the wall panel does this after `lock_after_minutes` idle). A locked panel can still read `/weather`, `/sun` and `/photos` for its resting clock and photo frame |
+| POST | `/auth/panel` | admin: `{"panel": true}` makes this screen the wall panel, `false` makes it an ordinary browser |
+| GET | `/profiles` | admin: `{"profiles": [{id, name, initial, color, email, role, devices, has_pin, has_password, custom_layout}]}` |
+| POST | `/profiles` | admin: `{name, color?, email?, role: "admin"\|"member", pin?, password?, devices: "all"\|[device ids]}`. Needs a PIN (4–6 digits) or a password (8+ characters, with an email) |
+| PATCH | `/profiles/{id}` | admin: any of the above. `pin`/`password`: a value sets it, `""` keeps it, `null` removes it. The panel always keeps one admin with a PIN or password |
+| DELETE | `/profiles/{id}` | admin: removes the profile and signs out its screens (not your own) |
+| PATCH | `/profiles/me` | your own `name`, `color`, `email`, `pin`, `password` |
+| PUT | `/profiles/me/layout` | `{"home_layout": {...}}` your own Home page (see below); `null` = back to the default |
+
+PINs and passwords are hashed with scrypt; they are never returned or logged.
+`GET /state` adds `me` (your profile) and, for admins, `profiles`. For a member it
+lists only their devices and the scenes made of them, and leaves out `adapters`,
+`automations`, `presence` and `settings.presence`.
+
+Members may: `GET /state`, `/events`, `/weather`, `/sun`, `/photos`, the energy and
+map of their devices; `POST` commands and refresh to their devices, `/all-off` (their
+devices only), `/scenes/{id}/run` (scenes made of their devices), `/auth/lock`; and
+change their own profile and layout. Everything else is for admins.
+
+Demo mode (`--demo`) doesn't ask anyone to sign in: requests without a session act
+as the Owner. Add `--sign-in` (or `HOMEPANEL_SIGN_IN=1`) to try it like a real panel:
+Owner's PIN is `1234` (or `owner@example.com` / `homepanel`), Sam's is `2468`.
+
+```bash
+# sign in once, keep the cookie, then use the API as that profile
+curl -c hp.txt -X POST http://homepanel.local:8080/api/v1/auth/sign-in \
+     -H 'Content-Type: application/json' -d '{"email":"me@example.com","password":"…"}'
+curl -b hp.txt http://homepanel.local:8080/api/v1/state
+```
+
 ## Reading state
 
 | Method | Path | Returns |
 |---|---|---|
 | GET | `/state` | Everything the UI needs: `devices`, `rooms`, `scenes`, `settings`, `adapters`, `demo` |
 | GET | `/events` | Server-Sent Events stream (see below) |
-| GET | `/health` | `{ok, uptime_s, devices, online, adapters, unavailable, demo}` |
+| GET | `/health` | `{ok, uptime_s, devices, online, adapters, unavailable, demo}` signed in; just `{ok, time, sign_in}` without a session |
 | GET | `/logs?level=WARNING` | Last 300 log records `{time, level, logger, message}` |
 | GET | `/logs?format=text` | The full log file as a download |
 
@@ -103,10 +152,13 @@ room (shown as "Other" on the panel). Returns `{"turned_off": n}`.
 | POST | `/scenes` | `{"name", "icon", "actions": [{device_id, action, value}]}` **or** `{"name", "icon", "capture": [device ids]}` to save devices as they are now |
 | DELETE | `/scenes/{id}` | — |
 | POST | `/scenes/{id}/run` | — → `{"ok": n, "failed": [messages]}` |
-| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`sky` (default: follows the weather and time of day)/`ocean`/`aurora`/`night`), `home_layout` (the Home page widgets, see below; `null` = the default), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`), `place_name` (shown on the clock, max 40 characters), `weather_enabled` (opt-in), `temperature_unit` (`C`/`F`) |
+| PUT | `/settings` | admin: `lock_after_minutes` (the wall panel locks after this idle time, 0 = never), `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`sky` (default: follows the weather and time of day)/`ocean`/`aurora`/`night`), `home_layout` (the shared default Home page for profiles that haven't made their own, see below; `null` = the built-in default), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`), `place_name` (shown on the clock, max 40 characters), `weather_enabled` (opt-in), `temperature_unit` (`C`/`F`) |
 
-`home_layout` is one object, the same for every screen. `GET /state` returns the
-default (built from your devices) until someone saves one:
+`home_layout` is one object per profile, the same on every screen that profile uses.
+`GET /state` returns the signed-in profile's own one (save it with `PUT
+/profiles/me/layout`), else the shared default from `PUT /settings`, else the built-in
+default made from the devices that profile can see. Widgets for devices the profile
+can't see are left out:
 
 ```json
 {"version": 1, "widgets": [
@@ -185,8 +237,11 @@ curl -X POST "http://homepanel.local:8080/api/v1/photos?name=beach.jpg" \
 `GET /events` is a Server-Sent Events stream. Each message is JSON:
 
 - `{"type": "device", "device": {...}}` — one device changed
-- `{"type": "layout"}` — devices, rooms, scenes or settings changed; reload `/state`
-- `{"type": "automation", "name": "...", "result": "ok"}` — an automation just ran
+- `{"type": "layout"}` — devices, rooms, scenes, settings or profiles changed; reload `/state`
+- `{"type": "automation", "name": "...", "result": "ok"}` — an automation just ran (admins only)
+
+Each event is checked against the listener's profile as it's sent: device events only
+for devices that profile can see. The stream ends when the session does.
 
 ```js
 const es = new EventSource("/api/v1/events");

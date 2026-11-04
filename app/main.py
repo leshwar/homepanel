@@ -20,6 +20,7 @@ from starlette.responses import FileResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
+from .api.auth import AuthMiddleware
 from .api.routes import routes as api_routes
 from .core.logs import setup_logging
 from .core.service import HomeService
@@ -66,8 +67,11 @@ async def index(request):
     return FileResponse(os.path.join(WEB_DIR, "index.html"), headers={"Cache-Control": "no-cache"})
 
 
-def create_app(data_dir: str, demo: bool = False) -> Starlette:
+def create_app(data_dir: str, demo: bool = False, sign_in: bool | None = None) -> Starlette:
+    """sign_in: require signing in. Always on with real devices; in demo mode only when
+    asked (--sign-in), so the demo opens straight to the panel."""
     service = HomeService(data_dir, demo=demo)
+    sign_in = True if not demo else bool(sign_in)
 
     @contextlib.asynccontextmanager
     async def lifespan(app):
@@ -82,7 +86,7 @@ def create_app(data_dir: str, demo: bool = False) -> Starlette:
 
     return Starlette(
         routes=[*api_routes, Route("/", index), Mount("/", StaticFiles(directory=WEB_DIR), name="web")],
-        middleware=[Middleware(RequestLog)],
+        middleware=[Middleware(RequestLog), Middleware(AuthMiddleware, sign_in=sign_in)],
         lifespan=lifespan,
     )
 
@@ -95,13 +99,15 @@ def main() -> None:
                    help="Where settings, devices and tokens are stored")
     p.add_argument("--logs", default=os.environ.get("HOMEPANEL_LOGS", os.path.join(ROOT, "logs")))
     p.add_argument("--demo", action="store_true", help="Use pretend devices (no hardware needed)")
+    p.add_argument("--sign-in", action="store_true", default=os.environ.get("HOMEPANEL_SIGN_IN") == "1",
+                   help="Demo mode: ask for sign-in like a real panel (Owner PIN 1234, Sam PIN 2468)")
     p.add_argument("--debug", action="store_true", help="Verbose logging")
     args = p.parse_args()
 
     log_path = setup_logging(args.logs, args.debug)
     log.info("Logging to %s", log_path)
     import uvicorn
-    uvicorn.run(create_app(args.data, demo=args.demo), host=args.host, port=args.port,
+    uvicorn.run(create_app(args.data, demo=args.demo, sign_in=args.sign_in), host=args.host, port=args.port,
                 log_config=None, access_log=False)
 
 

@@ -21,7 +21,9 @@ from ..core import logs as logmod
 from ..core.logs import ring
 from ..core.photos import MAX_UPLOAD_BYTES, PhotoError
 from ..core.net import in_container
+from ..core.profiles import AuthError, ProfileError, RateLimited, current_viewer
 from ..core.service import HomeService
+from .auth import COOKIE, client_address, read_cookie
 
 log = logging.getLogger("homepanel.api")
 
@@ -44,7 +46,12 @@ def handle_errors(fn):
             result = await fn(request)
             return result if isinstance(result, Response) \
                 else JSONResponse(result)
-        except (AdapterError, PhotoError) as e:
+        except RateLimited as e:
+            return JSONResponse({"error": str(e)}, status_code=429,
+                                headers={"Retry-After": str(int(e.retry_after) + 1)})
+        except AuthError as e:
+            return JSONResponse({"error": str(e)}, status_code=401)
+        except (AdapterError, PhotoError, ProfileError) as e:
             return JSONResponse({"error": str(e)}, status_code=400)
         except KeyError:
             return JSONResponse({"error": "Not found"}, status_code=404)
@@ -67,9 +74,25 @@ async def get_state(request):
 
 
 async def events(request: Request):
-    """Server-Sent Events: the UI keeps this open and updates tiles as states change."""
+    """Server-Sent Events: the UI keeps this open and updates tiles as states change.
+    Each event is checked against the listener's profile when it's sent, so a device the
+    profile can't see never arrives, and the stream ends when the session does."""
     svc = _svc(request)
-    q = svc.subscribe()
+    token = read_cookie(request.scope)
+    opened_by = current_viewer.get()
+    auto_viewer = opened_by if opened_by and opened_by.auto else None   # demo without sign-in
+
+    def viewer_now():
+        # Looked up again for every event (publish() runs in other requests' context,
+        # so never read current_viewer here): a removed profile or ended session stops at once.
+        v = svc.profiles.viewer_for(token) or auto_viewer
+        return v if v and not (v.session and v.session.locked) else None
+
+    def allow(ev: dict) -> bool:
+        v = viewer_now()
+        return v is not None and svc.event_visible(v, ev)
+
+    q = svc.subscribe(allow)
 
     async def stream():
         try:
@@ -80,7 +103,7 @@ async def events(request: Request):
                     yield f"data: {json.dumps(ev)}\n\n"
                 except asyncio.TimeoutError:
                     yield ": keep-alive\n\n"
-                if await request.is_disconnected():
+                if await request.is_disconnected() or viewer_now() is None:
                     break
         finally:
             svc.unsubscribe(q)
@@ -306,7 +329,11 @@ async def get_logs(request):
 
 @handle_errors
 async def health(request):
+    """Without a session only "it's running" (for the kiosk script and Docker's health check)."""
     svc = _svc(request)
+    viewer = current_viewer.get()
+    if viewer is None or (viewer.session and viewer.session.locked):
+        return {"ok": True, "time": time.time(), "sign_in": True}
     devices = list(svc.store.devices.values())
     return {"ok": True, "time": time.time(), "uptime_s": round(time.time() - request.app.state.started, 1),
             "devices": len(devices), "online": sum(1 for d in devices if d.state.get("online")),
@@ -314,7 +341,156 @@ async def health(request):
             "in_container": in_container()}
 
 
+# --- sign-in and profiles ------------------------------------------------------------
+
+def _secure(request: Request) -> bool:
+    return request.url.scheme == "https" or request.headers.get("x-forwarded-proto", "").lower() == "https"
+
+
+def _with_cookie(request: Request, body: dict, token: str | None, max_age: int = 0) -> JSONResponse:
+    """Set (token) or clear (None) the session cookie: HttpOnly, SameSite=Strict, Secure over HTTPS."""
+    res = JSONResponse(body, headers={"Cache-Control": "no-store"})
+    if token:
+        res.set_cookie(COOKIE, token, max_age=max_age, path="/", httponly=True, samesite="strict",
+                       secure=_secure(request))
+    else:
+        res.delete_cookie(COOKIE, path="/", httponly=True, samesite="strict", secure=_secure(request))
+    return res
+
+
+def _session_info(request: Request) -> dict:
+    svc = _svc(request)
+    viewer = current_viewer.get()
+    session = viewer.session if viewer else None
+    locked = bool(session and session.locked)
+    signed_in = viewer is not None and not locked
+    return {
+        "signed_in": signed_in,
+        "auto": bool(viewer and viewer.auto),
+        "setup": svc.profiles.needs_setup and not (viewer and viewer.auto),
+        "locked": locked,
+        "panel": bool(session and session.panel),
+        "me": svc.profiles.public(viewer.profile) if signed_in else None,
+        "profiles": svc.profiles.picker(),
+        "display": svc.display_settings(with_location=signed_in or bool(session and session.panel)),
+        "demo": svc.demo,
+    }
+
+
+@handle_errors
+async def auth_session(request):
+    return JSONResponse(_session_info(request), headers={"Cache-Control": "no-store"})
+
+
+async def _start_session(request: Request, profile: dict, panel: bool):
+    svc = _svc(request)
+    old = svc.profiles.viewer_for(read_cookie(request.scope))
+    if old and old.session:                 # a fresh token on every sign-in
+        panel = panel or old.session.panel   # the wall panel stays the wall panel
+        svc.profiles.sessions.delete(old.session)
+    token, session = svc.profiles.sessions.create(profile["id"], panel=panel)
+    current_viewer.set(svc.profiles.viewer_for(token))
+    return _with_cookie(request, _session_info(request), token, int(session.ttl))
+
+
+@handle_errors
+async def sign_in(request):
+    """{profile_id, pin} | {profile_id, password} | {email, password}; optional panel: true (admins)."""
+    body = await _body(request)
+    p = await asyncio.to_thread(_svc(request).profiles.check_credentials, body, client_address(request.scope))
+    return await _start_session(request, p, panel=bool(body.get("panel")) and p.get("role") == "admin")
+
+
+@handle_errors
+async def setup(request):
+    """First open after upgrading: protect the Owner profile with a PIN or password."""
+    body = await _body(request)
+    svc = _svc(request)
+    p = await asyncio.to_thread(svc.profiles.setup, body)
+    return await _start_session(request, p, panel=bool(body.get("panel")))
+
+
+@handle_errors
+async def sign_out(request):
+    """Ends this browser's session. On the wall panel it locks instead (unless forget: true),
+    so the panel stays signed in and shows the profile picker."""
+    svc = _svc(request)
+    body = await _body(request)
+    viewer = svc.profiles.viewer_for(read_cookie(request.scope))
+    if viewer and viewer.session and viewer.session.panel and not body.get("forget"):
+        svc.profiles.sessions.update(viewer.session, locked=True)
+        current_viewer.set(viewer)
+        return JSONResponse(_session_info(request), headers={"Cache-Control": "no-store"})
+    if viewer and viewer.session:
+        svc.profiles.sessions.delete(viewer.session)
+    current_viewer.set(None)
+    return _with_cookie(request, _session_info(request), None)
+
+
+@handle_errors
+async def lock(request):
+    """The wall panel was idle: back to the profile picker (the session is kept)."""
+    viewer = current_viewer.get()
+    if viewer and viewer.session:
+        _svc(request).profiles.sessions.update(viewer.session, locked=True)
+    return JSONResponse(_session_info(request), headers={"Cache-Control": "no-store"})
+
+
+@handle_errors
+async def set_panel(request):
+    """Admin: make this screen the wall panel (stays signed in, locks when idle), or not."""
+    viewer = current_viewer.get()
+    if not viewer or not viewer.session:
+        raise AdapterError("Sign in with a PIN or password first.")
+    body = await _body(request)
+    _svc(request).profiles.sessions.update(viewer.session, panel=bool(body.get("panel")))
+    return _with_cookie(request, _session_info(request), read_cookie(request.scope), int(viewer.session.ttl))
+
+
+@handle_errors
+async def list_profiles(request):
+    return {"profiles": _svc(request).list_profiles()}
+
+
+@handle_errors
+async def add_profile(request):
+    return await _svc(request).add_profile(await _body(request))
+
+
+@handle_errors
+async def update_profile(request):
+    return await _svc(request).update_profile(request.path_params["id"], await _body(request))
+
+
+@handle_errors
+async def delete_profile(request):
+    _svc(request).delete_profile(request.path_params["id"])
+    return {"ok": True}
+
+
+@handle_errors
+async def update_me(request):
+    return await _svc(request).update_me(await _body(request))
+
+
+@handle_errors
+async def put_my_layout(request):
+    return _svc(request).save_my_layout((await _body(request)).get("home_layout"))
+
+
 routes = [
+    Route("/api/v1/auth/session", auth_session),
+    Route("/api/v1/auth/sign-in", sign_in, methods=["POST"]),
+    Route("/api/v1/auth/setup", setup, methods=["POST"]),
+    Route("/api/v1/auth/sign-out", sign_out, methods=["POST"]),
+    Route("/api/v1/auth/lock", lock, methods=["POST"]),
+    Route("/api/v1/auth/panel", set_panel, methods=["POST"]),
+    Route("/api/v1/profiles", list_profiles, methods=["GET"]),
+    Route("/api/v1/profiles", add_profile, methods=["POST"]),
+    Route("/api/v1/profiles/me", update_me, methods=["PATCH"]),
+    Route("/api/v1/profiles/me/layout", put_my_layout, methods=["PUT"]),
+    Route("/api/v1/profiles/{id}", update_profile, methods=["PATCH"]),
+    Route("/api/v1/profiles/{id}", delete_profile, methods=["DELETE"]),
     Route("/api/v1/state", get_state),
     Route("/api/v1/events", events),
     Route("/api/v1/health", health),

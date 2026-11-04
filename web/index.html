@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="/photoframe.css">
   <link rel="stylesheet" href="/clockfaces.css">
   <link rel="stylesheet" href="/shell.css">
+  <link rel="stylesheet" href="/auth.css">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23151a22'/%3E%3Ccircle cx='16' cy='14' r='6' fill='%23f2b35b'/%3E%3Crect x='13' y='21' width='6' height='3' rx='1' fill='%23ede7dc'/%3E%3C/svg%3E">
 </head>
 <body>
@@ -88,6 +89,7 @@
             <svg class="i"><use href="#i-power"/></svg><span>All off</span>
           </button>
           <button class="icon-btn" id="open-frame" aria-label="Photo frame"><svg class="i"><use href="#i-image"/></svg></button>
+          <button class="icon-btn avatar-btn" id="profile-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Profile" hidden></button>
         </div>
       </header>
 
@@ -111,6 +113,12 @@
   <!-- bottom sheet for device detail / TV remote -->
   <div class="scrim" id="scrim" hidden></div>
   <section class="sheet" id="sheet" role="dialog" aria-modal="true" hidden></section>
+
+  <!-- profile menu (js/auth.js): switch profile, your profile, sign out -->
+  <div class="profile-menu" id="profile-menu" role="menu" aria-label="Profile" hidden></div>
+
+  <!-- sign-in: profile picker, PIN pad, email + password, first-run setup (js/auth.js) -->
+  <section class="signin" id="signin" role="dialog" aria-modal="true" aria-label="Sign in" hidden></section>
 
   <!-- full-screen settings -->
   <section class="page" id="settings" role="dialog" aria-modal="true" hidden></section>

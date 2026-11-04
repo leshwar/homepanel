@@ -238,6 +238,11 @@ async def get_sun(request):
     return out
 
 
+@handle_errors
+async def get_weather(request):
+    return await _svc(request).weather.current()
+
+
 # --- photo frame -------------------------------------------------------------------
 
 @handle_errors
@@ -329,6 +334,7 @@ routes = [
     Route("/api/v1/automations/{id}/run", run_automation, methods=["POST"]),
     Route("/api/v1/presence", get_presence),
     Route("/api/v1/sun", get_sun),
+    Route("/api/v1/weather", get_weather),
     Route("/api/v1/photos", list_photos, methods=["GET"]),
     Route("/api/v1/photos", upload_photo, methods=["POST"]),
     Route("/api/v1/photos/{id}", delete_photo, methods=["DELETE"]),

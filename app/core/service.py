@@ -28,6 +28,7 @@ from .history import History
 from .net import in_container, normalize_mac, parse_color
 from .photos import PhotoLibrary
 from .presence import Presence
+from .weather import Weather
 from .store import Store
 
 log = logging.getLogger("homepanel")
@@ -35,6 +36,7 @@ log = logging.getLogger("homepanel")
 COMMAND_TIMEOUT = 10.0
 BACKGROUNDS = ("ocean", "aurora", "night")
 IDLE_SCREENS = ("clock", "photos")
+CLOCK_FACES = ("digital", "analog", "words", "date", "night")
 REFRESH_TIMEOUT = 8.0
 OFFLINE_AFTER_FAILURES = 2
 
@@ -141,6 +143,7 @@ class HomeService:
         self.history = History(os.path.join(data_dir, "demo-history.db" if demo else "history.db"))
         self.automations = Automations(self)
         self.photos = PhotoLibrary(os.path.join(data_dir, "demo-photos" if demo else "photos"))
+        self.weather = Weather(lambda: self.store.settings)
         self.presence = Presence(lambda: self.store.settings.get("presence") or [], self.automations.on_presence)
         self._background: list[asyncio.Task] = []
 
@@ -649,12 +652,22 @@ class HomeService:
                 raise AdapterError("Glass transparency should be a number from 0 to 100.")
         if "idle_screen" in changes and changes["idle_screen"] not in IDLE_SCREENS:
             raise AdapterError("Idle screen should be 'clock' or 'photos'.")
+        if "place_name" in changes:
+            changes["place_name"] = " ".join(str(changes["place_name"] or "").split())[:40]
+        if "temperature_unit" in changes:
+            unit = str(changes["temperature_unit"] or "").upper()
+            if unit not in ("C", "F"):
+                raise AdapterError("Temperature unit should be C or F.")
+            changes["temperature_unit"] = unit
+        if "clock_face" in changes and changes["clock_face"] not in CLOCK_FACES:
+            raise AdapterError(f"Clock face should be one of: {', '.join(CLOCK_FACES)}.")
         if "frame_seconds" in changes:
             try:
                 changes["frame_seconds"] = max(5, min(300, int(float(changes["frame_seconds"]))))
             except (TypeError, ValueError):
                 raise AdapterError("Seconds per photo should be a number.")
-        for key in ("glass_effect", "clock_24h", "frame_shuffle", "frame_clock", "frame_night_clock"):
+        for key in ("glass_effect", "clock_24h", "frame_shuffle", "frame_clock", "frame_night_clock",
+                    "weather_enabled"):
             if key in changes:
                 changes[key] = changes[key] in (True, 1, "1", "true", "on")
         if "presence" in changes:

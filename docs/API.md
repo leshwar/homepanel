@@ -51,6 +51,7 @@ A device looks like:
 | `key` | `UP DOWN LEFT RIGHT OK BACK HOME MENU SOURCE PLAY PAUSE STOP REWIND FORWARD` | remote |
 | `launch_app` | app id from `meta.apps` | apps |
 | `set_input` | input id from `meta.inputs` | inputs |
+| `set_sound_mode` | sound mode id from `meta.sound_modes` (other ids are rejected) | sound_mode |
 
 Returns the updated device. Example:
 

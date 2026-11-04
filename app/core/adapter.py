@@ -36,9 +36,10 @@ class Kind:
     SWITCH = "switch"
     TV = "tv"
     FAN = "fan"
+    SPEAKER = "speaker"        # sound bars and speakers: volume, inputs, sound modes
     OTHER = "other"
 
-    ALL = (LIGHT, PLUG, SWITCH, TV, FAN, OTHER)
+    ALL = (LIGHT, PLUG, SWITCH, TV, FAN, SPEAKER, OTHER)
 
 
 class Cap:
@@ -55,6 +56,7 @@ class Cap:
     MEDIA = "media"            # play / pause / stop / forward / rewind keys only
     APPS = "apps"              # launch_app
     INPUTS = "inputs"          # set_input
+    SOUND_MODE = "sound_mode"  # set_sound_mode (meta["sound_modes"])
 
 
 class Action:
@@ -73,9 +75,11 @@ class Action:
     KEY = "key"                # value: one of Key.ALL
     LAUNCH_APP = "launch_app"  # value: app id
     SET_INPUT = "set_input"    # value: input id
+    SET_SOUND_MODE = "set_sound_mode"  # value: id from meta["sound_modes"]
 
     ALL = (POWER, TOGGLE, BRIGHTNESS, COLOR, COLOR_TEMP, VOLUME, VOLUME_UP,
-           VOLUME_DOWN, MUTE, CHANNEL_UP, CHANNEL_DOWN, KEY, LAUNCH_APP, SET_INPUT)
+           VOLUME_DOWN, MUTE, CHANNEL_UP, CHANNEL_DOWN, KEY, LAUNCH_APP, SET_INPUT,
+           SET_SOUND_MODE)
 
     # Which capability each action needs (service layer checks this).
     REQUIRES = {
@@ -83,8 +87,11 @@ class Action:
         COLOR: Cap.COLOR, COLOR_TEMP: Cap.COLOR_TEMP, VOLUME: Cap.VOLUME_LEVEL,
         VOLUME_UP: Cap.VOLUME, VOLUME_DOWN: Cap.VOLUME, MUTE: Cap.MUTE,
         CHANNEL_UP: Cap.CHANNEL, CHANNEL_DOWN: Cap.CHANNEL, KEY: Cap.REMOTE,
-        LAUNCH_APP: Cap.APPS, SET_INPUT: Cap.INPUTS,
+        LAUNCH_APP: Cap.APPS, SET_INPUT: Cap.INPUTS, SET_SOUND_MODE: Cap.SOUND_MODE,
     }
+
+    # Actions whose value must be one of the ids the device lists in device.meta[...].
+    OPTIONS = {SET_SOUND_MODE: "sound_modes"}
 
 
 class Key:

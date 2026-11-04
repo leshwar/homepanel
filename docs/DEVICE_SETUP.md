@@ -93,6 +93,25 @@ Volume shows as +/− buttons (Samsung doesn't report the exact level).
    Settings → General → Devices → TV Management → **Quick Start+**, and
    Settings → General → Network → **Turn on via Wi-Fi** (menu names vary by year).
 
+## LG sound bars
+
+LG sound bars with Wi-Fi (2018 and newer, the ones the LG Sound Bar / ThinQ app
+can control) work over the local network. No account or pairing.
+
+1. Set the sound bar up on your Wi-Fi with the LG app first.
+2. **Search** finds it (it answers on port 9741). If it doesn't, choose
+   **Add by IP address**; the app shows the IP under the sound bar's settings, or
+   look it up in your router's device list.
+3. Open it on the panel for volume, mute, inputs (TV / HDMI ARC, HDMI, Bluetooth,
+   Wi-Fi …) and sound modes (AI Sound Pro, Cinema, Music …). Each model lists only
+   what it has. Newer modes the panel doesn't have a name for yet show as
+   "Sound mode 23" and so on.
+
+It works while the TV is off, and alongside the TV: volume changed with the TV
+remote shows up on the panel within about 10 seconds. The power button puts the
+sound bar in standby and wakes it, as long as its network stays on in standby
+(the default after it has been set up with the app).
+
 ## Home Assistant
 
 Already running Home Assistant? You can add its devices here:

@@ -1,8 +1,8 @@
-// Bottom sheet with full controls for one device: brightness, color, or a TV remote.
+// Bottom sheet with full controls for one device: brightness, color, or a TV / speaker remote.
 
 import { api } from "./api.js";
 import { store, command } from "./store.js";
-import { $, esc, icon, glowVar, statusText, throttle, toast } from "./util.js";
+import { $, esc, icon, glowVar, isMedia, statusText, throttle, toast } from "./util.js";
 import { openSettings } from "./settings.js";
 
 let currentId = null;
@@ -55,7 +55,7 @@ function render() {
       <button class="btn" data-refresh>${icon("search")}Try again</button>`;
   }
 
-  if (d.kind === "tv") body += tvBody(d);
+  if (isMedia(d)) body += tvBody(d);
   else {
     if (has("brightness")) {
       body += `<div class="section-label"><span>Brightness</span><b id="bri-val">${on ? (s.brightness ?? 100) + "%" : "Off"}</b></div>
@@ -141,9 +141,10 @@ const sendLive = throttle((id, v) => api.command(id, "brightness", v).catch(() =
 function tvBody(d) {
   const s = d.state || {};
   const on = !!s.on;
-  if (!on) return `<div class="note">The TV is off. Tap the power button to turn it on.</div>`;
+  if (!on) return `<div class="note">${d.kind === "tv" ? "The TV" : "The speaker"} is off. Tap the power button to turn it on.</div>`;
   const apps = d.meta?.apps || [];
   const inputs = d.meta?.inputs || [];
+  const modes = d.meta?.sound_modes || [];
   const has = (c) => d.caps.includes(c);
   const nav = has("remote");
   const media = has("media") || nav;
@@ -179,7 +180,9 @@ function tvBody(d) {
     ${apps.length ? `<div class="section-label"><span>Apps</span></div><div class="chips">${apps.slice(0, 12).map((a) =>
       `<button class="chip" data-app="${esc(a.id)}" aria-pressed="${s.app === a.id}">${esc(a.name)}</button>`).join("")}</div>` : ""}
     ${inputs.length ? `<div class="section-label"><span>Inputs</span></div><div class="chips">${inputs.map((x) =>
-      `<button class="chip" data-input="${esc(x.id)}" aria-pressed="${s.input === x.id}">${esc(x.name)}</button>`).join("")}</div>` : ""}`;
+      `<button class="chip" data-input="${esc(x.id)}" aria-pressed="${s.input === x.id}">${esc(x.name)}</button>`).join("")}</div>` : ""}
+    ${has("sound_mode") && modes.length ? `<div class="section-label"><span>Sound mode</span></div><div class="chips">${modes.map((m) =>
+      `<button class="chip" data-sound-mode="${esc(m.id)}" aria-pressed="${s.sound_mode === m.id}">${esc(m.name)}</button>`).join("")}</div>` : ""}`;
 }
 
 // A big, forgiving touch slider. onChange(value, isFinal).
@@ -233,6 +236,7 @@ $("#sheet").addEventListener("click", async (e) => {
   if (t("[data-mute]")) { const m = !d.state?.muted; return command(d.id, "mute", m, { muted: m }); }
   if (t("[data-app]")) { const a = t("[data-app]").dataset.app; return command(d.id, "launch_app", a, { app: a }); }
   if (t("[data-input]")) { const i = t("[data-input]").dataset.input; return command(d.id, "set_input", i, { input: i, app: null }); }
+  if (t("[data-sound-mode]")) { const m = t("[data-sound-mode]").dataset.soundMode; return command(d.id, "set_sound_mode", m, { sound_mode: m }); }
   if (t("[data-pair]")) {
     const b = t("[data-pair]");
     b.disabled = true; b.textContent = "Waiting for the device…";

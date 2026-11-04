@@ -8,6 +8,7 @@ from ..core.adapter import Action, Cap, Device, DeviceAdapter, Found, Kind, regi
 
 LIGHT_CAPS = [Cap.POWER, Cap.BRIGHTNESS, Cap.COLOR, Cap.COLOR_TEMP]
 TV_CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.MEDIA, Cap.APPS, Cap.INPUTS]
+SPEAKER_CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.INPUTS, Cap.SOUND_MODE]
 
 DEMO = [
     ("lr-ceiling", "Ceiling light", Kind.LIGHT, "Living room", [Cap.POWER, Cap.BRIGHTNESS, Cap.COLOR_TEMP],
@@ -18,6 +19,8 @@ DEMO = [
      {"on": False, "brightness": 60, "color": {"r": 120, "g": 80, "b": 255}, "color_mode": "color"}),
     ("lr-tv", "Samsung TV", Kind.TV, "Living room", TV_CAPS,
      {"on": True, "volume": 18, "muted": False, "app": "netflix", "input": None}),
+    ("lr-soundbar", "Sound bar", Kind.SPEAKER, "Living room", SPEAKER_CAPS,
+     {"on": True, "volume": 12, "muted": False, "input": "arc", "sound_mode": "ai"}),
     ("lr-plug", "Speaker plug", Kind.PLUG, "Living room", [Cap.POWER], {"on": True}),
     ("bd-lamp", "Bedside lamp", Kind.LIGHT, "Bedroom", LIGHT_CAPS,
      {"on": False, "brightness": 30, "color_temp": 2200, "color_mode": "temp"}),
@@ -37,6 +40,12 @@ APPS = [{"id": "netflix", "name": "Netflix"}, {"id": "youtube", "name": "YouTube
         {"id": "spotify", "name": "Spotify"}, {"id": "hulu", "name": "Hulu"}]
 INPUTS = [{"id": "tv", "name": "TV"}, {"id": "hdmi1", "name": "HDMI 1"},
           {"id": "hdmi2", "name": "HDMI 2"}, {"id": "hdmi3", "name": "HDMI 3"}]
+SPEAKER_META = {"inputs": [{"id": "arc", "name": "TV (HDMI ARC)"}, {"id": "bt", "name": "Bluetooth"},
+                           {"id": "wifi", "name": "Wi-Fi"}, {"id": "optical", "name": "Optical"}],
+                "sound_modes": [{"id": "ai", "name": "AI Sound Pro"}, {"id": "standard", "name": "Standard"},
+                                {"id": "cinema", "name": "Cinema"}, {"id": "music", "name": "Music"},
+                                {"id": "voice", "name": "Clear voice"}],
+                "model": "Demo sound bar"}
 
 
 @register
@@ -44,7 +53,7 @@ class DemoAdapter(DeviceAdapter):
     id = "demo"
     name = "Demo devices"
     description = "Pretend devices for trying the panel without hardware."
-    kinds = (Kind.LIGHT, Kind.PLUG, Kind.TV)
+    kinds = (Kind.LIGHT, Kind.PLUG, Kind.TV, Kind.SPEAKER)
     poll_interval = 30
     hidden = True
 
@@ -60,12 +69,16 @@ class DemoAdapter(DeviceAdapter):
     async def setup(self, device: Device):
         if device.kind == Kind.TV:
             device.meta = {"apps": APPS, "inputs": INPUTS, "model": "Demo TV"}
+        elif device.kind == Kind.SPEAKER:
+            device.meta = dict(SPEAKER_META)
         await self.refresh(device)
 
     async def refresh(self, device: Device) -> dict:
         await asyncio.sleep(0.02)
         if device.kind == Kind.TV and not device.meta:
             device.meta = {"apps": APPS, "inputs": INPUTS, "model": "Demo TV"}
+        if device.kind == Kind.SPEAKER and not device.meta:
+            device.meta = dict(SPEAKER_META)
         state = dict(self._state.setdefault(device.config["_uid"], {"on": False}))
         if device.config["_uid"] in WATTS:          # these demo plugs measure power
             lo, hi = WATTS[device.config["_uid"]]
@@ -95,6 +108,8 @@ class DemoAdapter(DeviceAdapter):
             s.update(on=True, app=value, input=None)
         elif action == Action.SET_INPUT:
             s.update(input=value, app=None)
+        elif action == Action.SET_SOUND_MODE:
+            s["sound_mode"] = value
         elif action in (Action.KEY, Action.CHANNEL_UP, Action.CHANNEL_DOWN):
             pass
         return dict(s)

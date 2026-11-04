@@ -80,6 +80,51 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 (skipping devices marked `keep_on`). `{"room": ""}` means devices that aren't in a
 room (shown as "Other" on the panel). Returns `{"turned_off": n}`.
 
+## Voice commands
+
+`POST /voice` with `{"text": "turn off the lamp and vacuum the kitchen"}` turns an
+everyday sentence into commands and runs them through the same pipeline as
+`/devices/{id}/command` (validation, logging, retries and any middleware rules).
+The text comes from the browser's speech recognition or from typing; the server
+never receives audio. Text over 300 characters is cut.
+
+It understands, matched loosely against your real device, room, scene, app,
+input, sound mode and vacuum room names (with synonyms like lamp/light,
+telly/TV, robot/hoover/vacuum, and numbers as words or digits):
+
+| Say | Does |
+|---|---|
+| "turn on the floor lamp", "kitchen lights off", "turn the lamp on and the TV off" | `power` |
+| "turn off the living room" | that room's All off (skips `keep_on`); "turn on the kitchen" turns on its lights |
+| "set the lamp to 30%", "dim the lamp", "make the backlight blue / warm white" | `brightness`, `color`, `color_temp` |
+| "TV volume up", "volume 20", "mute the sound bar", "next channel", "pause the TV" | `volume`/`volume_up`, `mute`, `channel_up`, `key` |
+| "open YouTube", "put on Netflix in the bedroom", "switch to HDMI 2", "cinema mode" | `launch_app`, `set_input`, `set_sound_mode` |
+| "start the vacuum", "vacuum the kitchen and den", "mop the hall", "send the vacuum home", "set the vacuum to max", "empty the dustbin" | `clean`, `clean_rooms`, `set_clean_mode`, `dock`, `set_suction`, `station` |
+| "run movie night", "good morning" | runs the scene |
+| "turn everything off" | All off, after a yes |
+| "what's on in the bedroom?", "is the kettle on?" | answers, changes nothing |
+
+Response (always 200 unless the body has no `text`):
+
+```jsonc
+{
+  "heard": "set the lamp to 30%",
+  "understood": true,
+  "say": "Which lamp?",                 // what to show or speak
+  "done": [],                           // [{kind, device_id, action, value, target}] that ran
+  "failed": [],                         // [{device_id, action, error}]
+  "question": "Which lamp?",            // set when it could mean several things
+  "choices": [{"label": "Floor lamp", "detail": "Living room", "text": "set the floor lamp to 30 percent"}],
+  "confirm": ""                         // set when it needs a yes first
+}
+```
+
+- **Choices:** send a choice's `text` back as a new `/voice` request.
+- **Confirm:** "everything off" and turning off a device marked `keep_on` don't run
+  until you send the same `text` again with `"confirm": true`.
+- **Not understood:** `understood: false` and `say` explains, e.g. `I couldn't find “garage”.`
+  When only part of a sentence is understood, that part runs and `say` mentions the rest.
+
 ## Managing devices
 
 | Method | Path | Body |

@@ -19,6 +19,7 @@ once — controlled directly over your Wi-Fi.
 - **Many brands, one screen.** Globe Electric / Tuya / Smart Life, Govee, TP-Link Kasa & Tapo, Shelly, WiZ, Philips Hue, Samsung TVs, LG TVs and LG sound bars.
 - **Local first.** Everything except Govee plugs is controlled directly on your network — it keeps working when the internet is down.
 - **Privacy.** The panel makes no internet calls of its own unless you turn on weather (Settings → Location and presence). Then the server asks [Open-Meteo](https://open-meteo.com) (free, no account) for the weather about every 20 minutes, sending only your location rounded to about 1 km. The place name shown on the clock is the one you type; your coordinates aren't sent anywhere to look it up.
+- **Voice commands.** Tap or hold the mic and say "turn off the living room", "set the lamp to 30%", "open YouTube", "vacuum the kitchen and hall" or "run movie night". It asks "Which lamp?" when it isn't sure, and asks before turning everything off. Where the browser can't listen (e.g. the Pi's own screen), type the command instead. See [Voice commands](#voice-commands).
 - **Scenes and rooms.** "Movie night", "Bedtime", or "All off" for a room or the whole house.
 - **Schedules and automations.** At a time of day, at sunset/sunrise (computed locally), or when everyone leaves / someone comes home (phones on Wi-Fi).
 - **Resting clock faces.** When nobody has touched the panel for a while it shows a dim clock: big digital, analog with hands, a word clock ("It's quarter past ten"), date and day (with sunrise, sunset and lights on), or a very dim red night face. With weather turned on, the faces also show the temperature and a drawn weather icon, plus your place name. Pick one with a preview in Settings → Display and clock. The clock drifts slowly around the screen to avoid burn-in, and touching it only wakes the panel.
@@ -105,6 +106,31 @@ Prefer Docker? `docker compose up -d --build` runs the server (host networking,
 so device search works on the Pi). Try it on any computer with
 `make docker-demo`. Details and Mac caveats: [docs/DOCKER.md](docs/DOCKER.md).
 
+## Voice commands
+
+Tap the mic at the top of the screen and speak, or hold it while you speak and
+let go. What you said appears as you talk; the panel then does it and says what
+it did ("Turned off the Floor lamp."). It understands your own device, room,
+scene, app and input names, and simple words like lamp/light, telly/TV and
+robot/vacuum. If it isn't sure ("set the lamp to 30%" with two lamps) it shows
+the choices as buttons, and it asks before turning everything off or turning
+off a device marked "keep on". Turn on **Read replies aloud** in the voice
+sheet to hear the answer (off by default; remembered per screen).
+
+**Where your voice goes.** Turning speech into text is done by your browser,
+not by HomePanel:
+
+- **Chrome** (and Edge) sends the recording to Google's speech service.
+- **Safari** on iPhone, iPad and Mac may send it to Apple's servers.
+- HomePanel itself only ever gets the text. **Typed commands stay on your network.**
+
+The panel shows this once, the first time you use the mic. Browsers only allow
+the microphone on `https://` pages or `localhost`, so on a phone opening
+`http://homepanel.local:8080`, and on the Pi's own Chromium (which has no speech
+service), the voice sheet shows a box to type the command instead, with a few
+suggestions to tap. The commands are understood by simple rules on the panel,
+not an AI service. See `POST /api/v1/voice` in [docs/API.md](docs/API.md#voice-commands).
+
 ## Use it on your phone or tablet
 
 The panel is a web page, so any phone, tablet or laptop on the same Wi-Fi can use
@@ -141,6 +167,10 @@ Common fixes are in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 | Photo frame | Photo frame, landscape | Photo frame settings |
 |---|---|---|
 | <img src="docs/screenshots/photo-frame.png" width="240" alt="Full-screen photo with the time in the corner"> | <img src="docs/screenshots/photo-frame-landscape.png" width="240" alt="The slideshow in landscape"> | <img src="docs/screenshots/photo-frame-settings.png" width="240" alt="Thumbnails, Add photos, seconds per photo, shuffle, idle and night options"> |
+
+| Voice: "Which lamp?" | Voice on the panel, listening |
+|---|---|
+| <img src="docs/screenshots/voice-phone.png" width="240" alt="Voice sheet on a phone: you said set the lamp to 30 percent; the panel asks which lamp, with Floor lamp and Bedside lamp buttons"> | <img src="docs/screenshots/voice-panel.png" width="520" alt="Voice card on the landscape panel: a big mic with a glowing ring and the words heard so far"> |
 
 | Automations | New automation | Location and presence |
 |---|---|---|

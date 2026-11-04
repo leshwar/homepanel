@@ -613,7 +613,8 @@ class UITests(unittest.TestCase):
 
             lamp = page.locator('.widget[data-wid="dev-lr-lamp"] .tile')
             was_on = lamp.get_attribute("data-on")
-            lamp.locator(".tile-name").click()                                  # tap = on/off
+            with page.expect_response("**/devices/lr-lamp/command"):          # one tap at a time: the demo
+                lamp.locator(".tile-name").click()                              # devices answer in random order
             page.wait_for_function(f"document.querySelector('.widget[data-wid=\"dev-lr-lamp\"] .tile').dataset.on !== '{was_on}'")
             lamp.locator(".tile-name").click()                                  # and back
             page.wait_for_function(f"document.querySelector('.widget[data-wid=\"dev-lr-lamp\"] .tile').dataset.on === '{was_on}'")

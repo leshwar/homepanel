@@ -11,6 +11,7 @@ web/
 ├── manifest.webmanifest, icon-*.png   "Add to Home Screen" (iPhone, iPad, Android)
 ├── photoframe.css  photo frame slideshow and its settings
 ├── clockfaces.css  resting clock faces and the face picker previews
+├── voice.css       the voice sheet: big mic with a level ring, chat bubbles, typed box
 ├── controls.css    device sheets: light pill and color wheel, TV remote, robot vacuum
 └── js/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
@@ -24,6 +25,7 @@ web/
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
     ├── sky.js      weather from the server → html[data-sky] / [data-period] for the Sky background
     ├── sheet.js    bottom sheet: light controls and the TV remote
+    ├── voice.js    the mic: speech to text in the browser (or a typed box), reply, choices, confirm
     ├── remote.js   TV and speaker remote: D-pad / touchpad / number pad, rockers, apps, pointer
     ├── vacuum.js   robot vacuum: map, status, main button, rooms, Options, Maintenance
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)

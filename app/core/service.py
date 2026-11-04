@@ -31,6 +31,7 @@ from .photos import PhotoLibrary
 from .presence import Presence
 from .weather import Weather
 from .store import Store
+from .voice import Voice
 
 log = logging.getLogger("homepanel")
 
@@ -180,6 +181,7 @@ class HomeService:
         self.photos = PhotoLibrary(os.path.join(data_dir, "demo-photos" if demo else "photos"))
         self.weather = Weather(lambda: self.store.settings)
         self.presence = Presence(lambda: self.store.settings.get("presence") or [], self.automations.on_presence)
+        self.voice = Voice(self)                      # spoken/typed commands → the same command pipeline
         self._background: list[asyncio.Task] = []
 
     # --- middleware ---------------------------------------------------------

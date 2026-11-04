@@ -4,11 +4,14 @@
 app/
 ├── main.py            entry point: argument parsing, logging, Starlette app, request logging
 ├── api/
-│   └── routes.py      API layer: every /api/v1 route. Calls HomeService only.
+│   ├── routes.py      API layer: every /api/v1 route. Calls HomeService only.
+│   └── auth.py        sign-in middleware: session cookie → current_viewer; 401 / 403 / hidden device 404
 ├── core/
 │   ├── adapter.py     the DeviceAdapter interface + shared vocabulary (Kind, Cap, Action, Key)
 │   ├── service.py     HomeService: registry, polling, commands + middleware, scenes, events
-│   ├── store.py       saves devices/rooms/scenes/accounts/settings to data/homepanel.json
+│   ├── store.py       saves devices/rooms/scenes/accounts/profiles/settings to data/homepanel.json
+│   ├── profiles.py    profiles, scrypt PIN/password hashes, sessions (data/sessions.json), rate limits,
+│   │                  the current viewer and what they may see
 │   ├── voice.py       voice commands: sentence → generic commands (rules today; Parser is the seam for others)
 │   ├── automations.py schedules: time of day, sunrise/sunset, presence → scene / all off / command
 │   ├── sun.py         sunrise/sunset calculation (no internet)

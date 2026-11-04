@@ -791,7 +791,7 @@ class UITests(unittest.TestCase):
             page.wait_for_selector(".home:not(.editing)")
             self.assertEqual(self.order(page), moved)
         finally:
-            page.evaluate("fetch('/api/v1/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: '{\"home_layout\": null}'})")
+            page.evaluate("fetch('/api/v1/profiles/me/layout', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: '{\"home_layout\": null}'})")
             page.close()
 
     def test_sky_background_follows_the_weather(self):

@@ -1,0 +1,131 @@
+/* Sign-in (js/auth.js): the profile picker, PIN pad, email + password form and the
+   first-run setup, in the same frosted glass as the rest of the panel; the profile
+   button in the top bar and its menu; avatars for Settings → Profiles.
+   Touch targets are at least 48 px; the PIN keys are 72 px. */
+
+/* Signed out: the app underneath holds no data, and isn't shown at all. */
+html[data-auth="out"] #app { visibility: hidden; }
+/* Members: no shortcuts into admin-only settings (the server refuses them anyway). */
+html[data-role="member"] :is([data-add-device], [data-setup-weather], [data-new-scene], #sheet [data-edit]) { display: none !important; }
+
+/* ---------- avatars ---------- */
+.avatar { --av: #f2b35b; width: 36px; height: 36px; border-radius: 50%; flex: none; display: inline-grid; place-items: center;
+          background: radial-gradient(circle at 32% 28%, rgb(255 255 255 / .35), transparent 60%), var(--av);
+          color: #161a22; font-weight: 700; font-size: 17px; line-height: 1;
+          box-shadow: inset 0 1px 0 rgb(255 255 255 / .35), 0 6px 16px rgb(0 4 30 / .25); }
+.avatar.lg { width: 64px; height: 64px; font-size: 28px; }
+.avatar.xl { width: 96px; height: 96px; font-size: 42px; }
+.row .avatar { width: 40px; height: 40px; }
+
+.avatar-btn { padding: 0; }
+.avatar-btn .avatar { width: 38px; height: 38px; box-shadow: none; }
+
+/* ---------- profile menu ---------- */
+.profile-menu { position: fixed; z-index: 26; top: calc(76px + env(safe-area-inset-top)); right: calc(16px + env(safe-area-inset-right));
+                width: min(300px, calc(100vw - 32px)); padding: 8px; border-radius: 22px;
+                background: rgb(12 18 40 / min(.96, calc(var(--glass-alpha) + .3)));
+                -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%); backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+                border: 1px solid rgb(255 255 255 / .1); box-shadow: 0 20px 50px rgb(0 4 30 / .45); animation: fade .15s; }
+.profile-menu button { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 14px;
+                       border-radius: 14px; text-align: left; font-size: 17px; }
+.profile-menu button:active, .profile-menu button:focus-visible { background: rgb(255 255 255 / .1); outline: none; }
+.profile-menu .i { color: var(--haze); }
+.pm-head { display: flex; align-items: center; gap: 14px; padding: 10px 12px 14px; border-bottom: 1px solid rgb(255 255 255 / .08);
+           margin-bottom: 6px; }
+.pm-head b { display: block; font-size: 19px; font-weight: 600; }
+.pm-head span { color: var(--haze); font-size: 14px; }
+.pm-head .avatar.lg { width: 52px; height: 52px; font-size: 23px; }
+
+/* ---------- the sign-in screen ---------- */
+.signin { position: fixed; inset: 0; z-index: 35; overflow-y: auto; animation: fade .2s;
+          background: rgb(6 10 28 / calc(var(--glass-alpha) * .35)); }
+html[data-auth="switch"] .signin { background: rgb(6 10 28 / .55);
+                                   -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px); }
+.signin-wrap { min-height: 100%; display: grid; place-items: center;
+               padding: calc(24px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right))
+                        calc(24px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left)); }
+.signin-card { position: relative; width: min(560px, 100%); padding: 32px 28px 28px; border-radius: 30px; text-align: center;
+               background: rgb(12 18 40 / min(.94, calc(var(--glass-alpha) + .12)));
+               -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%); backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+               border: 1px solid rgb(255 255 255 / .1);
+               box-shadow: inset 0 1px 0 rgb(255 255 255 / .12), 0 30px 70px rgb(0 4 30 / .4); }
+.signin-card .field, .signin-card .check, .signin-card .segmented { text-align: left; }
+.signin-head h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
+.signin-head p { margin: 8px auto 0; max-width: 42ch; color: var(--haze); font-size: 17px; line-height: 1.45; }
+.signin-card h2 { margin: 14px 0 4px; font-size: 26px; font-weight: 600; }
+.signin-sub { margin: 0; color: var(--haze); font-size: 17px; }
+.signin-note { display: inline-flex; align-items: center; gap: 8px; margin: 16px 0 0; color: var(--haze); font-size: 15px; }
+.signin-note .i { width: 18px; height: 18px; }
+.signin-hint { margin: 18px 0 0; color: var(--haze); font-size: 14px; }
+.signin-error { min-height: 22px; margin: 10px 0 6px; color: var(--ember); font-size: 16px; font-weight: 500; }
+.signin-back { position: absolute; top: 16px; left: 16px; }
+.signin-foot { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 26px; }
+.btn.wide { width: 100%; margin-top: 4px; }
+.link-btn { min-height: 48px; margin-top: 12px; padding: 0 14px; color: var(--haze); font-size: 16px; text-decoration: underline;
+            text-underline-offset: 3px; }
+
+.avatars { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px 22px; margin-top: 28px; }
+.avatar-choice { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 112px; padding: 8px 4px;
+                 border-radius: 22px; transition: transform .15s var(--ease), background-color .2s; }
+.avatar-choice:active { transform: scale(.95); background: rgb(255 255 255 / .06); }
+.avatar-choice:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
+.avatar-name { font-size: 17px; font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* PIN pad */
+.pin-card { width: min(400px, 100%); }
+.pin-card > .avatar { margin-top: 6px; }
+.pin-dots { display: flex; justify-content: center; gap: 14px; margin-top: 20px; height: 18px; }
+.pin-dots span { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgb(255 255 255 / .45); transition: background-color .12s; }
+.pin-dots span.on { background: var(--paper); border-color: var(--paper); }
+.pinpad { display: grid; grid-template-columns: repeat(3, 72px); justify-content: center; gap: 14px 22px; margin-top: 6px; }
+.pinpad button { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; font-size: 28px; font-weight: 500;
+                 font-variant-numeric: tabular-nums; background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .08);
+                 transition: transform .1s var(--ease), background-color .15s; }
+.pinpad button:active { transform: scale(.92); background: rgb(255 255 255 / .2); }
+.pinpad button.ok { background: var(--paper); color: var(--night); }
+.pinpad button[disabled] { opacity: .35; }
+.pinpad .i { width: 26px; height: 26px; }
+
+/* setup: PIN or email + password */
+.setup-card { width: min(520px, 100%); }
+.setup-card .signin-head { margin-bottom: 22px; }
+.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 0 0 16px; border-radius: 16px;
+             background: rgb(255 255 255 / .07); }
+.segmented label { position: relative; }
+.segmented input { position: absolute; opacity: 0; inset: 0; }
+.segmented span { display: grid; place-items: center; min-height: 48px; border-radius: 12px; font-size: 16px; font-weight: 500;
+                  color: var(--haze); text-align: center; padding: 0 8px; }
+.segmented input:checked + span { background: var(--paper); color: var(--night); }
+.segmented input:focus-visible + span { outline: 2px solid var(--indigo); }
+.signin .check span { font-size: 15px; line-height: 1.4; }
+.signin .check { align-items: flex-start; padding: 6px 0; }
+.signin .check input { flex: none; margin-top: 1px; }
+
+/* Settings → Profiles */
+.profile-preview { display: flex; justify-content: center; margin-bottom: 14px; }
+.color-choices { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.color-choice input { position: absolute; opacity: 0; }
+.color-choice span { display: block; width: 48px; height: 48px; border-radius: 50%; background: var(--av);
+                     border: 3px solid transparent; box-shadow: inset 0 0 0 2px rgb(0 0 0 / .15); }
+.color-choice input:checked + span { border-color: var(--paper); }
+.color-choice input:focus-visible + span { outline: 2px solid var(--indigo); outline-offset: 2px; }
+.device-picks { margin-top: 6px; padding-left: 4px; }
+.device-picks .group-label { margin-top: 12px; }
+
+@media (max-width: 480px) {
+  .signin-card { padding: 28px 18px 22px; border-radius: 26px; }
+  .signin-head h1 { font-size: 30px; }
+  .avatars { gap: 14px 10px; }
+  .avatar-choice { width: 96px; }
+  .avatar.xl { width: 80px; height: 80px; font-size: 34px; }
+  .pinpad { gap: 12px 18px; }
+}
+@media (max-height: 760px) and (min-width: 768px) {
+  .pinpad button { width: 64px; height: 64px; }
+  .pinpad { grid-template-columns: repeat(3, 64px); gap: 10px 20px; }
+  .pin-card { padding-top: 22px; padding-bottom: 18px; }
+  .pin-card h2 { margin-top: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .signin, .profile-menu { animation: none; }
+}

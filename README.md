@@ -28,6 +28,7 @@ once — controlled directly over your Wi-Fi.
 - **Photo frame.** A full-screen slideshow of family photos, added from any phone's browser. It can start by itself when the panel is idle, switches to a dim clock at night, and one touch goes back to the controls.
 - **Energy history.** Plugs that measure power show watts now, kWh today and a 7-day chart.
 - **Works with Home Assistant.** Already run Home Assistant? Add its lights, switches and TVs here, rooms included.
+- **Profiles and sign-in.** Everyone gets a profile with their own avatar, their own devices and their own Home page. Sign in with a quick 4–6 digit PIN on the wall panel, or an email and password on a phone. Admins add devices and change settings; members use the devices they're given. The wall panel stays signed in and goes back to the profile picker when nobody is using it.
 - **Works from phones too.** Open `http://homepanel.local:8080` in any browser on your Wi-Fi.
 - **Built to extend.** A stable API on top, one small file per brand underneath. See [Adding a device brand](app/adapters/README.md).
 
@@ -83,8 +84,44 @@ pip install -r requirements-dev.txt
 python -m app.main --demo --debug
 ```
 
+The demo opens straight to the panel. To try sign-in and profiles too, start it
+with `python -m app.main --demo --sign-in`: Owner's PIN is 1234, Sam's is 2468
+(Sam only sees the bedroom and the kitchen pendant).
+
 To control **your real devices** from your laptop (same Wi-Fi), run `make run`
 (or `python -m app.main --debug`), open http://localhost:8080, then Settings → Add a device.
+
+## Sign-in and profiles
+
+| Profile picker (wall panel) | PIN pad (phone) | Settings → Profiles |
+|---|---|---|
+| <img src="docs/screenshots/signin-picker.png" width="300" alt="Who's using the panel? Avatars for Owner and Sam"> | <img src="docs/screenshots/signin-pin.png" width="160" alt="Sam's avatar over a round-key PIN pad"> | <img src="docs/screenshots/profiles-settings.png" width="220" alt="List of profiles with their role, devices and sign-in, plus This screen settings"> |
+
+The panel asks everyone to sign in, so a guest on your Wi-Fi, or anyone who finds
+the address, can't switch your lights or see your devices. That also makes it
+**safer to reach the panel when you're away from home** (for example over
+Tailscale or another VPN): without a session the API answers nothing but "sign in".
+It isn't a substitute for a VPN: don't expose the panel's port to the internet.
+
+- **First open after upgrading:** your devices, rooms and Home page now belong to an
+  **Owner** profile, and the panel asks you to choose a PIN or a password for it. Do
+  this on the wall panel (tick "This screen is the wall panel") or from your phone.
+- **Add people** in Settings → Profiles and sign-in: a name and colour, a PIN and/or an
+  email and password, **Admin** or **Member**, and for members "all devices" or a list.
+  Devices a member can't see never reach their screen: the server leaves them out.
+- **Each profile has its own Home page.** Long-press Home to arrange yours; nobody
+  else's changes. New profiles start from a shared default ("Use my Home page for new
+  profiles").
+- **The wall panel** stays signed in across restarts and goes back to the profile
+  picker after 10 minutes without a touch (change it in Settings → Profiles and sign-in;
+  the resting clock and photo frame keep running while it's locked). Tap your avatar,
+  then your PIN.
+- **Phones and laptops** stay signed in for 30 days after they're last used. The avatar
+  at the top right switches profile or signs out.
+- PINs and passwords are stored only as scrypt hashes in `data/homepanel.json`, and sign-in
+  is limited to 8 wrong tries per 15 minutes. Forgot the only admin PIN? Stop the panel,
+  remove `"pin_hash"`/`"password_hash"` from that profile in `data/homepanel.json` (or the
+  whole `"profiles"` list) and start it again: it asks to set one up.
 
 ## Install on the Raspberry Pi
 

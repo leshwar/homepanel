@@ -1139,7 +1139,9 @@ class Voice:
 
     def home(self) -> Home:
         st = self.service.store
-        return Home(devices=list(st.devices.values()), rooms=list(st.rooms), scenes=list(st.scenes))
+        # Only what the signed-in profile may see: voice must never name (or ask about) a hidden device.
+        return Home(devices=self.service.visible_devices(), rooms=list(st.rooms),
+                    scenes=[x for x in st.scenes if self.service.scene_visible(x)])
 
     async def handle(self, text: str, confirm: bool = False) -> dict:
         text = " ".join(str(text or "").split())[:MAX_TEXT]
@@ -1233,7 +1235,7 @@ class Voice:
             d = svc.get(s.device_id)
             return f"{_The(d)} is {self._state_words(d)}."
         rooms = svc.store.rooms
-        devices = [d for d in svc.store.devices.values()
+        devices = [d for d in svc.visible_devices()
                    if s.target is None or (d.room if d.room in rooms else "") == s.target]
         busy = [d for d in devices if self._is_busy(d)]
         where = f"in the {s.target}" if s.target else "at home" if s.target is None else "outside any room"

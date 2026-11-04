@@ -25,17 +25,18 @@ export function openSettings(view = "home", arg = null) {
 }
 
 function close() { $("#settings").hidden = true; stack = []; }
-function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; if (view === "add") searchAll = {}; render(); $("#settings").scrollTop = 0; }
-function back() { stack.pop(); stack.length ? render() : close(); }
+export const closeSettings = close;
+export function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; if (view === "add") searchAll = {}; render(); $("#settings").scrollTop = 0; }
+export function back() { stack.pop(); stack.length ? render() : close(); }
 
 export function refreshSettings() {
   if (!isSettingsOpen()) return;
   const top = stack.at(-1);
-  if (top && ["home", "devices", "scenes", "rooms", "automations", "location"].includes(top.view)) render();
+  if (top && ["home", "devices", "scenes", "rooms", "automations", "location", "profiles"].includes(top.view)) render();
 }
 
 // ---------- rendering ----------
-function page(title, body, { closeBtn = false } = {}) {
+export function page(title, body, { closeBtn = false } = {}) {
   $("#settings").innerHTML = `<div class="page-inner">
     <div class="page-head">
       <button class="icon-btn" data-back aria-label="${stack.length > 1 ? "Back" : "Close"}">${icon(stack.length > 1 ? "left" : "close")}</button>
@@ -44,8 +45,8 @@ function page(title, body, { closeBtn = false } = {}) {
     </div>${body}</div>`;
 }
 
-const row = (attrs, iconName, title, sub = "", extra = "") =>
-  `<button class="row" ${attrs}>${iconName?.startsWith?.("<svg") ? iconName : iconName ? icon(iconName, "dim") : ""}<span class="grow">
+export const row = (attrs, iconName, title, sub = "", extra = "") =>
+  `<button class="row" ${attrs}>${iconName?.startsWith?.("<") ? iconName : iconName ? icon(iconName, "dim") : ""}<span class="grow">
     <span class="title">${esc(title)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}</span>${extra}${icon("right", "dim")}</button>`;
 
 function searchAllResults(r) {
@@ -69,6 +70,7 @@ function searchAllResults(r) {
 
 const VIEWS = {
   home() {
+    if (store.me && store.me.role !== "admin") return VIEWS.member();
     const n = store.devices.size;
     const attention = [...store.devices.values()].filter((d) => d.state?.online === false || d.state?.needs_pairing).length;
     page("Settings", `
@@ -88,9 +90,18 @@ const VIEWS = {
         ${row("data-go=photos", "image", "Photo frame", store.settings.idle_screen === "photos"
               ? "Shows when the panel is idle" : "Slideshow of your photos")}
         ${row("data-go=display", "sun", "Display and clock")}
+        ${row("data-go=profiles", "users", "Profiles and sign-in", profilesSummary())}
         ${row("data-go=diagnostics", "pulse", "Diagnostics and logs")}
       </div>
       <p class="group-label">Tip: typing is easier from a phone or laptop. Open this panel's address in any browser on your Wi-Fi.</p>`);
+  },
+
+  // Members: their own profile only. Devices, rooms and settings are for admins.
+  member() {
+    page("Settings", `
+      <div class="list">${row("data-go=me", "users", "Your profile", "Name, colour, PIN and password")}</div>
+      <div class="card"><h3>Want more devices here?</h3>
+        <p>Adding devices, rooms and panel settings is for admins. Ask an admin to share more devices with your profile.</p></div>`);
   },
 
   devices() {
@@ -499,6 +510,16 @@ function phoneHint(h) {
   return `On a phone or tablet on the same Wi-Fi, open <b>http://</b><i>this computer's address</i><b>:${esc(port)}</b>.
     On a Mac, find the address in System Settings → Wi-Fi → Details.`;
 }
+
+function profilesSummary() {
+  const n = store.profiles.length;
+  return `${n} ${n === 1 ? "profile" : "profiles"}`;
+}
+
+// More views from other files (js/profiles.js): {name(arg) {...}}
+export function registerViews(views) { Object.assign(VIEWS, views); }
+export const rerender = () => render();
+export const currentView = () => stack.at(-1);
 
 async function loadThumbs() {
   const el = $("#thumbs");

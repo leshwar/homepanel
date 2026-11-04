@@ -17,12 +17,13 @@ def free_port() -> int:
 
 
 class DemoServer:
-    """Runs the real HomePanel server (demo mode) in a background thread."""
+    """Runs the real HomePanel server (demo mode) in a background thread.
+    sign_in=True asks for sign-in like a real panel (demo PINs: Owner 1234, Sam 2468)."""
 
-    def __init__(self, data_dir: str):
+    def __init__(self, data_dir: str, sign_in: bool = False):
         self.port = free_port()
         self.url = f"http://127.0.0.1:{self.port}"
-        self.server = uvicorn.Server(uvicorn.Config(create_app(data_dir, demo=True), host="127.0.0.1",
+        self.server = uvicorn.Server(uvicorn.Config(create_app(data_dir, demo=True, sign_in=sign_in), host="127.0.0.1",
                                                    port=self.port, log_config=None))
         self.thread = threading.Thread(target=self.server.run, daemon=True)
 

@@ -9,6 +9,11 @@ Commands flow through a middleware pipeline before reaching the adapter:
 
 Add your own middleware (rate limits, permissions, automation hooks …) with
 service.use(fn). Each middleware is `async def mw(ctx, call_next)`.
+
+Profiles (app/core/profiles.py): who is asking comes from `current_viewer`, set by
+the API's auth middleware. `mw_access` refuses commands to devices the viewer's
+profile can't see, and snapshot() / the event stream leave those devices out, so
+a hidden device never reaches that browser.
 """
 from __future__ import annotations
 
@@ -29,6 +34,7 @@ from .layout import LayoutError, clean_layout, default_layout
 from .net import in_container, normalize_mac, parse_color
 from .photos import PhotoLibrary
 from .presence import Presence
+from .profiles import ADMIN, MEMBER, Profiles, Sessions, Viewer, current_viewer, hash_secret, sees
 from .geolocate import Geolocator
 from .weather import Weather
 from .store import Store
@@ -59,6 +65,14 @@ Middleware = Callable[[CommandContext, Callable[[CommandContext], Awaitable[dict
 # ---------------------------------------------------------------------------
 # Built-in middleware
 # ---------------------------------------------------------------------------
+
+async def mw_access(ctx: CommandContext, call_next):
+    """Members only control the devices their profile can see. A hidden device answers
+    exactly like one that doesn't exist (KeyError → 404), so it can't be probed."""
+    if not sees(ctx.device.id):
+        raise KeyError(ctx.device.id)
+    return await call_next(ctx)
+
 
 async def mw_validate(ctx: CommandContext, call_next):
     if ctx.action not in Action.ALL:
@@ -170,13 +184,14 @@ class HomeService:
         self.adapters: dict[str, DeviceAdapter] = {}
         self.unavailable: dict[str, list[str]] = {}   # adapter id -> missing python modules
         self.unsupported: dict[str, str] = {}         # adapter id -> why it can't run on this Python
-        self._subscribers: set[asyncio.Queue] = set()
+        self._subscribers: dict[asyncio.Queue, Callable[[dict], bool] | None] = {}
         self._pollers: dict[str, asyncio.Task] = {}
         self._soon: dict[str, asyncio.TimerHandle] = {}   # pushed changes waiting to refresh
         self._failures: dict[str, int] = {}
         self._found: dict[tuple[str, str], Found] = {}
         self._found_ips: dict[str, Counter] = {}     # per brand: how many results the last search found at each address
-        self._middleware: list[Middleware] = [mw_validate, mw_normalize, mw_log, mw_timeout_retry]
+        self._middleware: list[Middleware] = [mw_access, mw_validate, mw_normalize, mw_log, mw_timeout_retry]
+        self.profiles = Profiles(self.store, Sessions(os.path.join(data_dir, "demo-sessions.json" if demo else "sessions.json")))
         self.history = History(os.path.join(data_dir, "demo-history.db" if demo else "history.db"))
         self.automations = Automations(self)
         self.photos = PhotoLibrary(os.path.join(data_dir, "demo-photos" if demo else "photos"))
@@ -224,6 +239,7 @@ class HomeService:
             self.adapters[aid] = inst
         if self.demo and not self.store.devices:
             await self._seed_demo()
+        self.profiles.migrate(self.store.settings)        # upgrading: one Owner who sees everything
         if self.demo and not self.photos.list():
             await asyncio.to_thread(self.photos.seed_demo)
         if self.demo and not self.history.has_data():
@@ -248,20 +264,37 @@ class HomeService:
                 pass
 
     # --- events -------------------------------------------------------------
-    def subscribe(self) -> asyncio.Queue:
+    def subscribe(self, allow: Callable[[dict], bool] | None = None) -> asyncio.Queue:
+        """A queue of live events. `allow(event)` decides per event whether this listener
+        gets it (the API passes one that checks the listener's profile each time)."""
         q: asyncio.Queue = asyncio.Queue(maxsize=200)
-        self._subscribers.add(q)
+        self._subscribers[q] = allow
         return q
 
     def unsubscribe(self, q: asyncio.Queue) -> None:
-        self._subscribers.discard(q)
+        self._subscribers.pop(q, None)
 
     def publish(self, event: dict) -> None:
-        for q in list(self._subscribers):
+        for q, allow in list(self._subscribers.items()):
             try:
+                if allow is not None and not allow(event):
+                    continue
                 q.put_nowait(event)
             except asyncio.QueueFull:
                 pass
+            except Exception:
+                log.exception("Event filter failed")
+
+    @staticmethod
+    def event_visible(viewer: Viewer | None, event: dict) -> bool:
+        """Device events only for profiles that can see the device; automation results only for admins."""
+        if viewer is None:
+            return True
+        if event.get("type") == "device":
+            return viewer.sees(event.get("device", {}).get("id", ""))
+        if event.get("type") == "automation":
+            return viewer.is_admin
+        return True
 
     def _publish_device(self, d: Device) -> None:
         self.publish({"type": "device", "device": self.public_device(d)})
@@ -297,25 +330,62 @@ class HomeService:
         }
 
     def snapshot(self) -> dict:
+        """Everything the UI needs, for the person asking: a member gets only the devices
+        (and scenes) their profile can see, and none of the admin-only lists."""
+        viewer = current_viewer.get()
+        admin = viewer is None or viewer.is_admin
         return {
-            "devices": [self.public_device(d) for d in self.store.devices.values()],
+            "devices": [self.public_device(d) for d in self.visible_devices()],
             "rooms": self.store.rooms,
-            "scenes": self.store.scenes,
+            "scenes": [s for s in self.store.scenes if self.scene_visible(s)],
             "settings": self.settings(),
-            "adapters": [self.adapter_meta(a) for a in ADAPTERS if not ADAPTERS[a].hidden or self.demo],
-            "automations": self.automations.list(),
-            "presence": self.presence.snapshot(),
+            "adapters": [self.adapter_meta(a) for a in ADAPTERS if not ADAPTERS[a].hidden or self.demo] if admin else [],
+            "automations": self.automations.list() if admin else [],
+            "presence": self.presence.snapshot() if admin else [],
+            "me": self.profiles.public(viewer.profile) if viewer else None,
+            "profiles": [self.profiles.public(p) for p in self.profiles.items] if viewer and viewer.is_admin else [],
             "demo": self.demo,
             "in_container": in_container(),
         }
 
+    def visible_devices(self) -> list[Device]:
+        return [d for d in self.store.devices.values() if sees(d.id)]
+
+    def scene_visible(self, scene: dict) -> bool:
+        """A member sees a scene only if they can see every device in it."""
+        return all(sees(a["device_id"]) for a in scene.get("actions", []) if a["device_id"] in self.store.devices)
+
     def settings(self) -> dict:
-        """Panel settings as the UI sees them. Until someone edits the Home page, its
-        layout is the default one built from the devices that exist now."""
+        """Panel settings as the UI sees them. `home_layout` is the viewer's own Home page:
+        their saved one, else the shared default, else the built-in default made from the
+        devices they can see. Device widgets for devices they can't see are left out."""
+        viewer = current_viewer.get()
         s = dict(self.store.settings)
-        if not s.get("home_layout"):
-            s["home_layout"] = default_layout(self.store.devices.values())
+        if viewer is not None and not viewer.is_admin:
+            s.pop("presence", None)          # phones' addresses: admins only
+        s["home_layout"] = self.layout_for(viewer)
         return s
+
+    def layout_for(self, viewer: Viewer | None) -> dict:
+        layout = (viewer.profile.get("home_layout") if viewer else None) or self.store.settings.get("home_layout")
+        if not layout:
+            return default_layout(self.visible_devices())
+        widgets = [w for w in layout.get("widgets", [])
+                   if w.get("type") != "device" or sees(w.get("options", {}).get("device_id", ""))]
+        return {**layout, "widgets": widgets}
+
+    def save_my_layout(self, layout: Any) -> dict:
+        """Save the signed-in person's own Home page (None = back to the default)."""
+        viewer = current_viewer.get()
+        if viewer is None:
+            raise AdapterError("Sign in to save your Home page.")
+        try:
+            clean = clean_layout(layout) if layout else None
+        except LayoutError as e:
+            raise AdapterError(str(e)) from None
+        self.profiles.set_layout(viewer.id, clean)
+        self._publish_layout()
+        return {"home_layout": self.layout_for(viewer)}
 
     def get(self, device_id: str) -> Device:
         d = self.store.devices.get(device_id)
@@ -335,6 +405,8 @@ class HomeService:
     # --- commands -----------------------------------------------------------
     async def command(self, device_id: str, action: str, value: Any = None) -> dict:
         d = self.get(device_id)
+        if not sees(d.id):                 # before anything below can mention the device
+            raise KeyError(device_id)
         adapter = self._adapter_for(d)
         if d.state.get("needs_pairing"):
             raise AdapterError(f"{d.name} needs pairing first. Open it in Settings and choose Pair.")
@@ -359,7 +431,7 @@ class HomeService:
             if room is None:
                 return True
             return d.room not in self.store.rooms if room == "" else d.room == room
-        targets = [d for d in self.store.devices.values()
+        targets = [d for d in self.visible_devices()
                    if Cap.POWER in d.caps and d.state.get("on") and not d.keep_on and in_room(d)]
         results = await asyncio.gather(*(self.command(d.id, Action.POWER, False) for d in targets),
                                        return_exceptions=True)
@@ -610,6 +682,7 @@ class HomeService:
         for s in self.store.scenes:
             s["actions"] = [x for x in s["actions"] if x["device_id"] != device_id]
         self.store.automations = [a for a in self.store.automations if a["do"].get("device_id") != device_id]
+        self.profiles.forget_device(device_id)
         await asyncio.to_thread(self.history.forget, device_id)
         self.store.save()
         self._publish_layout()
@@ -700,7 +773,7 @@ class HomeService:
 
     async def run_scene(self, scene_id: str) -> dict:
         scene = next((s for s in self.store.scenes if s["id"] == scene_id), None)
-        if not scene:
+        if not scene or not self.scene_visible(scene):
             raise KeyError(scene_id)
         by_device: dict[str, list] = {}
         for a in scene["actions"]:
@@ -745,6 +818,11 @@ class HomeService:
             changes["temperature_unit"] = unit
         if "clock_face" in changes and changes["clock_face"] not in CLOCK_FACES:
             raise AdapterError(f"Clock face should be one of: {', '.join(CLOCK_FACES)}.")
+        if "lock_after_minutes" in changes:
+            try:
+                changes["lock_after_minutes"] = max(0, min(240, int(float(changes["lock_after_minutes"]))))
+            except (TypeError, ValueError):
+                raise AdapterError("Lock after should be a number of minutes.")
         if "frame_seconds" in changes:
             try:
                 changes["frame_seconds"] = max(5, min(300, int(float(changes["frame_seconds"]))))
@@ -771,6 +849,53 @@ class HomeService:
         self._publish_layout()
         return self.settings()
 
+    # --- profiles -----------------------------------------------------------
+    # Admin-only at the API (app/api/auth.py). Hashing is slow on purpose, so it runs in a thread.
+    def _profile_input(self, data: dict) -> dict:
+        data = dict(data or {})
+        if isinstance(data.get("devices"), list):     # only devices that exist
+            data["devices"] = [d for d in data["devices"] if d in self.store.devices]
+        return data
+
+    def list_profiles(self) -> list[dict]:
+        return [self.profiles.public(p) for p in self.profiles.items]
+
+    async def add_profile(self, data: dict) -> dict:
+        p = await asyncio.to_thread(self.profiles.create, self._profile_input(data))
+        self._publish_layout()
+        return self.profiles.public(p)
+
+    async def update_profile(self, profile_id: str, data: dict) -> dict:
+        p = await asyncio.to_thread(self.profiles.update, profile_id, self._profile_input(data))
+        self._publish_layout()               # their screens reload with the new device list
+        return self.profiles.public(p)
+
+    async def update_me(self, data: dict) -> dict:
+        """Change your own name, colour, email, PIN or password (not your role or devices)."""
+        viewer = current_viewer.get()
+        if viewer is None:
+            raise AdapterError("Sign in first.")
+        mine = {k: data[k] for k in ("name", "color", "email", "pin", "password") if k in data}
+        return await self.update_profile(viewer.id, mine)
+
+    def delete_profile(self, profile_id: str) -> None:
+        viewer = current_viewer.get()
+        if viewer is not None and viewer.id == profile_id:
+            raise AdapterError("You can't remove the profile you're signed in with. Sign in as another admin first.")
+        self.profiles.delete(profile_id)
+        self._publish_layout()
+
+    def display_settings(self, with_location: bool = False) -> dict:
+        """The look of the panel, for the sign-in screen and a locked wall panel's clock.
+        Nothing private: no location unless asked (a locked panel), no people, no layout."""
+        keys = ("home_name", "background", "glass_effect", "glass_transparency", "clock_24h", "clock_face",
+                "dim_after_seconds", "idle_screen", "frame_seconds", "frame_shuffle", "frame_clock",
+                "frame_night_clock", "temperature_unit", "lock_after_minutes")
+        out = {k: self.store.settings.get(k) for k in keys}
+        if with_location:
+            out.update({k: self.store.settings.get(k) for k in ("latitude", "longitude", "place_name", "weather_enabled")})
+        return out
+
     # --- demo ---------------------------------------------------------------
     async def _seed_demo(self) -> None:
         a = self.adapters.get("demo")
@@ -796,6 +921,15 @@ class HomeService:
                 {"device_id": "lr-lamp", "action": "power", "value": False},
                 {"device_id": "lr-tv", "action": "power", "value": False},
                 {"device_id": "bd-lamp", "action": "brightness", "value": 10}]},
+        ]
+        # Two pretend people. Owner: PIN 1234, or owner@example.com / homepanel. Sam: PIN 2468.
+        self.store.profiles = [
+            {"id": "owner", "name": "Owner", "color": "#f2b35b", "email": "owner@example.com", "role": ADMIN,
+             "pin_hash": hash_secret("1234"), "password_hash": hash_secret("homepanel"), "devices": "all",
+             "home_layout": None, "created": time.time()},
+            {"id": "sam", "name": "Sam", "color": "#7cc7a5", "email": "", "role": MEMBER,
+             "pin_hash": hash_secret("2468"), "password_hash": None,
+             "devices": ["bd-fan", "bd-lamp", "bd-tv", "kt-pendant"], "home_layout": None, "created": time.time()},
         ]
         self.store.automations = [
             {"id": "wake", "name": "Good morning on weekdays", "enabled": True,

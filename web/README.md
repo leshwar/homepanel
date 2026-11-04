@@ -13,12 +13,16 @@ web/
 ├── clockfaces.css  resting clock faces and the face picker previews
 ├── voice.css       the voice sheet: big mic with a level ring, chat bubbles, typed box
 ├── controls.css    device sheets: light pill and color wheel, TV remote, robot vacuum
+├── auth.css        sign-in screens (picker, PIN pad, email, setup), avatars, the profile menu
 └── js/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
     ├── store.js    client state, optimistic commands, change notifications
     ├── util.js     escaping, icons, colors/glow, status text, toasts, storage
     ├── glass.js    glass transparency → CSS variable
     ├── app.js      the shell: room rail / dock / tabs, Rooms view, live updates, idle clock
+    ├── auth.js     sign-in: profile picker, PIN pad, email + password, first-run setup, the
+    │               profile button (switch / sign out) and the wall panel's idle lock
+    ├── profiles.js Settings → Profiles and sign-in (admins) and Settings → Your profile
     ├── home.js     the Home page: widgets (clock, other places' clocks, weather, scenes, rooms,
     │               devices) and edit mode (hold to move, drag a corner to resize, hide, Done)
     ├── tiles.js    device tiles: tap = on/off, long-press or "…" = controls (+ haptics)
@@ -50,8 +54,13 @@ web/
   color, plugs in jade, TVs in indigo, and the background's top glow takes on the
   color of the lights that are on (`--room-glow`, `--warmth`).
 - **Touch targets ≥ 48 px**, big sliders, no hover-only features.
-- **Two pages.** **Home**: a grid of widgets, the same on every screen (saved as
-  `home_layout` in settings, checked by `app/core/layout.py`). Long-press it (or the
+- **Sign-in first.** `js/auth.js` asks `/auth/session` who is signed in before anything
+  else loads. Signed out, `html[data-auth="out"]` hides the app and its data is wiped,
+  so the last person's devices never show through the glass. Members get
+  `html[data-role="member"]`, which hides shortcuts into admin-only settings (the server
+  refuses them anyway). A 401 from any call fires `hp:signin` and the picker comes back.
+- **Two pages.** **Home**: a grid of widgets, each profile's own, the same on every screen
+  that profile uses (saved with `PUT /profiles/me/layout`, checked by `app/core/layout.py`). Long-press it (or the
   pencil) to edit: widgets wiggle; hold and drag to move, drag a corner (or tap it) for
   Small / Wide / Large, "…" for more (and the time zone of a clock), "−" to hide, **Add**
   to bring widgets back or add devices; Cancel or Done. **Rooms**: device tiles by room.

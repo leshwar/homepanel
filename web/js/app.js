@@ -3,10 +3,10 @@
 // live updates, the idle resting clock and the sky background.
 
 import { api, connectEvents } from "./api.js";
-import { store, onChange, reload, upsertDevice, setRoom, setView, devicesIn } from "./store.js";
+import { store, onChange, reload, upsertDevice, setRoom, setView, devicesIn, applySnapshot } from "./store.js";
 import { $, esc, icon, glow, toast } from "./util.js";
 import { refreshSheet, closeSheet } from "./sheet.js";
-import { openSettings, isSettingsOpen, refreshSettings } from "./settings.js";
+import { openSettings, isSettingsOpen, refreshSettings, closeSettings } from "./settings.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame, isFrameOpen } from "./photoframe.js";
 import { roomGroups, OTHER } from "./store.js";   // room tabs
@@ -14,7 +14,9 @@ import { renderAmbient } from "./clockfaces.js";
 import { svg, roomIcon } from "./icons.js";
 import { tileHtml, updateTiles, bindTiles } from "./tiles.js";
 import { applySky, refreshWeather, onWeather } from "./sky.js";
-import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEditing } from "./home.js";
+import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEditing, stopEditing } from "./home.js";
+import { startAuth } from "./auth.js";
+import "./profiles.js";      // Settings → Profiles
 import { setupVoice, closeVoice, isVoiceOpen } from "./voice.js";
 
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -185,7 +187,9 @@ function openSorting() {
 function renderGrid() {
   const grid = $("#grid");
   if (!store.devices.size) {
-    grid.innerHTML = `<div class="empty"><h2>Add your first device</h2>
+    grid.innerHTML = store.me && store.me.role !== "admin"
+      ? `<div class="empty"><h2>No devices yet</h2><p>Ask an admin to share some devices with your profile.</p></div>`
+      : `<div class="empty"><h2>Add your first device</h2>
       <p>Plugs, lights and TVs on your Wi-Fi show up here.</p>
       <button class="btn primary" data-add-device>${icon("plus")}Add a device</button></div>`;
     return;
@@ -334,8 +338,10 @@ function setupIdle() {
 }
 
 // ---------- live updates ----------
+let live = null;
 function setupLive() {
-  connectEvents((ev) => {
+  if (live) return live.restart();     // a new profile: a new stream
+  live = connectEvents((ev) => {
     if (ev.type === "device") upsertDevice(ev.device);
     else if (ev.type === "layout") reload().catch(() => {});
     else if (ev.type === "automation") {
@@ -382,4 +388,23 @@ bindTiles($("#home"), { enabled: () => !isEditing(), onLongPress: () => startEdi
 setupIdle();
 setInterval(renderClock, 10_000);
 setInterval(() => { applySky(); refreshWeather(); }, 60_000);
-reload().then(() => { revealTab(); setupLive(); }).catch((e) => { toast(e.message, true); setupLive(); });
+
+// Sign-in first (js/auth.js). Signed out, the panel keeps only its look (background,
+// clock face) so the resting clock and photo frame still work on a locked wall panel.
+function closeAll() {
+  closeSheet();
+  closeSettings();
+  if (isEditing()) stopEditing();
+}
+startAuth({
+  signedIn: () => reload().then(() => { revealTab(); setupLive(); }).catch((e) => { toast(e.message, true); setupLive(); }),
+  signedOut: (display) => {
+    live?.stop();
+    closeAll();
+    $("#home").innerHTML = "";          // the view that isn't showing keeps its last render
+    $("#grid").innerHTML = "";
+    applySnapshot({ devices: [], rooms: [], scenes: [], settings: { ...display, home_layout: { version: 1, widgets: [] } },
+                    adapters: [], demo: store.demo });
+  },
+  closeAll,
+});

@@ -8,6 +8,7 @@ from ..core.adapter import Action, Activity, Cap, Clean, Device, DeviceAdapter, 
 
 LIGHT_CAPS = [Cap.POWER, Cap.BRIGHTNESS, Cap.COLOR, Cap.COLOR_TEMP]
 TV_CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.MEDIA, Cap.APPS, Cap.INPUTS]
+POINTER_TV_CAPS = [*TV_CAPS, Cap.POINTER]   # like an LG TV: has a touchpad pointer
 
 DEMO = [
     ("lr-ceiling", "Ceiling light", Kind.LIGHT, "Living room", [Cap.POWER, Cap.BRIGHTNESS, Cap.COLOR_TEMP],
@@ -21,7 +22,7 @@ DEMO = [
     ("lr-plug", "Speaker plug", Kind.PLUG, "Living room", [Cap.POWER], {"on": True}),
     ("bd-lamp", "Bedside lamp", Kind.LIGHT, "Bedroom", LIGHT_CAPS,
      {"on": False, "brightness": 30, "color_temp": 2200, "color_mode": "temp"}),
-    ("bd-tv", "LG TV", Kind.TV, "Bedroom", TV_CAPS,
+    ("bd-tv", "LG TV", Kind.TV, "Bedroom", POINTER_TV_CAPS,
      {"on": False, "volume": 12, "muted": False, "app": "youtube", "input": None}),
     ("bd-fan", "Fan plug", Kind.PLUG, "Bedroom", [Cap.POWER], {"on": False}),
     ("kt-pendant", "Pendant lights", Kind.LIGHT, "Kitchen", [Cap.POWER, Cap.BRIGHTNESS],
@@ -148,4 +149,6 @@ class DemoAdapter(DeviceAdapter):
             pass
         elif action in (Action.KEY, Action.CHANNEL_UP, Action.CHANNEL_DOWN):
             pass
+        elif action == Action.POINTER:
+            return {}
         return dict(s)

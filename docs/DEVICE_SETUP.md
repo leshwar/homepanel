@@ -98,6 +98,10 @@ Volume shows as +/− buttons (Samsung doesn't report the exact level).
 3. To turn the TV **on** from the panel, enable on the TV:
    Settings → General → Devices → TV Management → **Quick Start+**, and
    Settings → General → Network → **Turn on via Wi-Fi** (menu names vary by year).
+4. The remote has a **touchpad** like the Magic Remote: open the TV, tap the hand icon
+   under the D-pad, then drag to move the TV's pointer, tap to click and use two fingers
+   to scroll. On a phone, **Aim** moves the pointer by tilting the phone. TVs added before
+   this get the touchpad automatically the next time the panel talks to them.
 
 ## Home Assistant
 

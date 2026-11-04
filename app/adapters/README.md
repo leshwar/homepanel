@@ -104,7 +104,9 @@ If your brand hears about changes on its own (a live connection), call
 `self.changed(uid)` and the panel refreshes that device straight away.
 
 Media players without a full remote can declare `Cap.MEDIA` instead of
-`Cap.REMOTE`: the UI then shows play/pause but no D-pad. Put lists of TV apps/inputs in `device.meta["apps"]` /
+`Cap.REMOTE`: the UI then shows play/pause but no D-pad. TVs with an on-screen pointer
+(like LG's Magic Remote) can declare `Cap.POINTER` and handle `Action.POINTER`
+(`{"dx","dy"}`, `{"click": True}` or `{"scroll": n}`); the remote then gets a touchpad. Put lists of TV apps/inputs in `device.meta["apps"]` /
 `["inputs"]` as `[{id, name}]`.
 
 ### Writing good error messages

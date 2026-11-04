@@ -18,6 +18,7 @@ once — controlled directly over your Wi-Fi.
 - **Local first.** Everything except Govee plugs is controlled directly on your network — it keeps working when the internet is down.
 - **Scenes and rooms.** "Movie night", "Bedtime", or "All off" for a room or the whole house.
 - **Schedules and automations.** At a time of day, at sunset/sunrise (computed locally), or when everyone leaves / someone comes home (phones on Wi-Fi).
+- **Resting clock faces.** When nobody has touched the panel for a while it shows a dim clock: big digital, analog with hands, a word clock ("It's quarter past ten"), date and day (with sunrise, sunset and lights on), or a very dim red night face. Pick one with a preview in Settings → Display and clock. The clock drifts slowly around the screen to avoid burn-in, and touching it only wakes the panel.
 - **Photo frame.** A full-screen slideshow of family photos, added from any phone's browser. It can start by itself when the panel is idle, switches to a dim clock at night, and one touch goes back to the controls.
 - **Energy history.** Plugs that measure power show watts now, kWh today and a 7-day chart.
 - **Works with Home Assistant.** Already run Home Assistant? Add its lights, switches and TVs here, rooms included.

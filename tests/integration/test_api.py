@@ -106,6 +106,14 @@ class ApiTests(unittest.TestCase):
         self.assertIn("Background", err["error"])
         self.call("PUT", "/settings", {"background": "ocean", "glass_transparency": 45})
 
+    def test_clock_face_setting(self):
+        status, s = self.call("PUT", "/settings", {"clock_face": "words"})
+        self.assertEqual((status, s["clock_face"]), (200, "words"))
+        status, err = self.call("PUT", "/settings", {"clock_face": "sundial"})
+        self.assertEqual(status, 400)
+        self.assertIn("Clock face", err["error"])
+        self.call("PUT", "/settings", {"clock_face": "digital"})
+
     def _upload(self, data: bytes, content_type="image/png"):
         req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/v1/photos?name=test.png", data=data,
                                      method="POST", headers={"Content-Type": content_type})

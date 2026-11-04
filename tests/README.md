@@ -28,7 +28,7 @@ No sockets, servers or browsers. Milliseconds per test.
 |---|---|
 | `test_api.py` | The real server (demo mode) called over HTTP: state has no secrets, commands and error codes, scenes, automations, energy, settings validation, health, logs, static UI. |
 | `test_fake_devices.py` | Real adapters over real sockets against simulated devices: the built-in HTTP client, a Shelly Gen2 plug, and Home Assistant. |
-| `test_ui.py` | The touch UI in headless Chromium (Playwright): tap toggles, TV opens the remote, brightness slider, rooms, add flow, night clock, energy chart, creating a schedule. Skipped locally if Playwright isn't installed; **required in CI**. |
+| `test_ui.py` | The touch UI in headless Chromium (Playwright): tap toggles, TV opens the remote, brightness slider, rooms, add flow, night clock and each clock face, energy chart, creating a schedule. Skipped locally if Playwright isn't installed; **required in CI**. |
 
 Shared helpers (free port, running the demo server) live in `tests/helpers.py`.
 

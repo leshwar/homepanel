@@ -176,5 +176,51 @@ class UITests(unittest.TestCase):
         self.assertEqual(before, self.tile("lr-lamp").evaluate("el => el.classList.contains('on')"))
 
 
+    def test_each_clock_face_shows_and_wakes(self):
+        faces = ["digital", "analog", "words", "date", "night"]
+        try:
+            for face in faces:
+                with self.subTest(face=face):
+                    self.page.click("#open-settings")
+                    self.page.click("[data-go=display]")
+                    self.page.click(f".face-choice:has(input[value={face}])")
+                    self.page.click("[data-display] button[type=submit]")
+                    self.page.wait_for_selector("[data-go=display]")      # saved, back on the settings home
+                    self.page.click("#settings [data-back]")
+                    self.page.wait_for_selector("#settings", state="hidden")
+                    self.page.click("#clock")
+                    self.page.wait_for_selector(f"#ambient[data-face={face}] .cf-{face}")
+                    self.assertTrue(self.page.locator(f"#ambient .cf-{face}").is_visible())
+                    before = self.tile("lr-lamp").evaluate("el => el.classList.contains('on')")
+                    self.page.locator("#ambient").click()
+                    self.page.wait_for_selector("#ambient", state="hidden")
+                    self.assertEqual(before, self.tile("lr-lamp").evaluate("el => el.classList.contains('on')"))
+        finally:
+            self.page.evaluate("""fetch('/api/v1/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+                                  body: JSON.stringify({clock_face: 'digital'})})""")
+
+    def test_clock_face_logic(self):
+        words, drift = self.page.evaluate("""async () => {
+            const m = await import('/js/clockfaces.js');
+            const words = [[10, 15], [10, 45], [23, 58], [0, 2], [12, 1], [9, 33], [21, 0]].map(([h, mi]) => m.wordTime(h, mi));
+            const drift = [];
+            for (let t = 0; t < 4 * 3600e3; t += 97e3) drift.push(m.driftOffset(t, 40, 30));
+            return [words, drift];
+        }""")
+        self.assertEqual(words, ["It's quarter past ten", "It's quarter to eleven", "It's midnight", "It's midnight",
+                                 "It's noon", "It's twenty-five to ten", "It's nine o'clock"])
+        self.assertTrue(all(abs(x) <= 40 and abs(y) <= 30 for x, y in drift))
+        self.assertGreater(len({tuple(d) for d in drift}), 50)   # it really moves around
+
+    def test_ambient_clock_drifts_within_screen(self):
+        self.page.click("#clock")
+        self.page.wait_for_selector("#ambient .cf-digital")
+        box = self.page.evaluate("""() => { const r = document.querySelector('#ambient-face').getBoundingClientRect();
+                                    return [r.left, r.top, r.right, r.bottom, innerWidth, innerHeight]; }""")
+        left, top, right, bottom, w, h = box
+        self.assertTrue(left >= 0 and top >= 0 and right <= w and bottom <= h, box)
+        self.page.locator("#ambient").click()
+
+
 if __name__ == "__main__":
     unittest.main()

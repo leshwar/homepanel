@@ -6,6 +6,7 @@ import { store, reload } from "./store.js";
 import { $, esc, icon, kindIcon, toast } from "./util.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame } from "./photoframe.js";
+import { FACES, faceId, faceHTML, faceInfo } from "./clockfaces.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
@@ -398,7 +399,7 @@ const VIEWS = {
         <label class="check"><input type="checkbox" name="frame_shuffle" ${s.frame_shuffle !== false ? "checked" : ""}><span>Shuffle</span></label>
         <label class="check"><input type="checkbox" name="frame_clock" ${s.frame_clock !== false ? "checked" : ""}><span>Show the time over photos</span></label>
         <label class="field" style="margin-top:12px"><span>When the panel is idle, show</span><select name="idle_screen">
-          <option value="clock" ${s.idle_screen !== "photos" ? "selected" : ""}>The dim night clock</option>
+          <option value="clock" ${s.idle_screen !== "photos" ? "selected" : ""}>The resting clock</option>
           <option value="photos" ${s.idle_screen === "photos" ? "selected" : ""}>The photo frame</option>
         </select><small>How long until idle is set in Display and clock.</small></label>
         <label class="check"><input type="checkbox" name="frame_night_clock" ${s.frame_night_clock !== false ? "checked" : ""}>
@@ -410,12 +411,20 @@ const VIEWS = {
 
   display() {
     const s = store.settings;
+    const now = new Date();
+    const info = faceInfo();
     const opts = [[0, "Never"], [30, "30 seconds"], [60, "1 minute"], [90, "90 seconds"], [180, "3 minutes"], [600, "10 minutes"]];
     page("Display and clock", `
       <form class="card" data-display>
-        <label class="field"><span>Show the night clock after</span><select name="dim_after_seconds">
+        <label class="field"><span>Show the resting clock after</span><select name="dim_after_seconds">
           ${opts.map(([v, l]) => `<option value="${v}" ${Number(s.dim_after_seconds) === v ? "selected" : ""}>${l}</option>`).join("")}
         </select><small>The screen goes dark with a dim clock so it doesn't light up the room. Touch to wake.</small></label>
+        <span class="field"><span>Clock face</span></span>
+        <div class="face-choices" role="radiogroup" aria-label="Clock face">
+          ${FACES.map((f) => `
+            <label class="face-choice"><input type="radio" name="clock_face" value="${f.id}" ${faceId(s.clock_face) === f.id ? "checked" : ""}>
+              <span class="face-preview">${faceHTML(f.id, now, info)}</span><span>${esc(f.name)}</span></label>`).join("")}
+        </div>
         <label class="check"><input type="checkbox" name="clock_24h" ${s.clock_24h ? "checked" : ""}><span>24-hour clock</span></label>
         <span class="field"><span>Background</span></span>
         <div class="bg-choices" role="radiogroup" aria-label="Background">
@@ -689,7 +698,7 @@ root.addEventListener("submit", async (e) => {
     if (form.matches("[data-display]")) {
       const v = formValues(form);
       await api.saveSettings({ dim_after_seconds: Number(v.dim_after_seconds), clock_24h: !!v.clock_24h,
-                               glass_effect: !!v.glass_effect, background: v.background,
+                               glass_effect: !!v.glass_effect, background: v.background, clock_face: v.clock_face,
                                glass_transparency: Number(v.glass_transparency) });
       toast("Saved"); await reload(); return back();
     }

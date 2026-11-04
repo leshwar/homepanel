@@ -90,7 +90,7 @@ curl -X POST http://homepanel.local:8080/api/v1/devices/a1b2c3d4e5/command \
 | POST | `/scenes` | `{"name", "icon", "actions": [{device_id, action, value}]}` **or** `{"name", "icon", "capture": [device ids]}` to save devices as they are now |
 | DELETE | `/scenes/{id}` | — |
 | POST | `/scenes/{id}/run` | — → `{"ok": n, "failed": [messages]}` |
-| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`ocean`/`aurora`/`night`), `glass_transparency` (0–100), `glass_effect` (blur on/off) |
+| PUT | `/settings` | `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`ocean`/`aurora`/`night`), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`) |
 
 ## Energy
 

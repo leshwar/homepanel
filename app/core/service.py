@@ -34,6 +34,7 @@ log = logging.getLogger("homepanel")
 COMMAND_TIMEOUT = 10.0
 BACKGROUNDS = ("ocean", "aurora", "night")
 IDLE_SCREENS = ("clock", "photos")
+CLOCK_FACES = ("digital", "analog", "words", "date", "night")
 REFRESH_TIMEOUT = 8.0
 OFFLINE_AFTER_FAILURES = 2
 
@@ -614,6 +615,8 @@ class HomeService:
                 raise AdapterError("Glass transparency should be a number from 0 to 100.")
         if "idle_screen" in changes and changes["idle_screen"] not in IDLE_SCREENS:
             raise AdapterError("Idle screen should be 'clock' or 'photos'.")
+        if "clock_face" in changes and changes["clock_face"] not in CLOCK_FACES:
+            raise AdapterError(f"Clock face should be one of: {', '.join(CLOCK_FACES)}.")
         if "frame_seconds" in changes:
             try:
                 changes["frame_seconds"] = max(5, min(300, int(float(changes["frame_seconds"]))))

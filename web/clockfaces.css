@@ -1,0 +1,50 @@
+/* Resting clock faces (js/clockfaces.js). Everything is sized in container units, so
+   the same face fills the screen in .ambient and fits the small Settings previews.
+   Colors stay dim and warm on black: the panel often sits in a dark bedroom. */
+
+.ambient { container-type: size; --min-text: 15px; }
+#ambient-face { transition: transform 2s ease; will-change: transform; }
+
+.cf { display: flex; flex-direction: column; align-items: center; text-align: center; color: #8b8780;
+      font-weight: 200; line-height: 1; font-variant-numeric: tabular-nums; }
+.cf-sub { color: #5d5a55; font-weight: 400; font-size: max(var(--min-text), 3.1cqmin); line-height: 1.3;
+          margin-top: 2.5cqmin; max-width: 86cqw; text-wrap: balance; }
+
+/* Big digital: the original resting clock */
+.cf-digital .cf-time { font-size: min(28cqw, 30cqh); letter-spacing: -0.03em; }
+
+/* Analog with hands (no second hand: nothing moves faster than the 10 s redraw) */
+.cf-dial { width: 62cqmin; height: 62cqmin; overflow: visible; }
+.cf-ticks line { stroke: #45423e; stroke-width: 2; stroke-linecap: round; }
+.cf-ticks line.major { stroke: #6b6761; stroke-width: 4; }
+.cf-hour, .cf-min { stroke-linecap: round; }
+.cf-hour { stroke: #8b8780; stroke-width: 7; }
+.cf-min { stroke: #a29d95; stroke-width: 4; }
+.cf-pin { fill: #9a7442; }
+.cf-analog .cf-sub { margin-top: 4cqmin; }
+
+/* Word clock: "It's quarter past ten" */
+.cf-phrase { font-size: 12cqmin; font-weight: 300; line-height: 1.12; max-width: 86cqw; text-wrap: balance;
+             letter-spacing: -0.01em; }
+.cf-lead { color: #5d5a55; }
+.cf-words .cf-sub { margin-top: 4cqmin; }
+
+/* Date and day */
+.cf-weekday { font-size: 15cqmin; letter-spacing: -0.02em; }
+.cf-day { font-size: 6.5cqmin; color: #6f6b65; font-weight: 300; margin-top: 1.5cqmin; }
+.cf-date .cf-time { font-size: 8cqmin; font-weight: 300; margin-top: 4cqmin; color: #a29d95; }
+
+/* Dim night: small, dark red, nearly nothing lit */
+.ambient[data-face="night"] { cursor: none; }
+.cf-night .cf-time { font-size: 13cqmin; font-weight: 300; color: #5a2f22; letter-spacing: -0.02em; }
+
+/* ---------- Settings → Display and clock: face picker with previews ---------- */
+.face-choices { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+.face-choice { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer;
+               min-width: 112px; text-align: center; }
+.face-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.face-preview { width: 112px; height: 84px; border-radius: 14px; background: #000; container-type: size;
+                --min-text: 0px; display: flex; align-items: center; justify-content: center; overflow: hidden;
+                box-shadow: inset 0 0 0 1px rgb(255 255 255 / .15); pointer-events: none; }
+.face-choice input:checked + .face-preview { box-shadow: 0 0 0 3px var(--paper); }
+.face-choice input:focus-visible + .face-preview { outline: 3px solid var(--indigo); outline-offset: 3px; }

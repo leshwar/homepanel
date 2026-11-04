@@ -19,7 +19,8 @@ from ..core.net import (http, local_subnet_hosts, mac_from_arp, normalize_mac, p
 KEYS = {Key.UP: "KEY_UP", Key.DOWN: "KEY_DOWN", Key.LEFT: "KEY_LEFT", Key.RIGHT: "KEY_RIGHT",
         Key.OK: "KEY_ENTER", Key.BACK: "KEY_RETURN", Key.HOME: "KEY_HOME", Key.MENU: "KEY_MENU",
         Key.SOURCE: "KEY_SOURCE", Key.PLAY: "KEY_PLAY", Key.PAUSE: "KEY_PAUSE", Key.STOP: "KEY_STOP",
-        Key.REWIND: "KEY_REWIND", Key.FORWARD: "KEY_FF"}
+        Key.REWIND: "KEY_REWIND", Key.FORWARD: "KEY_FF", Key.EXIT: "KEY_EXIT", Key.CHANNEL_LIST: "KEY_CH_LIST",
+        Key.INFO: "KEY_INFO", **{d: f"KEY_{d}" for d in Key.DIGITS}}
 
 # Well-known Tizen app IDs, used when the TV doesn't share its installed-app list.
 KNOWN_APPS = [

@@ -1,0 +1,334 @@
+/* The app shell (room rail, dock, top bar), the Home page widgets, edit mode and
+   the "Sky" background. Loaded after app.css.
+
+   Screens: phones and the portrait panel (< 768 px wide) get a floating dock and
+   room tabs; iPad and the landscape panel get a room rail on the left. Safe areas
+   (notch, home indicator) come from env(safe-area-inset-*); heights use dvh so the
+   iPhone's moving toolbars don't cut things off. Animations are short and only
+   move or fade (transform/opacity), so they stay smooth on a Raspberry Pi. */
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { min-height: 100dvh; -webkit-touch-callout: none; overflow-x: hidden; }
+
+.app { min-height: 100dvh; padding: 0; max-width: none; margin: 0; }
+.main { min-width: 0; width: 100%; max-width: 1500px; margin: 0 auto;
+        padding: calc(12px + env(safe-area-inset-top)) calc(var(--pad) + env(safe-area-inset-right))
+                 calc(116px + env(safe-area-inset-bottom)) calc(var(--pad) + env(safe-area-inset-left)); }
+
+/* ---------- top bar ---------- */
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 64px; margin-bottom: 14px; }
+.topbar-title { min-width: 0; }
+.topbar-title h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.12;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-title p { margin: 2px 0 0; color: var(--haze); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.topbar-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.topbar-clock { height: 48px; padding: 0 16px; border-radius: 24px; font-size: 19px; font-weight: 500;
+             font-variant-numeric: tabular-nums; white-space: nowrap; }
+.icon-btn, .btn-alloff { width: 48px; height: 48px; }
+.btn-alloff { width: auto; height: 48px; padding: 0 16px 0 13px; border-radius: 24px; white-space: nowrap; }
+@media (max-width: 480px) {
+  .topbar-title h1 { font-size: 30px; }
+  .btn-alloff { width: 48px; padding: 0; justify-content: center; }
+  .btn-alloff span { display: none; }          /* the button keeps its "Turn everything off" label */
+  .topbar-clock { padding: 0 12px; font-size: 17px; }
+}
+
+/* ---------- room rail (iPad, landscape panel) ---------- */
+.rail { display: none; }
+.rail-head { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; padding: 4px 14px 14px; overflow: hidden;
+             text-overflow: ellipsis; white-space: nowrap; }
+.rail-label { margin: 18px 14px 6px; color: var(--haze); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.rail-rooms { display: flex; flex-direction: column; gap: 4px; }
+.rail-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 14px; border-radius: 16px;
+             text-align: left; font-size: 17px; font-weight: 500; transition: background-color .2s, color .2s, transform .15s var(--ease); }
+.rail-item > span:not(.count) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-item:active { transform: scale(.97); background: rgb(255 255 255 / .08); }
+.rail-item[aria-selected="true"], .rail-item[aria-current="page"] { background: var(--paper); color: var(--night); font-weight: 600; }
+.rail-foot { margin-top: auto; padding-top: 14px; display: flex; flex-direction: column; gap: 4px; }
+.rail-foot .rail-item { color: var(--haze); }
+.count { min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; display: inline-grid; place-items: center; flex: none;
+         background: var(--lamp); color: #1a1d22; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+@media (min-width: 768px) {
+  .app { display: grid; grid-template-columns: var(--rail-w, 220px) minmax(0, 1fr); }
+  .rail { display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100dvh; overflow-y: auto;
+          padding: calc(20px + env(safe-area-inset-top)) 12px calc(16px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+          background: rgb(8 12 32 / calc(var(--glass-alpha) * .75)); border-right: 1px solid rgb(255 255 255 / .08);
+          -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%); backdrop-filter: blur(var(--glass-blur)) saturate(150%); }
+  .main { padding: calc(16px + env(safe-area-inset-top)) calc(28px + env(safe-area-inset-right)) calc(32px + env(safe-area-inset-bottom)) 28px; }
+  .dock, .rooms { display: none !important; }
+}
+@media (min-width: 1100px) { .app { --rail-w: 250px; } }
+
+/* ---------- dock (phones, portrait panel) ---------- */
+.dock { position: fixed; z-index: 15; left: 0; right: 0; bottom: calc(14px + env(safe-area-inset-bottom));
+        display: flex; justify-content: center; align-items: center; gap: 10px; pointer-events: none; }
+.dock > * { pointer-events: auto; }
+.dock-bar, .dock-add { background-color: rgb(14 20 46 / max(.62, var(--glass-alpha)));
+  -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgb(255 255 255 / .12); box-shadow: inset 0 1px 0 rgb(255 255 255 / .14), 0 16px 40px rgb(0 4 30 / .35); }
+.dock-bar { display: flex; gap: 2px; padding: 5px; border-radius: 34px; }
+.dock-bar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+                   min-width: 80px; height: 58px; border-radius: 29px; font-size: 12px; font-weight: 600; color: var(--haze);
+                   transition: background-color .2s, color .2s, transform .15s var(--ease); }
+.dock-bar button[aria-current="page"] { background: rgb(255 255 255 / .17); color: var(--paper); }
+.dock-bar button:active, .dock-add:active { transform: scale(.94); }
+.dock-add { width: 68px; height: 68px; border-radius: 50%; display: grid; place-items: center; transition: transform .15s var(--ease); }
+.dock-add .i { width: 28px; height: 28px; }
+html:has(.home.editing) .dock { display: none; }
+@media (max-width: 767px) {
+  .toast { bottom: calc(104px + env(safe-area-inset-bottom)); }
+  .rooms { margin-top: -4px; }
+}
+
+/* ---------- view switch ---------- */
+html[data-view="home"] #clock[hidden] { display: none; }
+
+/* ---------- Home page ---------- */
+.home { position: relative; container-type: inline-size; }
+.home-grid { --cols: 2; --g: 14px; display: grid; gap: var(--g); grid-auto-flow: row dense;
+             grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+             grid-auto-rows: 160px;   /* fallback; square cells below */
+             grid-auto-rows: calc((100cqi - (var(--cols) - 1) * var(--g)) / var(--cols)); }
+@container (min-width: 480px) { .home-grid { --cols: 4; } }
+@container (min-width: 840px) { .home-grid { --cols: 6; --g: 16px; } }
+
+.widget { position: relative; min-width: 0; min-height: 0; border-radius: 26px; container-type: size; isolation: isolate;
+          background-color: rgb(12 18 40 / var(--glass-alpha)); background-image: linear-gradient(160deg, rgb(255 255 255 / .08), rgb(255 255 255 / 0) 60%);
+          -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%); backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+          border: 1px solid rgb(255 255 255 / .1); box-shadow: inset 0 1px 0 rgb(255 255 255 / .12), 0 14px 34px rgb(0 4 30 / .22); }
+.s-2x1 { grid-column: span 2; }
+.s-2x2 { grid-column: span 2; grid-row: span 2; }
+.widget.t-device { background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.widget > .tile { position: absolute; inset: 0; min-height: 0; border-radius: inherit; }
+
+.w-fill { display: flex; flex-direction: column; width: 100%; height: 100%; padding: clamp(12px, 8cqmin, 20px); text-align: left;
+          overflow: hidden; border-radius: inherit; }
+.w-label { font-size: clamp(13px, 9cqmin, 16px); font-weight: 600; color: var(--haze); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.w-label em { font-style: normal; font-weight: 500; opacity: .75; }
+.w-sub { font-size: clamp(12px, 8cqmin, 15px); color: var(--haze); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.w-time { display: flex; align-items: baseline; font-weight: 250; letter-spacing: -0.035em; line-height: .95;
+          font-variant-numeric: tabular-nums; white-space: nowrap; }
+.w-time small { font-size: .3em; font-weight: 600; letter-spacing: 0; margin-left: .25em; color: var(--haze); }
+
+/* big clock */
+.w-clock { justify-content: space-between; }
+.w-greet { font-size: clamp(15px, 7cqw, 24px); font-weight: 600; }
+.w-clock .w-time { font-size: min(40cqh, 31cqw); }
+.s-2x1 .w-clock .w-time { font-size: min(46cqh, 22cqw); }
+.s-1x1 .w-clock .w-time { font-size: min(34cqh, 27cqw); }
+.w-date { font-size: clamp(13px, 6cqw, 21px); color: var(--haze); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-1x1 .w-greet, .s-1x1 .w-date { font-size: clamp(12px, 9cqw, 15px); }
+.w-clock:active { transform: none; }
+
+/* clocks for other places */
+.w-zone { justify-content: space-between; }
+.w-zone .w-time { font-size: min(32cqh, 27cqw); font-weight: 300; }
+.s-2x1 .w-zone .w-time, .s-2x2 .w-zone .w-time { font-size: min(40cqh, 18cqw); }
+
+/* weather */
+.w-weather { justify-content: space-between; }
+.w-wx { display: flex; align-items: center; gap: 8px; }
+.w-wx .cf-wx-icon { width: min(36cqh, 30cqw); height: min(36cqh, 30cqw); flex: none; fill: none; stroke: currentColor;
+                    stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.w-wx b { font-size: min(36cqh, 24cqw); font-weight: 300; letter-spacing: -0.03em; line-height: 1; }
+.w-weather.off p { margin: 4px 0 0; font-size: clamp(12px, 8cqmin, 15px); color: var(--haze); flex: 1; overflow: hidden; }
+.w-weather.off .btn { align-self: flex-start; height: 48px; }
+.s-1x1 .w-weather.off p { display: none; }
+
+/* scenes and rooms */
+.w-scenes, .w-rooms { gap: 10px; }
+.w-scene-list { display: flex; flex-wrap: wrap; gap: 8px; overflow-y: auto; scrollbar-width: none; min-height: 0; }
+.w-scene-list::-webkit-scrollbar, .w-room-list::-webkit-scrollbar { display: none; }
+.w-scene-list .scene { height: 48px; padding: 0 16px 0 12px; border-radius: 16px; background: rgb(255 255 255 / .09);
+                       border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; font-size: 15px; }
+.w-room-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; overflow-y: auto;
+               scrollbar-width: none; min-height: 0; align-content: start; }
+.w-room-list p { margin: 0; color: var(--haze); font-size: 15px; }
+.w-room { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 12px; border-radius: 16px;
+          background: rgb(255 255 255 / .09); font-weight: 500; font-size: 15px; transition: transform .15s var(--ease); }
+.w-room > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.w-room .i { width: 22px; height: 22px; color: var(--haze); }
+.w-room:active, .scene:active { transform: scale(.96); }
+
+/* ---------- edit mode ---------- */
+.home.editing .widget { animation: wiggle .3s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -71ms); cursor: grab; touch-action: none; }
+.home.editing .widget > :not(.w-badge):not(.w-resize) { pointer-events: none; }
+@keyframes wiggle { from { transform: rotate(-.6deg); } to { transform: rotate(.6deg); } }
+.widget.dragging { animation: none !important; z-index: 10; pointer-events: none; cursor: grabbing;
+                   box-shadow: 0 26px 60px rgb(0 0 0 / .45); opacity: .96; }
+.widget.dropped { animation: drop .26s var(--ease) !important; }
+@keyframes drop { from { transform: scale(1.04); } }
+
+.w-badge, .w-resize { position: absolute; z-index: 3; width: 48px; height: 48px; display: grid; place-items: center; }
+.w-badge::before, .w-resize::before { content: ""; position: absolute; inset: 9px; border-radius: 50%;
+  background: rgb(235 238 245 / .92); box-shadow: 0 2px 8px rgb(0 0 0 / .3); }
+.w-badge .i, .w-resize .i { position: relative; width: 18px; height: 18px; color: #1a1d22; stroke-width: 2.6; }
+.w-hide { top: -6px; left: -6px; }
+.w-menu { top: -6px; right: -6px; }
+.w-resize { right: -4px; bottom: -4px; cursor: nwse-resize; touch-action: none; }
+.w-resize::before { border-radius: 10px 4px 14px 4px; }
+
+.editbar { position: fixed; z-index: 16; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+           display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 20px; border-radius: 34px; max-width: calc(100vw - 20px);
+           background-color: rgb(14 20 46 / .8); -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
+           border: 1px solid rgb(255 255 255 / .14); box-shadow: 0 18px 44px rgb(0 4 30 / .45); animation: rise-x .24s var(--ease); }
+@keyframes rise-x { from { transform: translate(-50%, 30px); opacity: 0; } }
+.editbar-hint { color: var(--haze); font-size: 15px; white-space: nowrap; margin-right: 4px; }
+.editbar .btn { height: 48px; border-radius: 24px; }
+@media (max-width: 560px) { .editbar-hint { display: none; } .editbar { padding-left: 8px; } }
+
+.wmenu-wrap { position: fixed; inset: 0; z-index: 25; display: grid; place-items: end center; }
+.wmenu-scrim { position: absolute; inset: 0; background: rgb(0 4 20 / .45); animation: fade .2s; }
+.wmenu { position: relative; width: min(460px, calc(100% - 20px)); max-height: 82dvh; overflow-y: auto; margin-bottom: calc(10px + env(safe-area-inset-bottom));
+         padding: 20px; border-radius: 28px; display: flex; flex-direction: column; gap: 12px; animation: rise .26s var(--ease);
+         background-color: rgb(12 18 42 / .9); -webkit-backdrop-filter: blur(28px) saturate(160%); backdrop-filter: blur(28px) saturate(160%);
+         border: 1px solid rgb(255 255 255 / .12); box-shadow: 0 -10px 50px rgb(0 4 30 / .4); }
+@media (min-width: 768px) { .wmenu-wrap { place-items: center; } .wmenu { margin: 0; } }
+.wmenu h3 { margin: 0 0 2px; font-size: 20px; font-weight: 600; }
+.wmenu .field { margin: 0; }
+.wmenu .group-label { margin: 6px 2px -4px; }
+.wmenu .btn { width: 100%; height: 50px; }
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 18px; background: rgb(0 0 0 / .28); }
+.seg button { height: 48px; border-radius: 14px; font-weight: 600; transition: background-color .2s, color .2s; }
+.seg [aria-checked="true"] { background: var(--paper); color: var(--night); }
+.wmenu-row { display: flex; gap: 8px; }
+.wmenu-row .btn { flex: 1; }
+.wmenu-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.wmenu-list .chip { display: inline-flex; align-items: center; gap: 6px; height: 48px; }
+
+/* ---------- tiles: Apple Home–like ---------- */
+.tile { border-radius: 26px; padding: 16px; min-height: 140px; }
+.tile-icon { width: 46px; height: 46px; transition: background .3s, color .3s, box-shadow .3s, transform .2s var(--ease); }
+.tile-icon .i { width: 26px; height: 26px; }
+.tile-name { font-weight: 600; font-size: 17px; margin-top: 12px; }
+.tile-status { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile-text { min-width: 0; }
+.tile-more { top: 4px; right: 4px; color: var(--haze); }
+.tile-more .i { width: 22px; height: 22px; }
+.tile:active { transform: scale(.96); }
+.tile.pop .tile-icon { animation: pop .34s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes pop { 45% { transform: scale(1.18); } }
+.widget > .tile { padding: clamp(12px, 8cqmin, 16px); }
+.widget > .tile .tile-icon { width: clamp(38px, 28cqmin, 46px); height: clamp(38px, 28cqmin, 46px); }
+.widget > .tile .tile-name { font-size: clamp(14px, 11cqmin, 17px); margin-top: 6px; }
+.widget > .tile .tile-status { font-size: clamp(12px, 9cqmin, 14px); }
+
+/* room tiles size with their column, not the window (the rail takes room on wide screens) */
+#grid { container-type: inline-size; }
+.tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 1px) {   /* override app.css's window-width columns */
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container (min-width: 520px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container (min-width: 760px) { .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@container (min-width: 1040px) { .tiles { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+
+/* ---------- sheet: slide away when closing ---------- */
+.sheet.closing { animation: sink .2s var(--ease) forwards; }
+.scrim.closing { animation: fade-out .2s forwards; }
+@keyframes sink { to { transform: translateY(60px); opacity: 0; } }
+@keyframes fade-out { to { opacity: 0; } }
+
+/* =====================================================================
+   Sky background (Settings → Display → Sky). html[data-sky] and
+   html[data-period] come from js/sky.js. The clouds, rain and snow are big
+   layers that only move with transform, and pause for "reduce motion".
+   ===================================================================== */
+.sky { display: none; position: absolute; inset: 0; overflow: hidden; }
+html[data-bg="sky"] .sky { display: block; }
+html[data-bg="sky"] .backdrop .bg-shapes { display: none; }
+html[data-bg="sky"] { --haze: #d3dbee; }
+html[data-bg="sky"] .backdrop { background: var(--sky-bg, linear-gradient(180deg, #1c4fc0, #6aa2ec)); transition: background 1s; }
+
+html[data-bg="sky"][data-period="day"]   { --sky-bg: linear-gradient(180deg, #1b54c9 0%, #3a80e4 48%, #7fb1ec 100%); }
+html[data-bg="sky"][data-period="dawn"]  { --sky-bg: linear-gradient(180deg, #27306f 0%, #7a5aa2 46%, #e9967c 100%); }
+html[data-bg="sky"][data-period="dusk"]  { --sky-bg: linear-gradient(180deg, #221d58 0%, #5f3b8c 42%, #c76489 74%, #ec9a6c 100%); }
+html[data-bg="sky"][data-period="night"] { --sky-bg: linear-gradient(180deg, #050920 0%, #10183f 55%, #1d2858 100%); }
+html[data-bg="sky"][data-sky="cloudy"], html[data-bg="sky"][data-sky="fog"] {
+  --sky-bg: linear-gradient(180deg, #3e4d66 0%, #63758f 55%, #8d9db3 100%); }
+html[data-bg="sky"][data-sky="rain"]  { --sky-bg: linear-gradient(180deg, #223047 0%, #3a4d67 55%, #566a84 100%); }
+html[data-bg="sky"][data-sky="snow"]  { --sky-bg: linear-gradient(180deg, #4d5f7b 0%, #7a8ca6 55%, #a9b7ca 100%); }
+html[data-bg="sky"][data-sky="storm"] { --sky-bg: linear-gradient(180deg, #161927 0%, #2b2842 55%, #433b5c 100%); }
+html[data-bg="sky"][data-period="night"]:is([data-sky="cloudy"], [data-sky="fog"], [data-sky="rain"], [data-sky="snow"]) {
+  --sky-bg: linear-gradient(180deg, #0c111d 0%, #1b2436 55%, #2b364b 100%); }
+
+.sky > div { position: absolute; opacity: 0; transition: opacity 1.2s ease; will-change: transform; }
+
+.sky-sun { inset: -30% -20% auto auto; width: 90vmax; height: 90vmax; border-radius: 50%;
+           background: radial-gradient(closest-side, rgb(255 236 180 / .55), rgb(255 214 140 / .18) 45%, transparent 70%); }
+.sky-stars { inset: 0 0 35% 0;
+  background:
+    radial-gradient(1.4px 1.4px at 20px 30px, #fff, transparent),
+    radial-gradient(1px 1px at 90px 120px, #fff, transparent),
+    radial-gradient(1.6px 1.6px at 160px 60px, #fff, transparent),
+    radial-gradient(1px 1px at 220px 170px, #fff, transparent),
+    radial-gradient(1.2px 1.2px at 60px 200px, #fff, transparent);
+  background-size: 260px 230px; animation: twinkle 6s ease-in-out infinite alternate; }
+@keyframes twinkle { from { filter: brightness(.8); } to { filter: brightness(1.2); } }
+
+.sky-clouds { left: 0; top: 0; width: 200%; height: 62%; background-repeat: repeat-x; background-size: 50% 100%;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1000 400' preserveAspectRatio='none'%3E%3Cdefs%3E%3Cfilter id='b' x='-50%25' y='-50%25' width='200%25' height='200%25'%3E%3CfeGaussianBlur stdDeviation='20'/%3E%3C/filter%3E%3C/defs%3E%3Cg fill='white' filter='url(%23b)'%3E%3Cellipse cx='250' cy='120' rx='150' ry='50' opacity='.6'/%3E%3Cellipse cx='330' cy='95' rx='100' ry='55' opacity='.55'/%3E%3Cellipse cx='640' cy='225' rx='190' ry='58' opacity='.5'/%3E%3Cellipse cx='720' cy='190' rx='110' ry='60' opacity='.45'/%3E%3Cellipse cx='860' cy='70' rx='70' ry='28' opacity='.4'/%3E%3C/g%3E%3C/svg%3E");
+  animation: drift 160s linear infinite; }
+.sky-clouds.far { top: 6%; height: 48%; animation-duration: 260s; transform: scaleY(.8); }
+@keyframes drift { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+
+.sky-rain { left: 0; right: 0; top: -186px; height: calc(100% + 186px);
+  background-image: repeating-linear-gradient(105deg, transparent 0 22px, rgb(220 230 255 / .17) 22px 23.5px, transparent 23.5px 48px);
+  animation: rain .55s linear infinite; }
+@keyframes rain { to { transform: translateY(185.5px); } }
+
+.sky-snow { left: 0; right: 0; top: -240px; height: calc(100% + 240px);
+  background:
+    radial-gradient(2.5px 2.5px at 30px 40px, rgb(255 255 255 / .9), transparent),
+    radial-gradient(2px 2px at 100px 150px, rgb(255 255 255 / .8), transparent),
+    radial-gradient(3px 3px at 170px 80px, rgb(255 255 255 / .85), transparent),
+    radial-gradient(2px 2px at 60px 210px, rgb(255 255 255 / .7), transparent);
+  background-size: 240px 240px; animation: snow 14s linear infinite; }
+@keyframes snow { to { transform: translateY(240px); } }
+
+html:is([data-sky="partly"], [data-sky="cloudy"], [data-sky="rain"], [data-sky="snow"], [data-sky="storm"], [data-sky="fog"]) .sky-clouds.near { opacity: .6; }
+html:is([data-sky="cloudy"], [data-sky="rain"], [data-sky="snow"], [data-sky="storm"], [data-sky="fog"]) .sky-clouds.far { opacity: .45; }
+html[data-sky="fog"] .sky-clouds { height: 100%; }
+html[data-period="night"]:is([data-sky="clear"], [data-sky="partly"]) .sky-stars { opacity: .85; }
+html:is([data-period="day"], [data-period="dawn"]):is([data-sky="clear"], [data-sky="partly"]) .sky-sun { opacity: 1; }
+html[data-period="night"] .sky-clouds { filter: brightness(.45); }
+html:is([data-sky="rain"], [data-sky="storm"]) .sky-rain { opacity: 1; }
+html[data-sky="snow"] .sky-snow { opacity: 1; }
+
+/* Display settings: the Sky swatch */
+.bg-swatch.sky { background: linear-gradient(180deg, #1b54c9, #7fb1ec 70%, #ec9a6c); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sky > div { animation: none !important; }
+  .home.editing .widget { animation: none; }
+}
+@media (min-width: 768px) { .room-head.single .room-title { display: none; } }   /* the bar title already names the room */
+
+/* Settings → device → Icon */
+.icon-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: 8px; margin: 0 0 16px; }
+.icon-choice { cursor: pointer; }
+.icon-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.icon-choice > span { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; height: 56px;
+                      border-radius: 16px; background: rgb(255 255 255 / .07); transition: background-color .2s, box-shadow .2s; }
+.icon-choice small { font-size: 11px; color: var(--haze); line-height: 1; }
+.icon-choice input:checked + span { background: rgb(255 255 255 / .2); box-shadow: inset 0 0 0 2px var(--paper); }
+.icon-choice input:focus-visible + span { outline: 3px solid var(--indigo); outline-offset: 2px; }
+
+/* labels never shrink; lists take what's left and scroll */
+.w-fill > .w-label, .w-fill > .w-sub, .w-fill > .w-greet, .w-fill > .w-date { flex: none; }
+.w-scene-list, .w-room-list { flex: 1 1 auto; }
+/* text straight on the sky stays readable over bright clouds */
+html[data-bg="sky"] :is(.topbar-title, .room-head, .rail-head, .rail-label, .nudge) { text-shadow: 0 1px 14px rgb(0 8 40 / .5); }
+html[data-bg="sky"] .w-wx .cf-wx-icon { color: var(--paper); }
+
+/* times leave room for AM/PM */
+.w-clock .w-time { font-size: min(40cqh, 27cqw); }
+.s-2x1 .w-clock .w-time { font-size: min(46cqh, 19cqw); }
+.s-1x1 .w-clock .w-time, .w-zone .w-time { font-size: min(32cqh, 23cqw); }
+.s-2x1 .w-zone .w-time, .s-2x2 .w-zone .w-time { font-size: min(40cqh, 16cqw); }
+/* wide (one row tall) scene and room lists: one row that scrolls sideways */
+.s-2x1 .w-scene-list, .s-1x1 .w-scene-list { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; flex: none; }
+.w-scene-list .scene { flex: none; }
+.s-2x1 .w-room-list, .s-1x1 .w-room-list { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(150px, 1fr);
+                                          overflow-x: auto; overflow-y: hidden; flex: none; }

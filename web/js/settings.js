@@ -8,6 +8,7 @@ import { applyTransparency } from "./glass.js";
 import { openFrame } from "./photoframe.js";
 import { FACES, faceId, faceHTML, faceInfo } from "./clockfaces.js";
 import { findLocation, describeFound, canUseDeviceLocation } from "./locate.js";
+import { DEVICE_ICONS, deviceIconName, svg } from "./icons.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
@@ -44,7 +45,7 @@ function page(title, body, { closeBtn = false } = {}) {
 }
 
 const row = (attrs, iconName, title, sub = "", extra = "") =>
-  `<button class="row" ${attrs}>${iconName ? icon(iconName, "dim") : ""}<span class="grow">
+  `<button class="row" ${attrs}>${iconName?.startsWith?.("<svg") ? iconName : iconName ? icon(iconName, "dim") : ""}<span class="grow">
     <span class="title">${esc(title)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}</span>${extra}${icon("right", "dim")}</button>`;
 
 function searchAllResults(r) {
@@ -99,7 +100,7 @@ const VIEWS = {
       return `<p class="group-label">${esc(r || "No room")}</p><div class="list">${list.map((d) => {
         const s = d.state || {};
         const warn = s.needs_pairing ? "Needs pairing" : s.online === false ? "Offline" : "";
-        return row(`data-go=device data-arg="${esc(d.id)}"`, kindIcon(d), d.name, d.adapter_name,
+        return row(`data-go=device data-arg="${esc(d.id)}"`, svg(deviceIconName(d), "dim"), d.name, d.adapter_name,
                    warn ? `<span class="badge">${warn}</span>` : "");
       }).join("")}</div>`;
     }).join("");
@@ -120,6 +121,13 @@ const VIEWS = {
           <option value="">No room</option>
           ${store.rooms.map((r) => `<option ${r === d.room ? "selected" : ""}>${esc(r)}</option>`).join("")}
         </select></label>
+        <span class="field"><span>Icon</span></span>
+        <div class="icon-choices" role="radiogroup" aria-label="Icon">
+          <label class="icon-choice"><input type="radio" name="d-icon" value="" ${!d.icon ? "checked" : ""}>
+            <span>${svg(deviceIconName({ ...d, icon: "" }))}<small>Auto</small></span></label>
+          ${DEVICE_ICONS.map((ic) => `<label class="icon-choice"><input type="radio" name="d-icon" value="${ic}" ${d.icon === ic ? "checked" : ""}>
+            <span aria-label="${ic}">${svg(ic)}</span></label>`).join("")}
+        </div>
         ${d.kind === "tv" ? `<label class="field"><span>MAC address (used to turn the TV on)</span>
           <input id="d-mac" value="${esc(d.mac || "")}" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off" spellcheck="false">
           <small>${d.mac ? "Found automatically." : "Usually found automatically after the panel has talked to the TV while it's on."}
@@ -350,12 +358,15 @@ const VIEWS = {
     sync();
   },
 
-  async location() {
+  async location(arg) {
     const s = store.settings;
+    const forWeather = arg === "weather";      // from the Home weather card's "Turn on weather"
     page("Location and presence", `
       <form class="card" data-location>
         <h3>Your location</h3>
-        <p>Used on this panel for sunrise and sunset times and, if you turn it on, the weather.</p>
+        <p>${forWeather && s.latitude == null
+          ? "To show the weather, the panel needs to know where home is. Tap Use my location, check it, then tap Save location."
+          : "Used on this panel for sunrise and sunset times and, if you turn it on, the weather."}</p>
         <button class="btn locate" type="button" data-locate>${PIN}<span>Use my location</span></button>
         <p class="locate-note"><small>${canUseDeviceLocation()
           ? "Asks this device for its location (do this at home). If it can't, the panel"
@@ -366,7 +377,7 @@ const VIEWS = {
         <p id="sun-today"></p>
         <label class="field"><span>Place name (optional)</span><input name="place_name" maxlength="40" value="${esc(s.place_name || "")}" placeholder="Seattle">
           <small>Shown on the resting clock. Type it, or let "Use my location" fill it in.</small></label>
-        <label class="check"><input type="checkbox" name="weather_enabled" ${s.weather_enabled ? "checked" : ""}>
+        <label class="check"><input type="checkbox" name="weather_enabled" ${s.weather_enabled || forWeather ? "checked" : ""}>
           <span>Show the weather on the resting clock</span></label>
         <p><small>The panel asks Open-Meteo (free, no account) for the weather about every 20 minutes, sending your location rounded to about 1 km. It's the panel's only internet call that isn't for a device. Without internet the clock just leaves the weather out.</small></p>
         <label class="field"><span>Temperature</span><select name="temperature_unit">
@@ -447,8 +458,8 @@ const VIEWS = {
         <label class="check"><input type="checkbox" name="clock_24h" ${s.clock_24h ? "checked" : ""}><span>24-hour clock</span></label>
         <span class="field"><span>Background</span></span>
         <div class="bg-choices" role="radiogroup" aria-label="Background">
-          ${[["ocean", "Ocean"], ["aurora", "Aurora"], ["night", "Night"]].map(([v, l]) => `
-            <label class="bg-choice"><input type="radio" name="background" value="${v}" ${(s.background || "ocean") === v ? "checked" : ""}>
+          ${[["sky", "Sky"], ["ocean", "Ocean"], ["aurora", "Aurora"], ["night", "Night"]].map(([v, l]) => `
+            <label class="bg-choice"><input type="radio" name="background" value="${v}" ${(s.background || "sky") === v ? "checked" : ""}>
               <span class="bg-swatch ${v}"></span><span>${l}</span></label>`).join("")}
         </div>
         <label class="field"><span>Glass transparency <b id="glass-val">${s.glass_transparency ?? 45}%</b></span>
@@ -473,11 +484,21 @@ const VIEWS = {
       $("#health").innerHTML = `<h3>${h.online} of ${h.devices} devices responding</h3>
         <p>Running for ${fmtDuration(h.uptime_s)}. Brands available: ${esc(h.adapters.join(", "))}.
         ${Object.keys(h.unavailable).length ? `<br>Not installed: ${esc(Object.keys(h.unavailable).join(", "))}.` : ""}
-        ${Object.keys(h.unsupported || {}).length ? `<br>Not available on this Python: ${esc(Object.keys(h.unsupported).join(", "))}.` : ""}</p>`;
+        ${Object.keys(h.unsupported || {}).length ? `<br>Not available on this Python: ${esc(Object.keys(h.unsupported).join(", "))}.` : ""}</p>
+        <h3 class="phone-title">Use it on your phone</h3>
+        <p id="phone-url">${phoneHint(h)}</p>`;
     } catch (e) { $("#health").innerHTML = `<p>${esc(e.message)}</p>`; }
     loadLogs("");
   },
 };
+
+// Where to open the panel from a phone or tablet on the same Wi-Fi.
+function phoneHint(h) {
+  if (h.phone_url) return `On a phone or tablet on the same Wi-Fi, open <b>${esc(h.phone_url)}</b> in the browser.`;
+  const port = location.port || "80";
+  return `On a phone or tablet on the same Wi-Fi, open <b>http://</b><i>this computer's address</i><b>:${esc(port)}</b>.
+    On a Mac, find the address in System Settings → Wi-Fi → Details.`;
+}
 
 async function loadThumbs() {
   const el = $("#thumbs");
@@ -595,7 +616,7 @@ root.addEventListener("click", async (e) => {
     if (t("[data-save-device]")) {
       const id = t("[data-save-device]").dataset.saveDevice;
       const changes = { name: $("#d-name").value.trim() || "Device", room: $("#d-room").value,
-                        keep_on: !!$("#d-keep")?.checked };
+                        keep_on: !!$("#d-keep")?.checked, icon: $("input[name=d-icon]:checked")?.value || "" };
       if ($("#d-mac")) changes.mac = $("#d-mac").value.trim();
       await api.updateDevice(id, changes);
       toast("Saved");

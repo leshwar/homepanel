@@ -22,9 +22,10 @@ from dataclasses import asdict
 from typing import Any, Awaitable, Callable
 
 from .adapter import (ADAPTERS, Action, AdapterError, Cap, Clean, Device, DeviceAdapter, Found,
-                      Key, PairingRequired, missing_requirements, unsupported_reason)
+                      Key, PairingRequired, Pointer, missing_requirements, unsupported_reason)
 from .automations import Automations
 from .history import History
+from .layout import LayoutError, clean_layout, default_layout
 from .net import in_container, normalize_mac, parse_color
 from .photos import PhotoLibrary
 from .presence import Presence
@@ -35,7 +36,7 @@ from .store import Store
 log = logging.getLogger("homepanel")
 
 COMMAND_TIMEOUT = 10.0
-BACKGROUNDS = ("ocean", "aurora", "night")
+BACKGROUNDS = ("sky", "ocean", "aurora", "night")   # sky: follows the weather and time of day
 IDLE_SCREENS = ("clock", "photos")
 CLOCK_FACES = ("digital", "analog", "words", "date", "night")
 REFRESH_TIMEOUT = 8.0
@@ -85,6 +86,27 @@ async def mw_validate(ctx: CommandContext, call_next):
     return await call_next(ctx)
 
 
+def normalize_pointer(value: Any) -> dict:
+    """Turn a pointer command into exactly one of {"dx","dy"}, {"click": True} or {"scroll": n}."""
+    if not isinstance(value, dict):
+        raise AdapterError("Pointer commands need a move, a click or a scroll.")
+
+    def num(v: Any, limit: int) -> int:
+        try:
+            n = int(round(float(v)))
+        except (TypeError, ValueError):
+            raise AdapterError("Pointer moves must be numbers.") from None
+        return max(-limit, min(limit, n))
+
+    if value.get("click"):
+        return {"click": True}
+    if "scroll" in value:
+        return {"scroll": num(value["scroll"], Pointer.MAX_SCROLL)}
+    if "dx" in value or "dy" in value:
+        return {"dx": num(value.get("dx", 0), Pointer.MAX_MOVE), "dy": num(value.get("dy", 0), Pointer.MAX_MOVE)}
+    raise AdapterError("Pointer commands need a move, a click or a scroll.")
+
+
 async def mw_normalize(ctx: CommandContext, call_next):
     a, v = ctx.action, ctx.value
     if a == Action.TOGGLE:  # adapters only ever see POWER
@@ -101,13 +123,15 @@ async def mw_normalize(ctx: CommandContext, call_next):
         ctx.value = parse_color(v)
     elif a == Action.MUTE:
         ctx.value = (not ctx.device.state.get("muted")) if v is None else bool(v)
+    elif a == Action.POINTER:
+        ctx.value = normalize_pointer(v)
     return await call_next(ctx)
 
 
 async def mw_log(ctx: CommandContext, call_next):
     try:
         result = await call_next(ctx)
-        log.info("%s %s=%r ok (%.0f ms)", ctx.device.name, ctx.action, ctx.value,
+        (log.debug if ctx.action in Action.QUIET else log.info)("%s %s=%r ok (%.0f ms)", ctx.device.name, ctx.action, ctx.value,
                  (time.monotonic() - ctx.started) * 1000)
         return result
     except Exception as e:
@@ -117,9 +141,11 @@ async def mw_log(ctx: CommandContext, call_next):
 
 async def mw_timeout_retry(ctx: CommandContext, call_next):
     last: Exception | None = None
-    for _attempt in range(2):
+    # A late pointer move is worse than a lost one, so those get one quick try.
+    attempts, limit = (1, 3.0) if ctx.action in Action.QUIET else (2, COMMAND_TIMEOUT)
+    for _attempt in range(attempts):
         try:
-            return await asyncio.wait_for(call_next(ctx), COMMAND_TIMEOUT)
+            return await asyncio.wait_for(call_next(ctx), limit)
         except (AdapterError, ValueError):
             raise                      # meaningful errors: don't retry
         except (asyncio.TimeoutError, OSError, ConnectionError) as e:
@@ -273,13 +299,21 @@ class HomeService:
             "devices": [self.public_device(d) for d in self.store.devices.values()],
             "rooms": self.store.rooms,
             "scenes": self.store.scenes,
-            "settings": self.store.settings,
+            "settings": self.settings(),
             "adapters": [self.adapter_meta(a) for a in ADAPTERS if not ADAPTERS[a].hidden or self.demo],
             "automations": self.automations.list(),
             "presence": self.presence.snapshot(),
             "demo": self.demo,
             "in_container": in_container(),
         }
+
+    def settings(self) -> dict:
+        """Panel settings as the UI sees them. Until someone edits the Home page, its
+        layout is the default one built from the devices that exist now."""
+        s = dict(self.store.settings)
+        if not s.get("home_layout"):
+            s["home_layout"] = default_layout(self.store.devices.values())
+        return s
 
     def get(self, device_id: str) -> Device:
         d = self.store.devices.get(device_id)
@@ -308,6 +342,8 @@ class HomeService:
         if d.config != config_before:
             self.store.save()
         self._failures[d.id] = 0
+        if action in Action.QUIET:          # nothing changed; don't flood the live events
+            return self.public_device(d)
         d.state.update({"online": True, **changed})
         self._publish_device(d)
         # confirm the real state shortly after (devices sometimes ignore commands)
@@ -315,9 +351,14 @@ class HomeService:
         return self.public_device(d)
 
     async def all_off(self, room: str | None = None) -> int:
+        """Turn off what's on. room=None: everywhere; room="": devices that aren't in a room
+        (no room, or a room that was deleted), which the UI shows as "Other"."""
+        def in_room(d: Device) -> bool:
+            if room is None:
+                return True
+            return d.room not in self.store.rooms if room == "" else d.room == room
         targets = [d for d in self.store.devices.values()
-                   if Cap.POWER in d.caps and d.state.get("on") and not d.keep_on
-                   and (room is None or d.room == room)]
+                   if Cap.POWER in d.caps and d.state.get("on") and not d.keep_on and in_room(d)]
         results = await asyncio.gather(*(self.command(d.id, Action.POWER, False) for d in targets),
                                        return_exceptions=True)
         return sum(1 for r in results if not isinstance(r, Exception))
@@ -711,6 +752,11 @@ class HomeService:
                     "weather_enabled"):
             if key in changes:
                 changes[key] = changes[key] in (True, 1, "1", "true", "on")
+        if "home_layout" in changes:
+            try:
+                changes["home_layout"] = clean_layout(changes["home_layout"]) if changes["home_layout"] else None
+            except LayoutError as e:
+                raise AdapterError(str(e)) from None
         if "presence" in changes:
             people = []
             for p in changes["presence"] or []:
@@ -721,7 +767,7 @@ class HomeService:
         self.store.settings.update(changes)
         self.store.save()
         self._publish_layout()
-        return self.store.settings
+        return self.settings()
 
     # --- demo ---------------------------------------------------------------
     async def _seed_demo(self) -> None:

@@ -16,7 +16,7 @@ DEFAULT_SETTINGS = {
     "clock_24h": False,
     "glass_effect": True,         # frosted-glass blur; turn off if a slow screen feels sluggish
     "glass_transparency": 45,     # 0 = solid tiles, 100 = almost clear glass
-    "background": "ocean",        # ocean | aurora | night
+    "background": "sky",          # sky (follows the weather and time of day) | ocean | aurora | night
     "idle_screen": "clock",       # what to show when idle: "clock" (resting clock) or "photos"
     "clock_face": "digital",      # resting clock face: digital | analog | words | date | night
     "frame_seconds": 15,          # photo frame: seconds per photo
@@ -28,6 +28,7 @@ DEFAULT_SETTINGS = {
     "place_name": "",             # shown on the resting clock, e.g. "Seattle"; typed by the user
     "weather_enabled": False,     # opt-in: fetch weather for the location (the only non-device internet call)
     "presence": [],               # [{"name": "Asha", "ip": "192.168.1.23"}] phones to watch
+    "home_layout": None,          # Home page widgets (app/core/layout.py); None = the default layout
 }
 
 DEFAULT_ROOMS = ["Living room", "Bedroom", "Kitchen"]

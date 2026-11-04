@@ -44,13 +44,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .app { min-height: 100%; padding: calc(var(--pad) + env(safe-area-inset-top)) var(--pad) 40px;
        max-width: 1400px; margin: 0 auto; }
 
-.top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 22px; }
-.clock { text-align: left; display: flex; flex-direction: column; }
-.clock-time { font-size: 64px; font-weight: 300; line-height: 1; letter-spacing: -0.02em;
-              font-variant-numeric: tabular-nums; }
-.clock-sub { color: var(--haze); margin-top: 8px; font-size: 17px; }
-.top-actions { display: flex; gap: 10px; align-items: center; padding-top: 6px; }
-
 .icon-btn { width: 52px; height: 52px; border-radius: 50%; display: grid; place-items: center;
             background: var(--dusk); color: var(--haze); }
 .icon-btn:active { background: var(--slate); color: var(--paper); }
@@ -60,10 +53,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .btn-alloff:active { background: var(--slate); }
 .btn-alloff .i { color: var(--ember); }
 
-/* ---------- scenes ---------- */
-.scenes { display: flex; gap: 10px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--pad)) 18px;
-          padding: 2px var(--pad); }
-.scenes::-webkit-scrollbar, .rooms::-webkit-scrollbar { display: none; }
+/* ---------- scenes (Home page widget) ---------- */
+.rooms::-webkit-scrollbar { display: none; }
 .scene { flex: none; display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 20px 0 14px;
          border-radius: var(--r-ctl); background: var(--dusk); font-weight: 500; transition: transform .15s var(--ease); }
 .scene .i { color: var(--lamp); }
@@ -72,20 +63,55 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .scene.add { color: var(--haze); font-weight: 400; }
 .scene.add .i { color: var(--haze); }
 
-/* ---------- rooms ---------- */
-.rooms { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; margin: 0 calc(-1 * var(--pad)) 16px;
-         padding: 0 var(--pad); }
-.room { flex: none; height: 44px; padding: 0 16px; border-radius: 22px; color: var(--haze); font-size: 17px; }
-.room[aria-pressed="true"] { color: var(--night); background: var(--paper); font-weight: 600; }
-.room .count { margin-left: 6px; font-size: 14px; opacity: .7; font-variant-numeric: tabular-nums; }
+/* ---------- rooms ----------
+   Tabs: All, one per room, Other (devices without a room). The bar sticks to the
+   top while scrolling (.stuck adds a glass backing). The number is how many are on. */
+.rooms { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; scroll-behavior: smooth;
+         position: sticky; top: -1px; z-index: 5; margin: 0 calc(-1 * var(--pad)) 10px;
+         padding: 9px var(--pad) 8px; transition: background-color .2s, box-shadow .2s; }
+.rooms.stuck { background: rgb(10 16 38 / min(.92, calc(var(--glass-alpha, .54) + .3)));
+               -webkit-backdrop-filter: blur(var(--glass-blur, 0px)); backdrop-filter: blur(var(--glass-blur, 0px));
+               box-shadow: 0 10px 24px rgb(0 4 30 / .3); }
+.room { flex: none; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 20px;
+        border-radius: 26px; color: var(--paper); font-size: 17px; font-weight: 500;
+        border: 1px solid rgb(255 255 255 / .09); transition: background-color .2s, color .2s; }
+.room[aria-selected="true"] { color: var(--night); background: var(--paper); font-weight: 600; border-color: transparent; }
+.room .count { min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; display: grid; place-items: center;
+               background: var(--lamp); color: #1a1d22; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
 
 /* ---------- device grid ---------- */
-.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); }
-@media (min-width: 900px) { .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@media (min-width: 1250px) { .grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.grid { touch-action: pan-y; }              /* sideways swipes change room */
+.room-section + .room-section { margin-top: 26px; }
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gap); grid-auto-flow: row dense; }
+@media (min-width: 600px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 900px) { .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+@media (min-width: 1250px) { .tiles { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 
-.room-head { grid-column: 1 / -1; color: var(--haze); font-size: 15px; margin: 14px 2px -4px; }
-.room-head:first-child { margin-top: 0; }
+.room-head { display: flex; align-items: center; gap: 12px; min-height: 52px; margin: 0 0 8px; }
+.room-title { display: flex; align-items: center; gap: 2px; min-height: 48px; margin: 0; font-size: 21px; font-weight: 500;
+              color: var(--paper); line-height: 1.2; }
+.room-title .i { width: 20px; height: 20px; color: var(--haze); }
+.room-status { color: var(--haze); font-size: 15px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.room-off { flex: none; display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 16px 0 12px;
+            border-radius: 24px; font-weight: 500; font-size: 16px; border: 1px solid rgb(255 255 255 / .09);
+            background: rgb(12 18 40 / var(--glass-alpha, .54)); }
+.room-off .i { width: 20px; height: 20px; color: var(--ember); }
+.room-off:active { background: var(--slate); }
+
+.nudge { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: space-between;
+         background: rgb(150 166 255 / .14); border: 1px solid rgb(150 166 255 / .25); border-radius: var(--r-ctl);
+         padding: 10px 10px 10px 16px; margin-bottom: 12px; }
+.nudge p { margin: 0; flex: 1 1 220px; font-size: 15px; }
+.nudge .btn { height: 48px; }
+
+/* phones: a little tighter so two columns of tiles fit comfortably */
+@media (max-width: 520px) {
+  :root { --pad: 16px; --gap: 12px; }
+  .tile { min-height: 132px; padding: 16px; }
+  .tile-name { font-size: 17px; margin-top: 14px; }
+  .room { padding: 0 16px; }
+  .room-title { font-size: 19px; }
+}
 
 .tile { position: relative; overflow: hidden; border-radius: var(--r-tile); background: var(--dusk);
         min-height: 150px; padding: 18px; display: flex; flex-direction: column; justify-content: space-between;
@@ -166,41 +192,11 @@ label.field { display: block; margin: 0 0 14px; }
 .section-label { color: var(--haze); font-size: 15px; margin: 22px 0 10px; display: flex; justify-content: space-between; }
 .section-label b { color: var(--paper); font-weight: 500; font-variant-numeric: tabular-nums; }
 
-/* big touch slider */
-.slider { position: relative; height: 72px; border-radius: 20px; background: var(--night); overflow: hidden;
-          touch-action: none; cursor: pointer; }
-.slider-fill { position: absolute; inset: 0 auto 0 0; background: rgb(var(--glow, 242 179 91) / .9); border-radius: 20px 0 0 20px; }
-.slider-fill::after { content: ""; position: absolute; right: 10px; top: 22px; bottom: 22px; width: 5px; border-radius: 3px;
-                      background: rgb(26 29 34 / .45); }
-.slider .i { position: absolute; left: 22px; top: 24px; color: #1a1d22; mix-blend-mode: multiply; }
-
-.swatches { display: flex; flex-wrap: wrap; gap: 12px; }
-.swatch { width: 56px; height: 56px; border-radius: 50%; position: relative; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .1); }
-.swatch[aria-pressed="true"]::after { content: ""; position: absolute; inset: -6px; border-radius: 50%;
-                                      border: 3px solid var(--paper); }
-
 .meta-line { color: var(--haze); font-size: 14px; margin-top: 26px; display: flex; justify-content: space-between; gap: 10px; }
 .link { color: var(--haze); text-decoration: underline; text-underline-offset: 3px; }
 
-/* ---------- TV remote ---------- */
-.remote { display: grid; grid-template-columns: 1fr auto 1fr; gap: 18px; align-items: center; margin-top: 4px; }
-.rocker { display: flex; flex-direction: column; align-items: center; border-radius: 40px; background: var(--slate);
-          width: 80px; justify-self: center; overflow: hidden; }
-.rocker button { width: 80px; height: 76px; display: grid; place-items: center; }
-.rocker button:active { background: rgb(255 255 255 / .1); }
-.rocker span { color: var(--haze); font-size: 13px; padding: 2px 0; }
-.dpad { position: relative; width: 236px; height: 236px; border-radius: 50%; background: var(--slate); }
-.dpad button { position: absolute; display: grid; place-items: center; width: 76px; height: 76px; border-radius: 50%; }
-.dpad button:active { background: rgb(255 255 255 / .1); }
-.dpad .up { top: 4px; left: 80px; } .dpad .down { bottom: 4px; left: 80px; }
-.dpad .left { left: 4px; top: 80px; } .dpad .right { right: 4px; top: 80px; }
-.dpad .ok { top: 68px; left: 68px; width: 100px; height: 100px; background: var(--dusk); font-weight: 600; font-size: 18px; }
-.dpad .ok:active { background: var(--line); }
-.remote-row { display: flex; justify-content: center; gap: 14px; margin-top: 22px; }
-.round { width: 64px; height: 64px; border-radius: 50%; background: var(--slate); display: grid; place-items: center; }
-.round:active { background: var(--line); }
-.round.active { background: var(--paper); color: var(--night); }
-@media (max-width: 420px) { .dpad { transform: scale(.82); margin: -20px; } }
+/* Settings → Diagnostics: "Use it on your phone" with the address to open */
+#health .phone-title { margin-top: 16px; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 10px; }
 .chip { height: 52px; padding: 0 18px; border-radius: var(--r-ctl); background: var(--slate); font-weight: 500; }
@@ -263,8 +259,6 @@ button.row:active { background: var(--slate); }
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 @media (orientation: landscape) and (max-height: 760px) {
-  .clock-time { font-size: 48px; }
-  .top { margin-bottom: 14px; }
   .tile { min-height: 136px; }
 }
 
@@ -320,8 +314,8 @@ html[data-bg="ocean"] .clock-time, html[data-bg="aurora"] .clock-time { text-sha
 .tile-more:active, .tile-tv-ctl button:active { background: rgb(255 255 255 / .14); }
 .tile-tv-ctl button { background: rgb(255 255 255 / .09); }
 .dpad .ok { background: rgb(255 255 255 / .08); }
-.room:not([aria-pressed="true"]) { background: rgb(12 18 40 / calc(var(--glass-alpha) * .6)); }
-.room { margin-right: 4px; }
+.room:not([aria-selected="true"]) { background: rgb(12 18 40 / var(--glass-alpha));
+  -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
 
 .sheet {
   background-color: rgb(10 16 38 / min(.96, calc(var(--glass-alpha) + .26)));
@@ -360,20 +354,3 @@ input[type="range"].glass-range { width: 100%; height: 44px; accent-color: var(-
 @media (prefers-reduced-transparency: reduce) {
   :root { --glass-alpha: .92 !important; --glass-blur: 0px !important; }
 }
-
-/* robot vacuum */
-.meter { height: 12px; border-radius: 6px; background: var(--slate); overflow: hidden; margin-bottom: 20px; }
-.meter-fill { height: 100%; background: rgb(var(--glow, 124 199 165)); border-radius: inherit; }
-.vacuum-ctl .btn { min-height: 56px; flex: 1; }
-.vac-map { background: var(--slate); border-radius: var(--r-tile); padding: 10px; margin-bottom: 16px; }
-.vac-map img { display: block; width: 100%; max-height: 360px; object-fit: contain; }
-.vac-map span { display: none; color: var(--haze); font-size: 15px; padding: 24px 8px; text-align: center; }
-.vac-map.empty img { display: none; }
-.vac-map.empty span { display: block; }
-.vacuum-more .btn { flex: 1 1 calc(50% - 10px); min-height: 52px; }
-.vac-parts summary { cursor: pointer; list-style: none; min-height: 48px; align-items: center; margin-bottom: 0; }
-.vac-parts summary::-webkit-details-marker { display: none; }
-.vac-parts .part { display: grid; grid-template-columns: 9em 1fr 3.5em; align-items: center; gap: 12px; margin: 10px 0; }
-.vac-parts .part b { text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
-.meter.small { height: 8px; margin: 0; }
-.meter-fill.low { background: rgb(232 121 107); }

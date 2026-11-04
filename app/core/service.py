@@ -30,7 +30,7 @@ from .adapter import (ADAPTERS, Action, AdapterError, Cap, Clean, Device, Device
                       Key, PairingRequired, Pointer, missing_requirements, unsupported_reason)
 from .automations import Automations
 from .history import History
-from .layout import LayoutError, clean_layout, default_layout
+from .layout import LayoutError, clean_layout, default_layout, migrate_layout
 from .net import in_container, normalize_mac, parse_color
 from .photos import PhotoLibrary
 from .presence import Presence
@@ -240,6 +240,7 @@ class HomeService:
         if self.demo and not self.store.devices:
             await self._seed_demo()
         self.profiles.migrate(self.store.settings)        # upgrading: one Owner who sees everything
+        self._migrate_layouts()
         if self.demo and not self.photos.list():
             await asyncio.to_thread(self.photos.seed_demo)
         if self.demo and not self.history.has_data():
@@ -357,8 +358,8 @@ class HomeService:
 
     def settings(self) -> dict:
         """Panel settings as the UI sees them. `home_layout` is the viewer's own Home page:
-        their saved one, else the shared default, else the built-in default made from the
-        devices they can see. Device widgets for devices they can't see are left out."""
+        their saved one, else the shared default, else the built-in default. There are no
+        devices on Home (they're on the Rooms pages), so nothing in it can leak a hidden one."""
         viewer = current_viewer.get()
         s = dict(self.store.settings)
         if viewer is not None and not viewer.is_admin:
@@ -368,11 +369,22 @@ class HomeService:
 
     def layout_for(self, viewer: Viewer | None) -> dict:
         layout = (viewer.profile.get("home_layout") if viewer else None) or self.store.settings.get("home_layout")
-        if not layout:
-            return default_layout(self.visible_devices())
-        widgets = [w for w in layout.get("widgets", [])
-                   if w.get("type") != "device" or sees(w.get("options", {}).get("device_id", ""))]
-        return {**layout, "widgets": widgets}
+        return migrate_layout(layout) if layout else default_layout()
+
+    def _migrate_layouts(self) -> None:
+        """Home layouts saved before devices moved off the Home page: drop their device
+        widgets, in the shared default and in every profile, and save once."""
+        changed = False
+        holders = [self.store.settings, *self.store.profiles]
+        for h in holders:
+            old = h.get("home_layout")
+            new = migrate_layout(old)
+            if new != old:
+                h["home_layout"] = new
+                changed = True
+        if changed:
+            self.store.save()
+            log.info("Home pages updated: devices are on the Rooms pages now")
 
     def save_my_layout(self, layout: Any) -> dict:
         """Save the signed-in person's own Home page (None = back to the default)."""

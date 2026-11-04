@@ -13,7 +13,7 @@ once — controlled directly over your Wi-Fi.
   <img src="docs/screenshots/landscape.png" width="830" alt="Home screen in landscape on a 1280x720 display">
 </p>
 
-- **Touch-first glass UI.** A **Home page** of widgets you arrange yourself (long-press to edit): a big clock, clocks for India and the US, weather, scenes, rooms and device shortcuts, the same on every screen. A **Rooms** page with a tab for each room, down the side on an iPad or a landscape panel. Tap a tile to switch it, long-press (or tap "…") for full controls.
+- **Touch-first glass UI.** A **Home page** of widgets you arrange yourself (long-press to edit): a big clock, clocks for India and the US, weather, scenes and your rooms, the same on every screen. **All rooms** and a page for each room, listed down the side on an iPad or a landscape panel and as tabs on a phone: tap a room to see just its devices. Tap a tile to switch it, long-press (or tap "…") for full controls.
 - **A sky that matches outside.** The background follows the weather and time of day (or pick Ocean, Aurora or Night), under frosted-glass tiles with adjustable transparency. Lit lights glow in their real color.
 - **Works on iPhone and iPad too.** Safe areas, no sideways scrolling, and "Add to Home Screen" for a full-screen app.
 - **Many brands, one screen.** Globe Electric / Tuya / Smart Life, Govee, TP-Link Kasa & Tapo, Shelly, WiZ, Philips Hue, Samsung TVs, LG TVs and LG sound bars.

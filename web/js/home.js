@@ -1,5 +1,6 @@
 // The Home page: a grid of widgets — big clock, clocks for other places, weather,
-// scenes, rooms and device shortcuts — and edit mode to arrange them.
+// scenes and the rooms — and edit mode to arrange them. Devices aren't on Home:
+// each room's card opens that room's page with its devices.
 //
 // The layout is one object (`home_layout`, checked by app/core/layout.py) kept in
 // each profile, so everyone gets their own Home page on every screen they use.
@@ -11,17 +12,17 @@
 
 import { api } from "./api.js";
 import { store, devicesIn, roomGroups, OTHER } from "./store.js";
-import { $, esc, icon, isMedia, toast } from "./util.js";
+import { $, esc, icon, toast } from "./util.js";
 import { openSettings } from "./settings.js";
 import { svg, roomIcon } from "./icons.js";
-import { tileHtml, haptic } from "./tiles.js";
+import { haptic } from "./tiles.js";
 import { currentWeather } from "./sky.js";
 import { weatherIcon } from "./clockfaces.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 const SIZES = ["1x1", "2x1", "2x2"];
 const SIZE_NAMES = { "1x1": "Small", "2x1": "Wide", "2x2": "Large" };
-const TYPE_NAMES = { clock: "Clock", zone: "Clock", weather: "Weather", scenes: "Scenes", rooms: "Rooms", device: "Device" };
+const TYPE_NAMES = { clock: "Clock", zone: "Clock", weather: "Weather", scenes: "Scenes", rooms: "Rooms" };
 
 // ---------- time zones ----------
 export const US_ZONES = [
@@ -72,7 +73,7 @@ export function greeting(now = new Date()) {
 // ---------- layout ----------
 let draft = null;          // a copy being edited; null when not editing
 export const isEditing = () => !!draft;
-const layout = () => draft || store.settings.home_layout || { version: 1, widgets: [] };
+const layout = () => draft || store.settings.home_layout || { version: 2, widgets: [] };
 const clone = (o) => JSON.parse(JSON.stringify(o));
 
 // ---------- widgets ----------
@@ -136,12 +137,6 @@ function roomsWidget() {
     rows.join("") || `<p>Add devices and rooms to see them here.</p>`}</div></div>`;
 }
 
-function deviceWidget(w) {
-  const d = store.devices.get(w.options?.device_id);
-  if (!d) return null;                       // removed since: leave it out
-  return tileHtml(d, { size: w.size, ctx: "home", sub: d.room || "" });
-}
-
 function widgetBody(w, now) {
   switch (w.type) {
     case "clock": return clockWidget(w, now);
@@ -149,13 +144,11 @@ function widgetBody(w, now) {
     case "weather": return weatherWidget();
     case "scenes": return scenesWidget();
     case "rooms": return roomsWidget();
-    case "device": return deviceWidget(w);
-    default: return null;
+    default: return null;                     // e.g. an old "device" widget: devices are on the Rooms pages now
   }
 }
 
 const widgetName = (w) => {
-  if (w.type === "device") return store.devices.get(w.options?.device_id)?.name || "Device";
   if (w.type === "zone") return `${w.options?.label || zoneName(zoneOf(w.options))} clock`;
   return TYPE_NAMES[w.type] || "Widget";
 };
@@ -180,7 +173,7 @@ export function renderHome({ enter = false } = {}) {
   const visible = layout().widgets.filter((w) => !w.hidden);
   el.classList.toggle("editing", isEditing());
   el.innerHTML = `<div class="home-grid">${visible.map((w, i) => widgetHtml(w, i, now)).join("")}</div>${
-    !visible.length ? `<div class="empty"><h2>Your Home page is empty</h2><p>Add the clock, weather or your favourite devices.</p>
+    !visible.length ? `<div class="empty"><h2>Your Home page is empty</h2><p>Add the clock, weather, scenes or your rooms.</p>
       <button class="btn primary" data-edit-home>${svg("pencil")}Edit Home page</button></div>` : ""}${
     isEditing() ? editBar() : ""}`;
   if (enter && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -234,7 +227,8 @@ function editBar() {
 
 export function startEditing() {
   if (isEditing()) return;
-  draft = clone(store.settings.home_layout || { version: 1, widgets: [] });
+  draft = clone(store.settings.home_layout || { version: 2, widgets: [] });
+  draft.widgets = draft.widgets.filter((w) => w.type !== "device");   // devices live on the Rooms pages
   haptic(18);
   renderHome();
 }
@@ -313,15 +307,11 @@ function widgetMenu(id) {
 
 function addMenu() {
   const hidden = draft.widgets.filter((w) => w.hidden);
-  const shown = new Set(draft.widgets.filter((w) => w.type === "device").map((w) => w.options.device_id));
-  const devices = [...store.devices.values()].filter((d) => !shown.has(d.id)).sort((a, b) => a.name.localeCompare(b.name));
   openMenu(`<h3>Add to Home</h3>
     ${hidden.length ? `<p class="group-label">Hidden widgets</p><div class="wmenu-list">${hidden.map((w) =>
       `<button class="chip" data-unhide="${esc(w.id)}">${icon("plus")}${esc(widgetName(w))}</button>`).join("")}</div>` : ""}
     <p class="group-label">Clock for another place</p>
     <div class="wmenu-list"><button class="chip" data-add-zone>${icon("plus")}Clock</button></div>
-    ${devices.length ? `<p class="group-label">Devices</p><div class="wmenu-list">${devices.map((d) =>
-      `<button class="chip" data-add-device-widget="${esc(d.id)}">${icon("plus")}${esc(d.name)}</button>`).join("")}</div>` : ""}
     <button class="btn small primary" data-menu-close>Close</button>`, "Add to Home");
 }
 
@@ -477,12 +467,6 @@ export function setupHome({ goRoom, showAmbient }) {
     if (t.closest("[data-add-zone]")) {
       return addWidget({ id: `zone-${Date.now().toString(36)}`, type: "zone", size: "1x1", hidden: false,
                          options: { tz: null, label: "US" } });
-    }
-    const dev = t.closest("[data-add-device-widget]");
-    if (dev) {
-      const id = dev.dataset.addDeviceWidget;
-      return addWidget({ id: `dev-${id}`.slice(0, 64), type: "device", size: isMedia(store.devices.get(id) || {}) ? "2x1" : "1x1",
-                         hidden: false, options: { device_id: id } });
     }
   });
   document.addEventListener("change", (e) => {

@@ -39,9 +39,11 @@ const roomLabel = (r) => (r === OTHER ? "Other" : r);
 const isOn = (d) => !!d.state?.on && d.state?.online !== false;
 const canTurnOff = (d) => isOn(d) && d.caps.includes("power") && !d.keep_on;
 
+// All rooms first, then each room that has devices this profile can see (in the
+// order set in Settings → Rooms), then "Other" if some device has no room.
 function tabOrder() {
   const groups = roomGroups();
-  return groups.length < 2 ? [] : ["all", ...groups];   // one group: nothing to switch between
+  return groups.length ? ["all", ...groups] : [];
 }
 
 const onCount = (r) => devicesIn(r).filter(isOn).length;
@@ -59,7 +61,7 @@ function renderTabs() {
 
 // iPad and the landscape panel: Home plus every room down the left side.
 function renderRail() {
-  const order = tabOrder().length ? tabOrder() : ["all"];
+  const order = tabOrder();
   const home = store.view === "home";
   const item = (id) => {
     const sel = !home && store.room === id;
@@ -100,7 +102,7 @@ function renderTitle() {
     const on = all.filter(isOn).length;
     sub = on ? `${on} ${on === 1 ? "thing is" : "things are"} on` : "Everything is off";
   } else {
-    if (wide()) title = room === "all" ? "All rooms" : roomLabel(room);
+    title = room === "all" ? "All rooms" : roomLabel(room);   // the page is the room, on every screen size
     const list = devicesIn(room);
     const on = list.filter(isOn).length;
     sub = on ? `${on} of ${list.length} on` : list.length ? "Everything is off" : "";

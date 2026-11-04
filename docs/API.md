@@ -207,21 +207,23 @@ Response (always 200 unless the body has no `text`):
 `home_layout` is one object per profile, the same on every screen that profile uses.
 `GET /state` returns the signed-in profile's own one (save it with `PUT
 /profiles/me/layout`), else the shared default from `PUT /settings`, else the built-in
-default made from the devices that profile can see. Widgets for devices the profile
-can't see are left out:
+default. There are no devices on Home: they're on the Rooms pages (All rooms, then one
+page per room), which only list rooms with devices the profile can see.
 
 ```json
-{"version": 1, "widgets": [
+{"version": 2, "widgets": [
   {"id": "clock",   "type": "clock",   "size": "2x2", "hidden": false, "options": {}},
   {"id": "zone-in", "type": "zone",    "size": "1x1", "hidden": false, "options": {"tz": "Asia/Kolkata", "label": "India"}},
   {"id": "zone-us", "type": "zone",    "size": "1x1", "hidden": false, "options": {"tz": null, "label": "US"}},
-  {"id": "dev-lr-tv", "type": "device", "size": "2x1", "hidden": false, "options": {"device_id": "lr-tv"}}]}
+  {"id": "rooms",   "type": "rooms",   "size": "2x2", "hidden": false, "options": {}}]}
 ```
 
 Types: `clock`, `zone` (a clock for another place; `tz: null` = the screen's own zone
-if it's in the US, else US Eastern), `weather`, `scenes`, `rooms`, `device`. Sizes are
-grid columns × rows: `1x1`, `2x1`, `2x2`. Up to 40 widgets; a bad layout gets a 400
-that says what's wrong.
+if it's in the US, else US Eastern), `weather`, `scenes`, `rooms` (each room opens its
+page). Sizes are grid columns × rows: `1x1`, `2x1`, `2x2`. Up to 40 widgets; a bad
+layout gets a 400 that says what's wrong. Version 1 layouts could also hold `device`
+widgets: the server drops them when it starts (and from anything an older screen
+saves), so nobody is left with an empty slot.
 
 ## Energy
 

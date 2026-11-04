@@ -63,10 +63,15 @@ web/
   that profile uses (saved with `PUT /profiles/me/layout`, checked by `app/core/layout.py`). Long-press it (or the
   pencil) to edit: widgets wiggle; hold and drag to move, drag a corner (or tap it) for
   Small / Wide / Large, "…" for more (and the time zone of a clock), "−" to hide, **Add**
-  to bring widgets back or add devices; Cancel or Done. **Rooms**: device tiles by room.
+  to bring widgets back or add a clock; Cancel or Done. No devices on Home: the Rooms
+  widget opens each room's page. **Rooms**: device tiles, All rooms (grouped by room) or
+  one room at a time, titled with the room's name and with its own **Turn off**.
 - **Navigation.** iPad and the landscape panel (≥ 768 px): a rail down the left with
-  Home and every room (vertical tabs). Phones and the portrait panel: a floating dock
-  (Home, Rooms, Settings, +) and room tabs over the tiles.
+  Home, All rooms, then each room in the order set in Settings → Rooms (vertical tabs),
+  and "Other" only when a device has no room. Phones and the portrait panel: a floating
+  dock (Home, Rooms, Settings, +); Rooms shows the same list as tabs over the tiles.
+  Only rooms with devices the signed-in profile can see are listed. The chosen room is
+  remembered on each screen.
 - **Tap = do the obvious thing** (toggle). Long-press or "…" = full controls (with a
   short vibration where the browser supports it). TVs, and devices with no on/off like
   a robot vacuum, open their controls on tap so they're never switched by accident.

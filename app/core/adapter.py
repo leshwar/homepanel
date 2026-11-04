@@ -37,9 +37,10 @@ class Kind:
     TV = "tv"
     FAN = "fan"
     VACUUM = "vacuum"
+    SPEAKER = "speaker"        # sound bars and speakers: volume, inputs, sound modes
     OTHER = "other"
 
-    ALL = (LIGHT, PLUG, SWITCH, TV, FAN, VACUUM, OTHER)
+    ALL = (LIGHT, PLUG, SWITCH, TV, FAN, VACUUM, SPEAKER, OTHER)
 
 
 class Cap:
@@ -64,6 +65,7 @@ class Cap:
     STATION = "station"        # dock station jobs, e.g. empty dustbin (meta["station_actions"])
     LOCATE = "locate"          # play a sound to find the device
     MAP = "map"                # a picture of the floor plan: GET /devices/{id}/map
+    SOUND_MODE = "sound_mode"  # set_sound_mode (meta["sound_modes"])
 
 
 class Action:
@@ -89,10 +91,11 @@ class Action:
     SET_CLEAN_MODE = "set_clean_mode"  # value: id from meta["clean_modes"]
     STATION = "station"                # value: id from meta["station_actions"]
     LOCATE = "locate"                  # no value
+    SET_SOUND_MODE = "set_sound_mode"  # value: id from meta["sound_modes"]
 
     ALL = (POWER, TOGGLE, BRIGHTNESS, COLOR, COLOR_TEMP, VOLUME, VOLUME_UP,
            VOLUME_DOWN, MUTE, CHANNEL_UP, CHANNEL_DOWN, KEY, LAUNCH_APP, SET_INPUT,
-           CLEAN, DOCK, CLEAN_ROOMS, SET_SUCTION, SET_CLEAN_MODE, STATION, LOCATE)
+           CLEAN, DOCK, CLEAN_ROOMS, SET_SUCTION, SET_CLEAN_MODE, STATION, LOCATE, SET_SOUND_MODE)
 
     # Which capability each action needs (service layer checks this).
     REQUIRES = {
@@ -102,11 +105,12 @@ class Action:
         CHANNEL_UP: Cap.CHANNEL, CHANNEL_DOWN: Cap.CHANNEL, KEY: Cap.REMOTE,
         LAUNCH_APP: Cap.APPS, SET_INPUT: Cap.INPUTS, CLEAN: Cap.CLEAN, DOCK: Cap.DOCK,
         CLEAN_ROOMS: Cap.ROOMS, SET_SUCTION: Cap.SUCTION, SET_CLEAN_MODE: Cap.CLEAN_MODE,
-        STATION: Cap.STATION, LOCATE: Cap.LOCATE,
+        STATION: Cap.STATION, LOCATE: Cap.LOCATE, SET_SOUND_MODE: Cap.SOUND_MODE,
     }
 
     # Actions whose value must be one of the ids the device lists in device.meta[...].
-    OPTIONS = {SET_SUCTION: "suction_levels", SET_CLEAN_MODE: "clean_modes", STATION: "station_actions"}
+    OPTIONS = {SET_SUCTION: "suction_levels", SET_CLEAN_MODE: "clean_modes", STATION: "station_actions",
+               SET_SOUND_MODE: "sound_modes"}
 
 
 class Key:

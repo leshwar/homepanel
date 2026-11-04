@@ -73,6 +73,15 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AdapterError):
             await self.svc.command("lr-tv", Action.KEY, "NOT_A_KEY")
 
+    async def test_sound_mode_must_be_one_the_device_lists(self):
+        await self.svc.refresh("lr-soundbar")       # loads the sound modes it lists
+        out = await self.svc.command("lr-soundbar", Action.SET_SOUND_MODE, "cinema")
+        self.assertEqual(out["state"]["sound_mode"], "cinema")
+        with self.assertRaises(AdapterError):
+            await self.svc.command("lr-soundbar", Action.SET_SOUND_MODE, "disco")
+        with self.assertRaises(AdapterError):
+            await self.svc.command("lr-tv", Action.SET_SOUND_MODE, "cinema")      # TVs list no sound modes
+
     async def test_values_are_clamped(self):
         out = await self.svc.command("lr-lamp", Action.BRIGHTNESS, 250)
         self.assertEqual(out["state"]["brightness"], 100)

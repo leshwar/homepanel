@@ -65,6 +65,18 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector(".dpad")
         self.assertTrue(self.tile("lr-tv").evaluate("el => el.classList.contains('on')"))
 
+    def test_sound_bar_opens_media_controls_and_picks_sound_mode(self):
+        self.page.wait_for_selector('.tile[data-id="lr-soundbar"].wide')
+        self.tile("lr-soundbar").locator(".tile-name").click()
+        self.page.wait_for_selector('[data-sound-mode="cinema"]')
+        self.assertTrue(self.tile("lr-soundbar").evaluate("el => el.classList.contains('on')"))  # tap didn't turn it off
+        self.assertEqual(self.page.locator(".dpad").count(), 0)       # no TV remote for a speaker
+        self.assertTrue(self.page.locator('[data-input="bt"]').is_visible())
+        self.page.locator('[data-sound-mode="cinema"]').click()
+        self.page.wait_for_selector('[data-sound-mode="cinema"][aria-pressed="true"]')
+        box = self.page.locator('[data-sound-mode="cinema"]').bounding_box()
+        self.assertGreaterEqual(box["height"], 48)
+
     def test_brightness_slider(self):
         self.tile("lr-ceiling").locator("[data-more]").click()
         box = self.page.locator("#bri").bounding_box()

@@ -58,6 +58,7 @@ A device looks like:
 | `set_clean_mode` | id from `meta.clean_modes` (vacuum, mop, both…) | clean_mode |
 | `station` | id from `meta.station_actions` (e.g. `empty_dustbin`) | station |
 | `locate` | — (plays a sound) | locate |
+| `set_sound_mode` | sound mode id from `meta.sound_modes` (other ids are rejected) | sound_mode |
 
 `GET /devices/{id}/map` returns the floor plan as an image (SVG for Ecovacs) for
 devices with the `map` capability. The state key `map_rev` changes when the map

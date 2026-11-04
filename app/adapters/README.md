@@ -16,6 +16,7 @@ adapter declares.
 | `hue.py` | Philips Hue via bridge | local HTTP | — |
 | `samsung_tv.py` | Samsung Tizen TVs | local WebSocket + REST, Wake-on-LAN | samsungtvws |
 | `lg_tv.py` | LG webOS TVs | local WebSocket, Wake-on-LAN | aiowebostv |
+| `lg_soundbar.py` | LG sound bars with Wi-Fi | local TCP 9741 (AES-encrypted JSON) | cryptography |
 | `home_assistant.py` | Anything an existing Home Assistant controls | Home Assistant REST API | — |
 | `ecovacs.py` | Ecovacs Deebot robot vacuums | Ecovacs cloud (REST + MQTT) | deebot-client (Python 3.14 only) |
 
@@ -89,7 +90,7 @@ class MyBrandAdapter(DeviceAdapter):
 
 `on`, `brightness` (1–100), `color` `{r,g,b}`, `color_temp` (Kelvin),
 `color_mode` (`"color"` or `"temp"`), `volume` (0–100), `muted`, `app`,
-`input`, `power_w` (watts — recorded automatically for the energy chart).
+`input`, `sound_mode`, `power_w` (watts — recorded automatically for the energy chart).
 Robot vacuums (`Kind.VACUUM`, `Cap.CLEAN` / `Cap.DOCK`): `activity` (one of
 `Activity.ALL`: cleaning, paused, returning, docked, idle, error), `battery`
 (0–100), `problem` (text to show, e.g. "Brush stuck"). Set `on` to true while
@@ -106,7 +107,9 @@ If your brand hears about changes on its own (a live connection), call
 
 Media players without a full remote can declare `Cap.MEDIA` instead of
 `Cap.REMOTE`: the UI then shows play/pause but no D-pad. Put lists of TV apps/inputs in `device.meta["apps"]` /
-`["inputs"]` as `[{id, name}]`.
+`["inputs"]` as `[{id, name}]`. Sound bars and speakers use `Kind.SPEAKER`: they get the same volume,
+mute and input controls as a TV without the remote, plus sound mode chips from `Cap.SOUND_MODE` and
+`device.meta["sound_modes"]` (the service rejects ids that aren't in that list).
 
 ### Writing good error messages
 

@@ -106,6 +106,120 @@ class ScanFallbackOverRealSockets(unittest.IsolatedAsyncioTestCase):
                          [("Living Room TV", "127.0.0.1", "AA:BB:CC:00:11:22")])
 
 
+class FakeSoundbar:
+    """A tiny LG sound bar: AES-encrypted JSON over TCP, written separately from the adapter
+    so a mistake in the adapter's wire format can't hide behind the same code."""
+    KEY = b"T^&*J%^7tr~4^%^&I(o%^!jIJ__+a0 k"
+    IV = b"'%^Ur7gy$~t+f)%@"
+
+    def __init__(self):
+        self.spk = {"i_vol": 8, "i_vol_min": 0, "i_vol_max": 40, "b_mute": False, "b_powerstatus": True,
+                    "i_curr_func": 20, "s_user_name": "Den Soundbar"}
+        self.func = {"i_curr_func": 20, "ai_func_list": [15, 1, 0, 6]}
+        self.eq = {"i_curr_eq": 19, "ai_eq_list": [19, 0, 7, 6]}
+        self.product = {"s_model_name": "SC9S", "s_dev_mac": "aa:bb:cc:dd:ee:01"}
+        self.sets = []
+
+    def _cipher(self):
+        from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+        return Cipher(algorithms.AES(self.KEY), modes.CBC(self.IV))
+
+    def pack(self, obj):
+        raw = json.dumps(obj).encode()
+        n = 16 - len(raw) % 16
+        e = self._cipher().encryptor()
+        body = e.update(raw + bytes([n]) * n) + e.finalize()
+        return b"\x10" + len(body).to_bytes(4, "big") + body
+
+    def unpack(self, body):
+        d = self._cipher().decryptor()
+        raw = d.update(body) + d.finalize()
+        return json.loads(raw[:-raw[-1]])
+
+    async def handle(self, reader, writer):
+        views = {"SPK_LIST_VIEW_INFO": self.spk, "FUNC_VIEW_INFO": self.func, "EQ_VIEW_INFO": self.eq,
+                 "PRODUCT_INFO": self.product}
+        try:
+            while True:
+                head = await reader.readexactly(5)
+                req = self.unpack(await reader.readexactly(int.from_bytes(head[1:], "big")))
+                view = views.get(req["msg"])
+                if view is None:
+                    continue
+                if req["cmd"] == "set":
+                    self.sets.append((req["msg"], req["data"]))
+                    data = dict(req["data"])
+                    if "b_powerkey" in data:
+                        data = {"b_powerstatus": data["b_powerkey"]}
+                    view.update(data)
+                    if req["msg"] == "FUNC_VIEW_INFO":
+                        self.spk["i_curr_func"] = self.func["i_curr_func"]
+                    writer.write(self.pack({"cmd": "notiforset", "msg": req["msg"], "data": view, "result": "ok"}))
+                else:
+                    # like the real thing, sometimes say something unasked for first
+                    writer.write(self.pack({"cmd": "notibyget", "msg": "PLAY_INFO", "data": {"i_stream_type": 0}}))
+                    writer.write(self.pack({"cmd": "notibyget", "msg": req["msg"], "data": view, "result": "ok"}))
+                await writer.drain()
+        except (asyncio.IncompleteReadError, ConnectionError):
+            pass
+        finally:
+            writer.close()
+
+
+class LGSoundbarAdapterTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        from app.adapters import lg_soundbar
+        self.mod = lg_soundbar
+        self.fake = FakeSoundbar()
+        self.server = await asyncio.start_server(self.fake.handle, "127.0.0.1", 0)
+        self.port = self.server.sockets[0].getsockname()[1]
+        self.saved = (lg_soundbar.PORT, lg_soundbar.local_subnet_hosts)
+        lg_soundbar.PORT, lg_soundbar.local_subnet_hosts = self.port, (lambda: ["127.0.0.1"])
+        self.adapter = lg_soundbar.LGSoundbarAdapter({}, tempfile.mkdtemp())
+
+    async def asyncTearDown(self):
+        self.mod.PORT, self.mod.local_subnet_hosts = self.saved
+        self.server.close()
+
+    async def test_discover_setup_refresh_and_control(self):
+        found = await self.adapter.discover()
+        self.assertEqual([(f.name, f.uid, f.kind, f.detail) for f in found],
+                         [("Den Soundbar", "AA:BB:CC:DD:EE:01", Kind.SPEAKER, "127.0.0.1 · SC9S")])
+        f = found[0]
+        dev = Device(id="sb", adapter="lg_soundbar", name=f.name, kind=f.kind, caps=f.caps, config=dict(f.config))
+        await self.adapter.setup(dev)
+        self.assertEqual(dev.meta["model"], "SC9S")
+        dev.state = await self.adapter.refresh(dev)
+        self.assertEqual(dev.state, {"on": True, "muted": False, "volume": 20, "input": "15", "sound_mode": "19"})
+        self.assertIn({"id": "7", "name": "Cinema"}, dev.meta["sound_modes"])
+
+        await self.adapter.command(dev, Action.VOLUME, 50)
+        await self.adapter.command(dev, Action.VOLUME_DOWN)
+        await self.adapter.command(dev, Action.MUTE, True)
+        await self.adapter.command(dev, Action.SET_INPUT, "6")
+        await self.adapter.command(dev, Action.SET_SOUND_MODE, "7")
+        await self.adapter.command(dev, Action.POWER, False)
+        self.assertEqual(self.fake.sets, [
+            ("SPK_LIST_VIEW_INFO", {"i_vol": 20}), ("SPK_LIST_VIEW_INFO", {"i_vol": 19}),
+            ("SPK_LIST_VIEW_INFO", {"b_mute": True}), ("FUNC_VIEW_INFO", {"i_curr_func": 6}),
+            ("EQ_VIEW_INFO", {"i_curr_eq": 7}), ("SPK_LIST_VIEW_INFO", {"b_powerkey": False})])
+        st = await self.adapter.refresh(dev)
+        self.assertEqual((st["on"], st["volume"], st["muted"], st["input"], st["sound_mode"]),
+                         (False, 48, True, "6", "7"))
+
+    async def test_add_by_ip_and_unreachable_message(self):
+        f = self.adapter.from_manual({"name": "Bar", "ip": "127.0.0.1"})
+        dev = Device(id="m", adapter="lg_soundbar", name="Bar", kind=f.kind, caps=f.caps,
+                     config={**f.config, "port": self.port})
+        await self.adapter.setup(dev)
+        self.assertEqual(dev.config["mac"], "AA:BB:CC:DD:EE:01")
+        self.server.close()
+        await self.server.wait_closed()
+        with self.assertRaises(AdapterError) as cm:
+            await self.adapter.setup(dev)
+        self.assertIn("same Wi-Fi", str(cm.exception))
+
+
 class SearchAllOffersNoDuplicateTV(unittest.IsolatedAsyncioTestCase):
     """The real LG adapter and HomeService against a fake webOS TV on 127.0.0.1. A TV saved
     from an SSDP search must stay "added" when a later search only finds it by the port scan

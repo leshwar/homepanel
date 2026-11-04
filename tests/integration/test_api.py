@@ -34,6 +34,22 @@ class ApiTests(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"null")
 
+    def test_quick_commands_to_one_device_end_on_the_last_one(self):
+        # Two colors sent 10 ms apart over HTTP (like the color wheel and then a preset). The demo
+        # light answers each after a random 30-120 ms, so without ordering the first could land last.
+        import threading
+        import time
+        for _ in range(8):
+            first = threading.Thread(target=self.call, args=("POST", "/devices/lr-lamp/command",
+                                                             {"action": "color", "value": "#ff0000"}))
+            first.start()
+            time.sleep(0.01)
+            self.call("POST", "/devices/lr-lamp/command", {"action": "color", "value": "#5ee07a"})
+            first.join()
+            _, state = self.call("GET", "/state")
+            lamp = next(d for d in state["devices"] if d["id"] == "lr-lamp")
+            self.assertEqual(lamp["state"]["color"], {"r": 94, "g": 224, "b": 122})
+
     def test_state_has_no_secrets(self):
         status, data = self.call("GET", "/state")
         self.assertEqual(status, 200)

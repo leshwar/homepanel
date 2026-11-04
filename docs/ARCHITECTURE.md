@@ -59,12 +59,14 @@ UI tap ──► POST /api/v1/devices/{id}/command {"action":"toggle"}
    mw_validate       known action? device has the capability? valid key?
    mw_normalize      toggle → power true/false, clamp 1-100, "#ff8000" → {r,g,b}
    mw_log            "Floor lamp power=False ok (102 ms)" → logs/homepanel.log
+   _mw_in_order      one command at a time per device, in arrival order: the last one sent wins
    mw_timeout_retry  10 s timeout, 1 retry on network errors
             │
             ▼  adapter.command(device, "power", False)   ← the only brand-specific step
             │
    returns changed keys {"on": false} → merged into state → event pushed to every open UI
-   1.5 s later: adapter.refresh() confirms the real state
+   1.5 s later: adapter.refresh() confirms the real state (a reading that was already under way
+   when a command finished is dropped, so it can't put the older state back)
 ```
 
 Custom middleware can be added without touching anything else:

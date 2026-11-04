@@ -71,7 +71,7 @@ class LGTVAdapter(DeviceAdapter):
         hosts = [h for h in local_subnet_hosts() if h not in skip]
         open_hosts = await scan_ports(hosts, WEBOS_PORTS)
         found = []
-        for ip, port in sorted(open_hosts.items()):
+        for ip in sorted(open_hosts):
             if not await self._looks_like_webos(ip):
                 continue
             mac = mac_from_arp(ip) or ""

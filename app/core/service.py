@@ -359,6 +359,50 @@ class HomeService:
             out.append(item)
         return out
 
+    def _searchable(self) -> tuple[list[str], list[str]]:
+        """Brands that "Search all brands" can search now, and brands that need an account first.
+        In demo mode only the pretend (hidden) brands are searched, so nothing touches the real network."""
+        ready, needs_account = [], []
+        for aid, a in self.adapters.items():
+            cls = type(a)
+            if not cls.can_discover or cls.hidden != self.demo:
+                continue
+            if any(f.required for f in cls.account_fields) and not self.store.accounts.get(aid):
+                needs_account.append(aid)
+            else:
+                ready.append(aid)
+        return ready, needs_account
+
+    async def discover_all(self) -> dict:
+        """Search every brand at once. One slow or broken brand never stops the others."""
+        ready, needs_account = self._searchable()
+
+        async def one(aid: str):
+            try:
+                return aid, await self.discover(aid), None
+            except asyncio.TimeoutError:
+                return aid, [], "Took too long to answer."
+            except Exception as e:
+                log.warning("Search all: %s failed: %s", aid, e)
+                return aid, [], _friendly(e)
+
+        def name(aid: str) -> str:
+            return type(self.adapters[aid]).name or aid
+
+        found, failed = [], []
+        for aid, items, err in await asyncio.gather(*(one(a) for a in ready)):
+            if err:
+                failed.append({"adapter": aid, "adapter_name": name(aid), "error": err})
+            for item in items:
+                found.append({**item, "adapter": aid, "adapter_name": name(aid)})
+        found.sort(key=lambda f: (f["added"], f["adapter_name"], f["name"].lower()))
+        return {
+            "found": found,
+            "searched": ready,
+            "failed": failed,
+            "needs_account": [{"adapter": a, "adapter_name": name(a)} for a in needs_account],
+        }
+
     async def add_device(self, adapter_id: str, *, uid: str | None = None, manual: dict | None = None,
                          name: str | None = None, room: str = "") -> dict:
         a = self.adapters.get(adapter_id)

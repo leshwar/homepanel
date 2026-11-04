@@ -6,6 +6,12 @@ Wi-Fi), then add it in HomePanel → Settings → Add a device → pick the bran
 (many routers put "guest" networks or 5 GHz/2.4 GHz bands on separate subnets —
 that's a common reason devices aren't found).
 
+To look for everything at once, tap **Search all brands** at the top of
+Add a device. It searches every brand in one go and lists what it found with
+the brand name, so you can add each device from there. Brands that need an
+account first (for example Tuya) are skipped until you connect them;
+the list says which ones, and tapping one takes you to its setup.
+
 Typing keys is easiest from a phone or laptop: open `http://homepanel.local:8080`.
 
 ---

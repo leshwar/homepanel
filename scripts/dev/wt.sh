@@ -28,6 +28,16 @@ free_port() {
   echo "No free port between 8081 and 8099" >&2; exit 1
 }
 
+# Find Docker even when it isn't on PATH (Docker Desktop on a Mac).
+use_docker() {
+  for d in "$(dirname "$(command -v docker 2>/dev/null || echo /nonexistent/x)")" "$HOME/.docker/bin" \
+           /usr/local/bin /opt/homebrew/bin /Applications/Docker.app/Contents/Resources/bin; do
+    if [ -x "$d/docker" ]; then export PATH="$d:$HOME/.docker/bin:$PATH"; break; fi
+  done
+  command -v docker >/dev/null || { echo "Docker isn't installed. Install Docker Desktop: https://docs.docker.com/desktop/"; exit 1; }
+  docker info >/dev/null 2>&1 || { echo "Docker isn't running. Open Docker Desktop (open -a Docker), wait for 'Engine running', then try again."; exit 1; }
+}
+
 cmd="${1:-help}"; branch="${2:-}"
 case "$cmd" in
   new)
@@ -64,10 +74,12 @@ case "$cmd" in
     need "$branch" demo
     dest="$(path_for "$branch")"
     [ -d "$dest" ] || { echo "No worktree for $branch. Create it with: $0 get $branch"; exit 1; }
+    use_docker
     port="${HOMEPANEL_DEMO_PORT:-$(free_port)}"
     echo "Demo of $branch → http://localhost:$port   (Ctrl+C to stop)"
-    cd "$dest" && HOMEPANEL_DEMO_PORT="$port" COMPOSE_PROJECT_NAME="homepanel-$(slug "$branch" | tr 'A-Z.' 'a-z-')" \
-      make docker-demo
+    # Runs compose directly (not the branch's Makefile), so older branches work too.
+    cd "$dest" && HOMEPANEL_DEMO_PORT="$port" \
+      docker compose -p "homepanel-$(slug "$branch" | tr 'A-Z.' 'a-z-')" --profile demo up --build demo
     ;;
   remove)
     need "$branch" remove

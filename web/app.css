@@ -195,6 +195,9 @@ label.field { display: block; margin: 0 0 14px; }
 .meta-line { color: var(--haze); font-size: 14px; margin-top: 26px; display: flex; justify-content: space-between; gap: 10px; }
 .link { color: var(--haze); text-decoration: underline; text-underline-offset: 3px; }
 
+/* Settings → Diagnostics: "Use it on your phone" with the address to open */
+#health .phone-title { margin-top: 16px; }
+
 .chips { display: flex; flex-wrap: wrap; gap: 10px; }
 .chip { height: 52px; padding: 0 18px; border-radius: var(--r-ctl); background: var(--slate); font-weight: 500; }
 .chip:active { background: var(--line); }

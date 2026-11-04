@@ -285,6 +285,13 @@ class UITests(unittest.TestCase):
         self.page.click("[data-arg=shelly]")          # a brand with no extra libraries, so always available
         self.page.wait_for_selector("text=You're in demo mode")
 
+    def test_diagnostics_says_where_to_open_on_a_phone(self):
+        self.page.click("#open-settings")
+        self.page.get_by_text("Diagnostics and logs").click()
+        self.page.wait_for_selector("#phone-url")
+        self.assertIn("same Wi-Fi", self.page.locator("#phone-url").inner_text())
+        self.assertEqual(self.errors, [])
+
     def test_robot_vacuum_sheet(self):
         tile = self.page.locator('.tile[data-id="lr-vacuum"]')
         tile.click()                                         # opens controls, never starts cleaning by itself

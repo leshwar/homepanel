@@ -292,6 +292,15 @@ def local_ip() -> str:
         s.close()
 
 
+def phone_url(port: int, ip: str | None = None) -> str | None:
+    """The address to open on a phone or tablet on the same Wi-Fi, e.g. http://192.168.1.20:8080.
+    None when this machine has no network address (only 127.x)."""
+    ip = ip or local_ip()
+    if not ip or ip.startswith("127."):
+        return None
+    return f"http://{ip}:{port}"
+
+
 def local_subnet_hosts() -> list[str]:
     """Every host in this machine's /24 (good enough for home networks)."""
     net = ipaddress.ip_network(f"{local_ip()}/24", strict=False)

@@ -10,6 +10,15 @@ on (or open) an issue before starting so work isn't duplicated.
 - Presence: "all off when everyone leaves" using phones on the Wi-Fi.
 - Home Assistant adapter (REST API, areas become rooms).
 
+## Phones and tablets (later)
+
+Today any phone uses the panel as a web page. Ideas for later, in order:
+- Optional sign-in: approve a phone once with a code shown on the hub.
+- "Add to Home Screen" icon and full-screen mode.
+- iPhone/iPad and Android apps (e.g. Capacitor wrapping the same web UI) that
+  find the hub on the Wi-Fi.
+- Reaching the hub away from home (e.g. Tailscale).
+
 ## Next
 
 - **Real-hardware testing** of every adapter (Globe/Tuya, Govee plugs, Samsung,

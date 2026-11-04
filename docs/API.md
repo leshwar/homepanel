@@ -11,7 +11,7 @@ The API is brand-agnostic: callers never need to know which adapter a device use
 |---|---|---|
 | GET | `/state` | Everything the UI needs: `devices`, `rooms`, `scenes`, `settings`, `adapters`, `demo` |
 | GET | `/events` | Server-Sent Events stream (see below) |
-| GET | `/health` | `{ok, uptime_s, devices, online, adapters, unavailable, demo}` |
+| GET | `/health` | `{ok, uptime_s, devices, online, adapters, unavailable, demo, in_container, phone_url}` — `phone_url` is the address to open on a phone on the same Wi-Fi (`null` inside Docker, where it can't be known) |
 | GET | `/logs?level=WARNING` | Last 300 log records `{time, level, logger, message}` |
 | GET | `/logs?format=text` | The full log file as a download |
 

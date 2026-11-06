@@ -326,7 +326,8 @@ PNG when it has transparency, since browsers can't show TIFF), are shrunk to at 
 
 Settings: `background` can be `"wallpaper"`; `wallpaper` is a wallpaper id or `"shuffle"`;
 `wallpaper_every` is minutes per wallpaper when shuffling (0, 15, 60, 240 or 1440; 0 = a new
-one each time a screen opens); `wallpaper_dim` darkens it, 0–80 %.
+one each time a screen opens); `wallpaper_dim` darkens it, 0–80 %. `tile_style` is `"auto"` (light tiles on a dark background, dark
+tiles on a light one, measured from the wallpaper itself), `"light"` or `"dark"`.
 
 Photos are stored in `data/photos/`, rotated upright, resized to 2560 px on the
 long side and saved without metadata (no GPS). Settings: `idle_screen`

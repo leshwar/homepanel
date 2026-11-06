@@ -10,6 +10,7 @@ import { FACES, faceId, faceHTML, faceInfo } from "./clockfaces.js";
 import { findLocation, describeFound, canUseDeviceLocation } from "./locate.js";
 import { DEVICE_ICONS, deviceIconName, svg } from "./icons.js";
 import { invalidateWallpapers, previewWallpaper } from "./wallpaper.js";
+import { previewTiles } from "./tone.js";
 import { devicePicture } from "./art.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
@@ -26,10 +27,12 @@ export function openSettings(view = "home", arg = null) {
   render();
 }
 
-function close() { $("#settings").hidden = true; stack = []; }
+function close() { $("#settings").hidden = true; stack = []; dropPreview(); }
+// Leaving Display settings without saving: back to the saved look.
+function dropPreview() { previewWallpaper(null); previewTiles(null); }
 export const closeSettings = close;
 export function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; if (view === "add") searchAll = {}; render(); $("#settings").scrollTop = 0; }
-export function back() { stack.pop(); stack.length ? render() : close(); }
+export function back() { if (stack.at(-1)?.view === "display") dropPreview(); stack.pop(); stack.length ? render() : close(); }
 
 export function refreshSettings() {
   if (!isSettingsOpen()) return;
@@ -502,6 +505,13 @@ const VIEWS = {
             <input class="glass-range" type="range" name="wallpaper_dim" min="0" max="80" step="5" value="${s.wallpaper_dim ?? 25}">
             <small>A little darker keeps the clock and tiles easy to read.</small></label>
         </div>
+        <span class="field"><span>Tiles</span></span>
+        <div class="seg" role="radiogroup" aria-label="Tiles">
+          ${[["auto", "Auto"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => `
+            <label class="seg-choice"><input type="radio" name="tile_style" value="${v}" ${(s.tile_style || "auto") === v ? "checked" : ""}>
+              <span>${l}</span></label>`).join("")}
+        </div>
+        <small class="field"><small>Auto picks light tiles on a dark background and dark tiles on a light one, so they always stand out.</small></small>
         <label class="field"><span>Glass transparency <b id="glass-val">${s.glass_transparency ?? 45}%</b></span>
           <input class="glass-range" type="range" name="glass_transparency" min="0" max="100" step="5" value="${s.glass_transparency ?? 45}">
           <small>Lower is more solid and easier to read; higher shows more of the background.</small></label>
@@ -641,6 +651,7 @@ function displayPreview() {
   const v = formValues(form);
   previewWallpaper({ background: v.background, wallpaper: v.wallpaper || store.settings.wallpaper,
                      wallpaper_dim: Number(v.wallpaper_dim ?? 25) });
+  previewTiles({ background: v.background, wallpaper_dim: Number(v.wallpaper_dim ?? 25), tile_style: v.tile_style || "auto" });
 }
 
 async function uploadWallpapers(files) {
@@ -876,8 +887,10 @@ root.addEventListener("submit", async (e) => {
                                glass_effect: !!v.glass_effect, background: v.background, clock_face: v.clock_face,
                                glass_transparency: Number(v.glass_transparency),
                                ...(v.wallpaper ? { wallpaper: v.wallpaper } : {}),
-                               wallpaper_every: Number(v.wallpaper_every ?? 60), wallpaper_dim: Number(v.wallpaper_dim ?? 25) });
+                               wallpaper_every: Number(v.wallpaper_every ?? 60), wallpaper_dim: Number(v.wallpaper_dim ?? 25),
+                               tile_style: v.tile_style || "auto" });
       previewWallpaper(null);
+      previewTiles(null);
       toast("Saved"); await reload(); return back();
     }
   } catch (err) { toast(err.message, true); }
@@ -901,7 +914,7 @@ root.addEventListener("input", (e) => {
     const label = $("#wall-dim-val");
     if (label) label.textContent = `${el.value}%`;
   }
-  if (["background", "wallpaper", "wallpaper_dim"].includes(el.name)) displayPreview();
+  if (["background", "wallpaper", "wallpaper_dim", "tile_style"].includes(el.name)) displayPreview();
   if (el.name === "glass_effect") document.documentElement.classList.toggle("glass", el.checked);
 });
 

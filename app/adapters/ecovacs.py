@@ -406,38 +406,57 @@ class EcovacsAdapter(DeviceAdapter):
             device.meta["rooms"] = st["rooms"]
         return _public(st)
 
+    async def _send(self, device: Device, bot, command, v2=None) -> None:
+        """Run one command and make sure the vacuum really accepted it.
+
+        Some models answer the classic clean command with "not supported" (code 20003)
+        even though the library lists it for them; they want clean_V2. `v2` builds that
+        command. Once it worked, this vacuum always gets V2 (saved in its config)."""
+        if v2 is not None and device.config.get("clean_v2"):
+            command = v2()
+        problem = _reply_problem(await bot.execute_command(command))
+        if problem and v2 is not None and not device.config.get("clean_v2"):
+            log.info("%s: classic clean command not supported, using clean_V2", device.name)
+            problem = _reply_problem(await bot.execute_command(v2()))
+            if not problem:
+                device.config["clean_v2"] = True
+        if problem:
+            raise AdapterError(_problem_text(device.name, problem))
+
     async def command(self, device: Device, action: str, value=None):
         bot = await self._bot(device)
         caps = bot.capabilities
-        from deebot_client.models import CleanAction
-        if action == Action.CLEAN:
-            await bot.execute_command(caps.clean.action.command(CleanAction(value)))
-            activity = {Clean.START: Activity.CLEANING, Clean.RESUME: Activity.CLEANING,
-                        Clean.PAUSE: Activity.PAUSED, Clean.STOP: Activity.IDLE}[value]
-        elif action == Action.DOCK:
-            await bot.execute_command(caps.charge.execute())
-            activity = Activity.RETURNING
-        elif action == Action.CLEAN_ROOMS:
-            from deebot_client.models import CleanMode
-            await bot.execute_command(caps.clean.action.area(CleanMode.SPOT_AREA, [int(r) for r in value], 1))
-            activity = Activity.CLEANING
-        else:
-            st = self._state.setdefault(device.config["did"], {})
-            if action == Action.SET_SUCTION:
-                await bot.execute_command(caps.fan_speed.set(_pick(caps.fan_speed.types, value)))
-                st["suction"] = value
-            elif action == Action.SET_CLEAN_MODE:
-                await bot.execute_command(caps.clean.work_mode.set(_pick(caps.clean.work_mode.types, value)))
-                st["clean_mode"] = value
-            elif action == Action.STATION:
-                await bot.execute_command(caps.station.action.execute(_pick(caps.station.action.types, value)))
-            elif action == Action.LOCATE:
-                await bot.execute_command(caps.play_sound.execute())
-            else:
-                raise AdapterError("Not supported")
-            return _public(st)
+        from deebot_client.commands.json.clean import CleanAreaV2, CleanV2
+        from deebot_client.events import StateEvent
+        from deebot_client.models import CleanAction, CleanMode
         st = self._state.setdefault(device.config["did"], {})
-        st["activity"] = activity
+        if action == Action.CLEAN:
+            act = CleanAction(value)
+            await self._send(device, bot, caps.clean.action.command(act), v2=lambda: CleanV2(act))
+            st["activity"] = {Clean.START: Activity.CLEANING, Clean.RESUME: Activity.CLEANING,
+                              Clean.PAUSE: Activity.PAUSED, Clean.STOP: Activity.IDLE}[value]
+        elif action == Action.DOCK:
+            await self._send(device, bot, caps.charge.execute())
+            st["activity"] = Activity.RETURNING
+        elif action == Action.CLEAN_ROOMS:
+            rooms = [int(r) for r in value]
+            await self._send(device, bot, caps.clean.action.area(CleanMode.SPOT_AREA, rooms, 1),
+                             v2=lambda: CleanAreaV2(CleanMode.SPOT_AREA, rooms, 1))
+            st["activity"] = Activity.CLEANING
+        elif action == Action.SET_SUCTION:
+            await self._send(device, bot, caps.fan_speed.set(_pick(caps.fan_speed.types, value)))
+            st["suction"] = value
+        elif action == Action.SET_CLEAN_MODE:
+            await self._send(device, bot, caps.clean.work_mode.set(_pick(caps.clean.work_mode.types, value)))
+            st["clean_mode"] = value
+        elif action == Action.STATION:
+            await self._send(device, bot, caps.station.action.execute(_pick(caps.station.action.types, value)))
+        elif action == Action.LOCATE:
+            await self._send(device, bot, caps.play_sound.execute())
+        else:
+            raise AdapterError("Not supported")
+        # Ask what it's really doing now; the answer replaces the guess above when it arrives.
+        bot.events.request_refresh(StateEvent)
         return _public(st)
 
     async def map_image(self, device: Device):
@@ -454,6 +473,37 @@ class EcovacsAdapter(DeviceAdapter):
         bot = self._bots.pop(device.config.get("did"), None)
         if bot is not None:
             await _quietly(bot.teardown())
+
+
+NOT_SUPPORTED = 20003      # Ecovacs: "rcp not support"
+
+
+def _reply_problem(resp) -> tuple | None:
+    """(code, message) if the vacuum or Ecovacs refused a command, None if it was accepted.
+
+    deebot-client hands back the reply only when the command succeeded; a refused or
+    failed command comes back as an empty dict (the reason is only in its own log)."""
+    if not isinstance(resp, dict) or not resp:
+        return ("refused", "")
+    if resp.get("ret") not in (None, "ok"):
+        return (f"errno {resp.get('errno')}", resp.get("error") or resp.get("debug") or "")
+    body = (resp.get("resp") or resp).get("body")
+    if isinstance(body, dict) and body.get("code") not in (None, 0):
+        return (body.get("code"), body.get("msg") or "")
+    return None
+
+
+def _problem_text(name: str, problem: tuple) -> str:
+    code, msg = problem
+    if code == "refused":
+        return f"{name} didn't do that. It may need attention in the Ecovacs Home app (for example a full dust bin or a stuck brush)."
+    if code == NOT_SUPPORTED:
+        return f"{name} didn't accept that command: it says it isn't supported on this model."
+    if code == "errno 4200":
+        return f"{name} is offline. Check it's switched on and on Wi-Fi."
+    if code == "errno 500":
+        return f"No answer from {name}. Check it's on Wi-Fi, then try again."
+    return f"{name} didn't do that (Ecovacs said: {msg or 'no reason given'}, code {code})."
 
 
 def _public(st: dict) -> dict:

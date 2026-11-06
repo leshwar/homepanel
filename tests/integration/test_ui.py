@@ -63,6 +63,11 @@ class UITests(unittest.TestCase):
     def tile(self, did):
         return self.page.locator(f'.tile[data-id="{did}"]')
 
+    def sheet_settled(self):
+        """Wait until the device sheet has finished sliding in (positions are final)."""
+        self.page.wait_for_function("(() => { const s = document.querySelector('#sheet');"
+                                    " return s && !s.hidden && s.getAnimations().every(a => a.playState !== 'running'); })()")
+
     def test_tap_toggles_plug(self):
         self.page.wait_for_function("document.querySelector('.tile[data-id=\"kt-kettle\"] .tile-status').textContent === 'Off'")
         self.tile("kt-kettle").locator(".tile-name").click()
@@ -97,6 +102,7 @@ class UITests(unittest.TestCase):
         # Ceiling light starts at 80%. Dragging the pill down by half its height dims it to 30%;
         # a tap without dragging switches it off and on.
         self.tile("lr-ceiling").locator("[data-more]").click()
+        self.sheet_settled()
         box = self.page.locator("#bri").bounding_box()
         self.assertGreater(box["height"], box["width"])                 # a tall, vertical pill
         x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] * 0.4
@@ -115,26 +121,26 @@ class UITests(unittest.TestCase):
         self.page.wait_for_function("document.querySelector('#bri-val').textContent === '30%'")
         # this light has white temperature only: a warm-to-cool pill, no color wheel
         self.assertEqual(self.page.locator("#sheet #wheel").count(), 0)
-        ct = self.page.locator("#sheet #ct").bounding_box()
-        self.page.mouse.click(ct["x"] + ct["width"] / 2, ct["y"] + 4)  # top = coolest
+        ct = self.page.locator("#sheet #ct")
+        ct.click(position={"x": ct.bounding_box()["width"] / 2, "y": 4})  # top = coolest
         self.page.wait_for_function("document.querySelector('#sheet #ct').getAttribute('aria-valuenow') > 6000")
 
     def test_light_color_wheel_and_presets(self):
         self.tile("lr-lamp").locator("[data-more]").click()
+        # Locator clicks wait for the sheet to finish sliding in, so the spot is where we mean it.
         wheel = self.page.locator("#sheet #wheel")
-        box = wheel.bounding_box()
-        self.page.mouse.click(box["x"] + box["width"] / 2, box["y"] + 3)    # top edge of the wheel = red
+        wheel.click(position={"x": wheel.bounding_box()["width"] / 2, "y": 3})   # top edge of the wheel = red
         self.page.wait_for_function("document.querySelector('#sheet #wheel').getAttribute('aria-valuetext') === '#ff0000'")
         self.page.wait_for_function("(() => { const s = document.querySelector('.tile[data-id=\"lr-lamp\"]').style"
                                     ".getPropertyValue('--glow'); return s.trim() === '255 0 0'; })()")
         self.page.click('#sheet [data-color="#5ee07a"]')
         self.page.wait_for_selector('#sheet [data-color="#5ee07a"][aria-pressed="true"]')
         # white strip: tapping the warm end switches back to white light
-        strip = self.page.locator("#sheet .temp-strip").bounding_box()
-        self.page.mouse.click(strip["x"] + 6, strip["y"] + strip["height"] / 2)
+        self.page.locator("#sheet .temp-strip").click(position={"x": 6, "y": 26})
         self.page.wait_for_function("document.querySelector('#sheet .temp-strip').getAttribute('aria-valuenow') < 2400")
         self.page.wait_for_selector("#sheet .wheel-thumb.idle")
-        self.page.wait_for_timeout(1800)                                   # let the follow-up refresh settle
+        self.page.wait_for_timeout(1800)                                   # the follow-up refresh keeps white
+        self.assertEqual(self.page.locator("#sheet .wheel-thumb.idle").count(), 1)
         heights = self.page.evaluate("['#bri', '#wheel', '.temp-strip', '.swatch'].map("
                                      "s => document.querySelector('#sheet ' + s).getBoundingClientRect().height)")
         self.assertTrue(all(h >= 48 for h in heights), heights)

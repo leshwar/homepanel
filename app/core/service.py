@@ -3,9 +3,9 @@ Service layer. The API layer calls only this class; it never imports an adapter.
 
 Commands flow through a middleware pipeline before reaching the adapter:
 
-    API ─► validate ─► normalize ─► log ─► timeout+retry ─► adapter.command()
-                                                           │
-             state cache ◄── optimistic merge ◄────────────┘ ─► live event to UI
+    API ─► validate ─► normalize ─► log ─► in order ─► timeout+retry ─► adapter.command()
+                                                                       │
+             state cache ◄── optimistic merge ◄────────────────────────┘ ─► live event to UI
 
 Add your own middleware (rate limits, permissions, automation hooks …) with
 service.use(fn). Each middleware is `async def mw(ctx, call_next)`.
@@ -250,7 +250,10 @@ class HomeService:
         self._failures: dict[str, int] = {}
         self._found: dict[tuple[str, str], Found] = {}
         self._found_ips: dict[str, Counter] = {}     # per brand: how many results the last search found at each address
-        self._middleware: list[Middleware] = [mw_access, mw_validate, mw_normalize, mw_log, mw_timeout_retry]
+        self._middleware: list[Middleware] = [mw_access, mw_validate, mw_normalize, mw_log, self._mw_in_order,
+                                              mw_timeout_retry]
+        self._queues: dict[str, asyncio.Lock] = {}      # per device: commands run one at a time
+        self._commands_done: dict[str, int] = {}        # per device: commands finished (to spot stale reads)
         self.profiles = Profiles(self.store, Sessions(os.path.join(data_dir, "demo-sessions.json" if demo else "sessions.json")))
         self.history = History(os.path.join(data_dir, "demo-history.db" if demo else "history.db"))
         self.automations = Automations(self)
@@ -265,6 +268,15 @@ class HomeService:
     def use(self, middleware: Middleware, index: int | None = None) -> None:
         """Insert custom middleware. Default: just before the adapter call."""
         self._middleware.insert(len(self._middleware) if index is None else index, middleware)
+
+    async def _mw_in_order(self, ctx: CommandContext, call_next):
+        """Commands for one device run one at a time, in the order they arrived, so the last one
+        sent wins even when the device answers some faster than others (e.g. a color picked on the
+        wheel, then a preset). Pointer moves skip the queue: the UI already sends them one by one."""
+        if ctx.action in Action.QUIET:
+            return await call_next(ctx)
+        async with self._queues.setdefault(ctx.device.id, asyncio.Lock()):
+            return await call_next(ctx)
 
     async def _run_pipeline(self, ctx: CommandContext):
         async def terminal(c: CommandContext):
@@ -490,6 +502,7 @@ class HomeService:
         self._failures[d.id] = 0
         if action in Action.QUIET:          # nothing changed; don't flood the live events
             return self.public_device(d)
+        self._commands_done[d.id] = self._commands_done.get(d.id, 0) + 1
         d.state.update({"online": True, **changed})
         self._publish_device(d)
         # confirm the real state shortly after (devices sometimes ignore commands)
@@ -549,16 +562,21 @@ class HomeService:
         before = dict(d.state)
         config_before = dict(d.config)
         shape_before = (list(d.caps), dict(d.meta))
+        done = self._commands_done.get(d.id, 0)
+        # A command that finished while we were reading is newer than what we read (and it asked
+        # for its own fresh read), so its result stays.
+        overtaken = lambda: self._commands_done.get(d.id, 0) != done   # noqa: E731
         try:
             state = await asyncio.wait_for(adapter.refresh(d), REFRESH_TIMEOUT)
             self._failures[d.id] = 0
-            d.state = {"online": True, **(state or {})}
+            if not overtaken():
+                d.state = {"online": True, **(state or {})}
         except PairingRequired as e:
             d.state = {"online": True, "needs_pairing": True, "error": str(e)}
         except Exception as e:
             n = self._failures.get(d.id, 0) + 1
             self._failures[d.id] = n
-            if n >= OFFLINE_AFTER_FAILURES or before.get("online") is None:
+            if (n >= OFFLINE_AFTER_FAILURES or before.get("online") is None) and not overtaken():
                 d.state = {**before, "online": False, "error": _friendly(e)}
         if d.state.get("power_w") is not None and d.state.get("online"):
             await asyncio.to_thread(self.history.record, d.id, d.state["power_w"])

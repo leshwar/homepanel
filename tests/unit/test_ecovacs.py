@@ -90,6 +90,7 @@ class Cloud:
         self.legacy = []
         self.state, self.battery, self.available = State.DOCKED, 87, True
         self.commands, self.logins, self.codes_sent, self.verified = [], [], 0, []
+        self.reply = lambda cmd: {"ret": "ok", "resp": {"body": {"code": 0, "msg": "ok"}}}
         self.full = True           # False = a basic model: clean and dock only
         self.svg = "<svg xmlns='http://www.w3.org/2000/svg'><rect width='10' height='10'/></svg>"
         self.rooms = [Room("Kitchen", 1), Room("Living room", 2), Room("", 7)]
@@ -205,7 +206,7 @@ class Bot:
 
     async def execute_command(self, cmd):
         cloud.commands.append((cmd.name, cmd.arg))
-        return {}
+        return cloud.reply(cmd)
 
     async def teardown(self):
         pass
@@ -227,6 +228,11 @@ def install_fake_library():
         "deebot_client.util": {"md5": lambda t: f"md5:{len(t)}"},
         "deebot_client.mqtt_client": {"MqttClient": MqttClient, "create_mqtt_config": lambda **k: dict(k)},
         "deebot_client.device": {"Device": Bot},
+        "deebot_client.commands": {},
+        "deebot_client.commands.json": {},
+        "deebot_client.commands.json.clean": {
+            "CleanV2": lambda act: Command("clean_v2", act),
+            "CleanAreaV2": lambda mode, ids, n: Command("clean_area_v2", (mode, ids, n))},
         "deebot_client.events": {"StateEvent": StateEvent, "BatteryEvent": BatteryEvent,
                                  "ErrorEvent": ErrorEvent, "AvailabilityEvent": AvailabilityEvent,
                                  "FanSpeedEvent": FanSpeedEvent, "WorkModeEvent": WorkModeEvent,
@@ -321,6 +327,45 @@ class EcovacsAdapterTests(unittest.IsolatedAsyncioTestCase):
                                        {"id": "brush", "name": "Main brush", "percent": 82}])
         self.assertEqual(st["last_clean"], {"area_m2": 42, "minutes": 35})
         self.assertEqual(st["suction"], "max")
+
+    async def test_model_that_wants_clean_v2(self):
+        """The T90 Pro Omni answers the classic clean command with 20003 "rcp not support"."""
+        # like deebot-client: a refused command (here 20003 "rcp not support") comes back empty
+        refuse_classic = lambda cmd: ({} if cmd.name in ("clean", "clean_area") else
+                                      {"ret": "ok", "resp": {"body": {"code": 0, "msg": "ok"}}})
+        cloud.reply = refuse_classic
+        d = self.device()
+        st = await self.a.command(d, Action.CLEAN, Clean.START)
+        self.assertEqual(st["activity"], Activity.CLEANING)
+        self.assertTrue(d.config["clean_v2"])                       # remembered (saved with the device)
+        cloud.commands.clear()
+        await self.a.command(d, Action.CLEAN, Clean.PAUSE)          # goes straight to V2 now
+        await self.a.command(d, Action.CLEAN_ROOMS, [1, 2])
+        self.assertEqual(cloud.commands, [("clean_v2", CleanAction.PAUSE),
+                                          ("clean_area_v2", (CleanMode.SPOT_AREA, [1, 2], 1))])
+
+    async def test_refused_command_is_an_error_not_a_guess(self):
+        d = self.device()
+        await self.a.refresh(d)                                     # docked
+        cloud.reply = lambda cmd: {"ret": "ok", "resp": {"body": {"code": 30007, "msg": "bin full"}}}
+        with self.assertRaises(AdapterError) as e:
+            await self.a.command(d, Action.CLEAN, Clean.START)
+        self.assertIn("bin full", str(e.exception))
+        self.assertEqual(self.a._state["bot1"]["activity"], Activity.DOCKED)   # not shown as cleaning
+        cloud.reply = lambda cmd: {"ret": "fail", "errno": 4200, "error": "offline"}
+        with self.assertRaises(AdapterError) as e:
+            await self.a.command(d, Action.DOCK)
+        self.assertIn("offline", str(e.exception))
+
+    async def test_refused_by_both_forms_is_an_error(self):
+        cloud.reply = lambda cmd: {} if cmd.name.startswith("clean") else {"ret": "ok", "resp": {"body": {"code": 0}}}
+        d = self.device()
+        await self.a.refresh(d)
+        with self.assertRaises(AdapterError) as e:
+            await self.a.command(d, Action.CLEAN, Clean.START)
+        self.assertIn("didn't do that", str(e.exception))
+        self.assertNotIn("clean_v2", d.config)                              # nothing worked: nothing remembered
+        self.assertEqual(self.a._state["bot1"]["activity"], Activity.DOCKED)
 
     async def test_extra_commands(self):
         d = self.device()

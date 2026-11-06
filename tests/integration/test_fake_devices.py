@@ -365,3 +365,47 @@ class HomeAssistantAdapterTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EcovacsRefusalThroughTheService(unittest.IsolatedAsyncioTestCase):
+    """The whole command path (service pipeline → Ecovacs adapter → fake library): a command
+    the vacuum refuses must come back as an error, and the panel must keep showing the real
+    state instead of "Cleaning". A model that wants clean_V2 still starts."""
+
+    async def asyncSetUp(self):
+        import sys
+        from tests.unit import test_ecovacs as fake
+        from app.core.service import HomeService
+        self.fake, self.saved = fake, fake.install_fake_library()
+        fake.cloud.reset()
+        self.sys = sys
+        from app.adapters.ecovacs import EcovacsAdapter
+        self.dir = tempfile.mkdtemp()
+        self.svc = HomeService(self.dir)
+        self.svc.store.accounts["ecovacs"] = {"email": "me@example.com", "password": "pw", "country": "US"}
+        self.svc.adapters = {"ecovacs": EcovacsAdapter(self.svc.store.accounts["ecovacs"], self.dir)}
+        self.svc.store.devices["v"] = Device(id="v", adapter="ecovacs", name="Hall bot", kind=Kind.VACUUM,
+                                             caps=["clean", "dock"], config={"did": "bot1", "_uid": "bot1"})
+        await self.svc.refresh("v")
+
+    async def asyncTearDown(self):
+        await self.svc.adapters["ecovacs"].stop()
+        for name, mod in self.saved.items():
+            if mod is None:
+                self.sys.modules.pop(name, None)
+            else:
+                self.sys.modules[name] = mod
+
+    async def test_refused_then_v2(self):
+        cloud = self.fake.cloud
+        self.assertEqual(self.svc.store.devices["v"].state["activity"], "docked")
+        cloud.reply = lambda cmd: {"ret": "ok", "resp": {"body": {"code": 30007, "msg": "bin full"}}}
+        with self.assertRaisesRegex(AdapterError, "bin full"):
+            await self.svc.command("v", "clean", "start")
+        self.assertEqual(self.svc.store.devices["v"].state["activity"], "docked")    # not "cleaning"
+
+        # like deebot-client with the T90: the classic command is refused and comes back empty
+        cloud.reply = lambda cmd: {} if cmd.name == "clean" else {"ret": "ok", "resp": {"body": {"code": 0}}}
+        d = await self.svc.command("v", "clean", "start")
+        self.assertEqual(d["state"]["activity"], "cleaning")
+        self.assertTrue(self.svc.store.devices["v"].config["clean_v2"])              # saved with the device

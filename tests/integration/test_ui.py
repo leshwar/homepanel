@@ -358,6 +358,41 @@ class UITests(unittest.TestCase):
         return page.evaluate(f"""(() => {{ const c = getComputedStyle(document.querySelector('{selector}')).color
             .match(/\\d+(\\.\\d+)?/g).map(Number); return (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255; }})()""")
 
+    def _tile_look(self, page, did):
+        """(background alpha, text-on-background contrast ratio) of a tile, as drawn."""
+        return page.evaluate(f"""(() => {{
+            const t = document.querySelector('.tile[data-id="{did}"]');
+            const nums = (c) => c.match(/[\\d.]+/g).map(Number);
+            const bg = nums(getComputedStyle(t).backgroundColor), fg = nums(getComputedStyle(t.querySelector('.tile-name')).color);
+            const lum = (c) => {{ const [r, g, b] = c.slice(0, 3).map((v) => {{ v /= 255; return v <= .03928 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4; }});
+                                  return .2126 * r + .7152 * g + .0722 * b; }};
+            const [a, b] = [lum(bg), lum(fg)].sort((x, y) => y - x);
+            return [bg.length > 3 ? bg[3] : 1, (a + .05) / (b + .05)];
+        }})()""")
+
+    def test_tiles_stay_readable_at_full_glass_transparency(self):
+        """Glass transparency at 100 % over a busy wallpaper used to leave light tiles as a thin grey haze."""
+        root = "document.documentElement"
+        try:
+            self._put_settings(background="ocean", tile_style="light", glass_transparency=100)
+            page = self.open(view="rooms")
+            page.wait_for_function(f"{root}.dataset.tiles === 'light'")
+            alpha, contrast = self._tile_look(page, "lr-tv")
+            self.assertGreaterEqual(alpha, 0.72)                          # still white glass, not a haze
+            self.assertGreater(contrast, 7)                                # dark text on a near-white tile
+            page.close()
+            self._put_settings(background="wallpaper", wallpaper="shuffle", tile_style="dark")
+            page = self.open(view="rooms")
+            page.wait_for_function(f"{root}.dataset.tiles === 'dark' && {root}.classList.contains('has-wallpaper')")
+            # dark tiles over a picture get a floor too (wait out the tile's color transition)
+            page.wait_for_function("""(() => { const c = getComputedStyle(document.querySelector('.tile[data-id="lr-tv"]'))
+                .backgroundColor.match(/[\\d.]+/g).map(Number); return c.length > 3 && c[3] >= 0.55; })()""", timeout=5000)
+            shadow = page.evaluate("getComputedStyle(document.querySelector('.topbar-title')).textShadow")
+            self.assertNotEqual(shadow, "none")                           # text right on the picture has a shadow
+            page.close()
+        finally:
+            self._put_settings(background="sky", wallpaper="shuffle", tile_style="auto", glass_transparency=45)
+
     def test_tiles_contrast_with_the_background(self):
         root = "document.documentElement"
         try:

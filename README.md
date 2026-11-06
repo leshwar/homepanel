@@ -180,8 +180,10 @@ it: open the panel's address in Safari or Chrome. The address is shown in
 `http://192.168.1.20:8080`. (In Docker on a Mac, use your Mac's address from
 System Settings → Wi-Fi → Details, with the port you opened, e.g. `:8081`.)
 
-Anyone on your Wi-Fi who opens that address can control your devices; there's no
-sign-in yet. Phone apps are planned for later (see [ROADMAP](docs/ROADMAP.md)).
+Sign in with your profile's PIN or email and password. Members only see the
+devices shared with them; admins manage devices and settings. Use a VPN such as
+Tailscale for access away from home—don't expose the panel's port to the internet.
+Native phone apps are planned for later (see [ROADMAP](docs/ROADMAP.md)).
 
 ## Logs and debugging
 

@@ -13,7 +13,9 @@ python -m unittest discover -s tests -t .   # both, without pytest
 
 ## tests/unit/ — logic in isolation
 
-No sockets, servers or browsers. Milliseconds per test.
+No sockets, servers or browsers. The JavaScript rendering helper tests use Node.js
+with fake elements (no npm packages); install Node to run them locally. CI installs
+Node explicitly. Node is not required to run the panel.
 
 | File | Covers |
 |---|---|
@@ -27,6 +29,7 @@ No sockets, servers or browsers. Milliseconds per test.
 | `test_profiles.py` | Profiles and sign-in: scrypt hashing, rate limits (with a fake clock), sessions (saved as hashes, expiry, the long-lived wall panel), migration to an Owner profile, profile rules (PIN format, last admin), what a member sees (snapshot, commands, all off, scenes, events, per-profile layouts), and the auth middleware called directly (401 / 403 / hidden device 404 / locked panel / demo without sign-in). |
 | `test_voice.py` | Voice commands: a table of sentences mapped to commands (power, rooms, numbers and percentages, colors, TV, sound bar, vacuum rooms, scenes, questions), synonyms and misspellings, "Which lamp?" choices that resolve, a yes before risky commands, unknown phrases, and the runner going through the service middleware. |
 | `test_light_effects.py` | Light effects: parsing Govee's recorded capability and scene answers (`tests/fixtures/govee`), the control payloads for scenes, DIY scenes, snapshots, music, strip parts and toggles, reading the lists once and caching them (and retrying a failed read only after a while), the cloud rate budget (fake clock) and daily allowance, plain messages for 429 and a missing key, the service validating and normalising each value on the demo strip, saving a re-read list, and voice ("set the backlight to sunset"). |
+| `test_ui_render.py` | JavaScript markup caching (unchanged writes skipped, cache scoped to each element) and in-place room badges (including zero counts and avoiding redundant text writes). |
 | `test_ci_policy.py` | The "tests included" pull-request rule itself. |
 
 ## tests/integration/ — parts working together for real

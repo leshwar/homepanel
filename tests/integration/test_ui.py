@@ -881,7 +881,9 @@ class UITests(unittest.TestCase):
             page.close()
 
     def test_iphone_ipad_and_panel_sizes(self):
-        sizes = [(393, 852, True), (820, 1180, False), (1180, 820, False), (720, 1280, False), (1280, 720, False)]
+        sizes = [(320, 568, True), (360, 640, True), (393, 852, True), (568, 320, True),
+                 (768, 1024, False), (820, 1180, False), (1024, 768, False),
+                 (1180, 820, False), (720, 1280, False), (1280, 720, False)]
         for w, h, phone in sizes:
             with self.subTest(size=f"{w}x{h}"):
                 page = self.home(width=w, height=h, is_mobile=phone)
@@ -894,6 +896,16 @@ class UITests(unittest.TestCase):
                     for i in range(targets.count()):
                         box = targets.nth(i).bounding_box()
                         self.assertGreaterEqual(min(box["width"], box["height"]), 48, targets.nth(i).inner_text())
+                        self.assertGreaterEqual(box["x"], 0)
+                        self.assertLessEqual(box["x"] + box["width"], w)
+                    if not wide:
+                        dock = page.locator(".dock-bar").bounding_box()
+                        add = page.locator(".dock-add").bounding_box()
+                        self.assertGreaterEqual(dock["x"], 12)
+                        self.assertLessEqual(add["x"] + add["width"], w - 12)
+                    # Small clocks must not collapse when a sidebar is introduced.
+                    for widget in page.locator(".widget.s-1x1").all():
+                        self.assertGreaterEqual(widget.bounding_box()["width"], 130)
                     if wide:
                         page.click('#rail [data-room="Kitchen"]')
                         page.wait_for_selector('#grid .tile[data-id="kt-kettle"]')
@@ -903,6 +915,82 @@ class UITests(unittest.TestCase):
                         page.wait_for_selector(".widget")
                 finally:
                     page.close()
+
+    def test_unrelated_device_updates_keep_room_tiles_and_navigation(self):
+        page = self.page
+        page.set_viewport_size({"width": 1180, "height": 820})
+        page.click('#rail [data-room="Kitchen"]')
+        page.wait_for_selector('.tile[data-id="kt-kettle"]')
+        result = page.evaluate("""async () => {
+            const {store, upsertDevice} = await import('/js/store.js');
+            const tile = document.querySelector('.tile[data-id="kt-kettle"]');
+            const nav = document.querySelector('#rail [data-room="Kitchen"]');
+            tile.focus();
+            const device = structuredClone(store.devices.get('lr-lamp'));
+            device.state.on = !device.state.on;
+            upsertDevice(device);
+            const focusKept = document.activeElement === tile;
+            nav.focus();
+            device.state.brightness = 43;
+            upsertDevice(device);
+            return {tile: tile === document.querySelector('.tile[data-id="kt-kettle"]'),
+                    focusKept, nav: document.activeElement === nav && nav.isConnected};
+        }""")
+        self.assertEqual(result, {"tile": True, "focusKept": True, "nav": True})
+
+    def test_home_room_counts_keep_buttons_focus_and_scroll(self):
+        page = self.home(width=393, height=852)
+        try:
+            result = page.evaluate("""async () => {
+                const {store, upsertDevice} = await import('/js/store.js');
+                const button = document.querySelector('#home [data-go-room="Living room"]');
+                const list = button.parentElement;
+                list.style.height = '48px'; list.style.flex = 'none';
+                button.focus();
+                list.scrollTop = 30;
+                const scroll = list.scrollTop;
+                const before = Number(button.querySelector('.count').textContent);
+                const device = structuredClone(store.devices.get('lr-lamp'));
+                const wasOn = device.state.on;
+                device.state.on = !wasOn;
+                upsertDevice(device);
+                const after = Number(button.querySelector('.count').textContent);
+                return {same: button === document.querySelector('#home [data-go-room="Living room"]'),
+                        focus: document.activeElement === button, scroll: list.scrollTop === scroll,
+                        updated: after === before + (wasOn ? -1 : 1)};
+            }""")
+            self.assertEqual(result, {"same": True, "focus": True, "scroll": True, "updated": True})
+        finally:
+            page.close()
+
+    def test_long_room_names_and_short_landscape_rail_remain_usable(self):
+        page = self.page
+        page.set_viewport_size({"width": 320, "height": 568})
+        page.evaluate("""async () => {
+            const {store, emit} = await import('/js/store.js');
+            const name = 'A very long room name ' + 'x'.repeat(80);
+            store.rooms = [name];
+            for (const d of store.devices.values()) d.room = name;
+            emit('all');
+        }""")
+        head = page.locator('.room-head')
+        self.assertTrue(head.evaluate('e => e.scrollWidth <= e.clientWidth'))
+        off = head.locator('.room-off').bounding_box()
+        self.assertGreaterEqual(off["height"], 48)
+        self.assertLessEqual(off["x"] + off["width"], 320)
+        # Lots of rooms on a short screen should scroll, never shrink Home/Settings.
+        page.set_viewport_size({"width": 844, "height": 390})
+        page.evaluate("""async () => {
+            const {store, emit} = await import('/js/store.js');
+            store.rooms = Array.from({length: 20}, (_, i) => `Room ${i}`);
+            const template = store.devices.values().next().value;
+            store.devices = new Map(store.rooms.map((room, i) => [String(i), {...template, id: String(i), room}]));
+            emit('all');
+        }""")
+        for button in page.locator('#rail button').all():
+            self.assertGreaterEqual(button.bounding_box()["height"], 48)
+        page.locator('#rail [data-open-settings]').scroll_into_view_if_needed()
+        self.assertTrue(page.locator('#rail [data-open-settings]').is_visible())
 
     def test_edit_home_page_hide_resize_move_and_save_for_every_screen(self):
         page = self.home()

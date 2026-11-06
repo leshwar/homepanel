@@ -63,6 +63,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"    # plain-JS unit tests; no frontend build or npm dependencies
       - run: pip install -r requirements-dev.txt
       - run: pytest tests/unit -v
 

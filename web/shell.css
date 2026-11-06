@@ -21,7 +21,8 @@ body { min-height: 100dvh; -webkit-touch-callout: none; overflow-x: hidden; }
 .topbar-title h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.12;
                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar-title p { margin: 2px 0 0; color: var(--haze); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.topbar-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.topbar-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; flex: none; max-width: 100%; }
+.topbar-actions > button { flex-shrink: 0; }
 .topbar-clock { height: 48px; padding: 0 16px; border-radius: 24px; font-size: 19px; font-weight: 500;
              font-variant-numeric: tabular-nums; white-space: nowrap; }
 .icon-btn, .btn-alloff { width: 48px; height: 48px; }
@@ -39,7 +40,7 @@ body { min-height: 100dvh; -webkit-touch-callout: none; overflow-x: hidden; }
              text-overflow: ellipsis; white-space: nowrap; }
 .rail-label { margin: 18px 14px 6px; color: var(--haze); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
 .rail-rooms { display: flex; flex-direction: column; gap: 4px; }
-.rail-item { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 14px; border-radius: 16px;
+.rail-item { flex-shrink: 0; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 14px; border-radius: 16px;
              text-align: left; font-size: 17px; font-weight: 500; transition: background-color .2s, color .2s, transform .15s var(--ease); }
 .rail-item > span:not(.count) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rail-item:active { transform: scale(.97); background: rgb(255 255 255 / .08); }
@@ -61,19 +62,20 @@ body { min-height: 100dvh; -webkit-touch-callout: none; overflow-x: hidden; }
 @media (min-width: 1100px) { .app { --rail-w: 250px; } }
 
 /* ---------- dock (phones, portrait panel) ---------- */
-.dock { position: fixed; z-index: 15; left: 0; right: 0; bottom: calc(14px + env(safe-area-inset-bottom));
+.dock { padding: 0 max(12px, env(safe-area-inset-right)) 0 max(12px, env(safe-area-inset-left));
+        position: fixed; z-index: 15; left: 0; right: 0; bottom: calc(14px + env(safe-area-inset-bottom));
         display: flex; justify-content: center; align-items: center; gap: 10px; pointer-events: none; }
 .dock > * { pointer-events: auto; }
 .dock-bar, .dock-add { background-color: rgb(14 20 46 / max(.62, var(--glass-alpha)));
   -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
   border: 1px solid rgb(255 255 255 / .12); box-shadow: inset 0 1px 0 rgb(255 255 255 / .14), 0 16px 40px rgb(0 4 30 / .35); }
-.dock-bar { display: flex; gap: 2px; padding: 5px; border-radius: 34px; }
+.dock-bar { display: flex; flex: 0 1 auto; min-width: 0; gap: 2px; padding: 5px; border-radius: 34px; }
 .dock-bar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
-                   min-width: 80px; height: 58px; border-radius: 29px; font-size: 12px; font-weight: 600; color: var(--haze);
+                   flex: 1 1 80px; min-width: 48px; width: 80px; height: 58px; border-radius: 29px; font-size: 12px; font-weight: 600; color: var(--haze);
                    transition: background-color .2s, color .2s, transform .15s var(--ease); }
 .dock-bar button[aria-current="page"] { background: rgb(255 255 255 / .17); color: var(--paper); }
 .dock-bar button:active, .dock-add:active { transform: scale(.94); }
-.dock-add { width: 68px; height: 68px; border-radius: 50%; display: grid; place-items: center; transition: transform .15s var(--ease); }
+.dock-add { flex: 0 0 58px; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; transition: transform .15s var(--ease); }
 .dock-add .i { width: 28px; height: 28px; }
 html:has(.home.editing) .dock { display: none; }
 @media (max-width: 767px) {
@@ -90,8 +92,9 @@ html[data-view="home"] #clock[hidden] { display: none; }
              grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
              grid-auto-rows: 160px;   /* fallback; square cells below */
              grid-auto-rows: calc((100cqi - (var(--cols) - 1) * var(--g)) / var(--cols)); }
-@container (min-width: 480px) { .home-grid { --cols: 4; } }
-@container (min-width: 840px) { .home-grid { --cols: 6; --g: 16px; } }
+/* Add columns only when even Small widgets have room for readable content. */
+@container (min-width: 600px) { .home-grid { --cols: 4; } }
+@container (min-width: 960px) { .home-grid { --cols: 6; --g: 16px; } }
 
 .widget { position: relative; min-width: 0; min-height: 0; border-radius: 26px; container-type: size; isolation: isolate;
           background-color: rgb(12 18 40 / var(--glass-alpha)); background-image: linear-gradient(160deg, rgb(255 255 255 / .08), rgb(255 255 255 / 0) 60%);
@@ -99,8 +102,6 @@ html[data-view="home"] #clock[hidden] { display: none; }
           border: 1px solid rgb(255 255 255 / .1); box-shadow: inset 0 1px 0 rgb(255 255 255 / .12), 0 14px 34px rgb(0 4 30 / .22); }
 .s-2x1 { grid-column: span 2; }
 .s-2x2 { grid-column: span 2; grid-row: span 2; }
-.widget.t-device { background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
-.widget > .tile { position: absolute; inset: 0; min-height: 0; border-radius: inherit; }
 
 .w-fill { display: flex; flex-direction: column; width: 100%; height: 100%; padding: clamp(12px, 8cqmin, 20px); text-align: left;
           overflow: hidden; border-radius: inherit; }
@@ -114,17 +115,17 @@ html[data-view="home"] #clock[hidden] { display: none; }
 /* big clock */
 .w-clock { justify-content: space-between; }
 .w-greet { font-size: clamp(15px, 7cqw, 24px); font-weight: 600; }
-.w-clock .w-time { font-size: min(40cqh, 31cqw); }
-.s-2x1 .w-clock .w-time { font-size: min(46cqh, 22cqw); }
-.s-1x1 .w-clock .w-time { font-size: min(34cqh, 27cqw); }
+.w-clock .w-time { font-size: min(40cqh, 27cqw); }
+.s-2x1 .w-clock .w-time { font-size: min(46cqh, 19cqw); }
+.s-1x1 .w-clock .w-time { font-size: min(32cqh, 23cqw); }
 .w-date { font-size: clamp(13px, 6cqw, 21px); color: var(--haze); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .s-1x1 .w-greet, .s-1x1 .w-date { font-size: clamp(12px, 9cqw, 15px); }
 .w-clock:active { transform: none; }
 
 /* clocks for other places */
 .w-zone { justify-content: space-between; }
-.w-zone .w-time { font-size: min(32cqh, 27cqw); font-weight: 300; }
-.s-2x1 .w-zone .w-time, .s-2x2 .w-zone .w-time { font-size: min(40cqh, 18cqw); }
+.w-zone .w-time { font-size: min(32cqh, 23cqw); font-weight: 300; }
+.s-2x1 .w-zone .w-time, .s-2x2 .w-zone .w-time { font-size: min(40cqh, 16cqw); }
 
 /* weather */
 .w-weather { justify-content: space-between; }
@@ -209,17 +210,10 @@ html[data-view="home"] #clock[hidden] { display: none; }
 .tile:active { transform: scale(.96); }
 .tile.pop .tile-icon { animation: pop .34s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes pop { 45% { transform: scale(1.18); } }
-.widget > .tile { padding: clamp(12px, 8cqmin, 16px); }
-.widget > .tile .tile-icon { width: clamp(38px, 28cqmin, 46px); height: clamp(38px, 28cqmin, 46px); }
-.widget > .tile .tile-name { font-size: clamp(14px, 11cqmin, 17px); margin-top: 6px; }
-.widget > .tile .tile-status { font-size: clamp(12px, 9cqmin, 14px); }
 
 /* room tiles size with their column, not the window (the rail takes room on wide screens) */
 #grid { container-type: inline-size; }
 .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-@media (min-width: 1px) {   /* override app.css's window-width columns */
-  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 @container (min-width: 520px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @container (min-width: 760px) { .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 @container (min-width: 1040px) { .tiles { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
@@ -303,6 +297,10 @@ html[data-sky="snow"] .sky-snow { opacity: 1; }
   .sky > div { animation: none !important; }
   .home.editing .widget { animation: none; }
 }
+/* Long room names wrap instead of pushing Turn off outside the viewport. */
+.room-head { flex-wrap: wrap; }
+.room-title { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
+.room-title .i { flex-shrink: 0; }
 .room-head.single .room-title { display: none; }   /* the bar title already names the room */
 
 /* Settings → device → Icon */
@@ -322,11 +320,6 @@ html[data-sky="snow"] .sky-snow { opacity: 1; }
 html[data-bg="sky"] :is(.topbar-title, .room-head, .rail-head, .rail-label, .nudge) { text-shadow: 0 1px 14px rgb(0 8 40 / .5); }
 html[data-bg="sky"] .w-wx .cf-wx-icon { color: var(--paper); }
 
-/* times leave room for AM/PM */
-.w-clock .w-time { font-size: min(40cqh, 27cqw); }
-.s-2x1 .w-clock .w-time { font-size: min(46cqh, 19cqw); }
-.s-1x1 .w-clock .w-time, .w-zone .w-time { font-size: min(32cqh, 23cqw); }
-.s-2x1 .w-zone .w-time, .s-2x2 .w-zone .w-time { font-size: min(40cqh, 16cqw); }
 /* wide (one row tall) scene and room lists: one row that scrolls sideways */
 .s-2x1 .w-scene-list, .s-1x1 .w-scene-list { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; flex: none; }
 .w-scene-list .scene { flex: none; }

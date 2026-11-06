@@ -157,6 +157,20 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(ev["type"], "device")
         self.assertEqual(ev["device"]["id"], "lr-plug")
 
+    async def test_end_streams_tells_every_listener_to_finish(self):
+        # Shutdown puts a None in each live queue, even a full one, and any listener that
+        # arrives afterwards is told at once, so no event stream keeps the server open.
+        quiet, busy = self.svc.subscribe(), self.svc.subscribe()
+        for i in range(busy.maxsize):
+            busy.put_nowait({"type": "device", "n": i})
+        self.svc.end_streams()
+        self.assertTrue(self.svc.closing)
+        self.assertIsNone(await asyncio.wait_for(quiet.get(), 1))
+        items = [busy.get_nowait() for _ in range(busy.qsize())]
+        self.assertIsNone(items[-1])
+        late = self.svc.subscribe()
+        self.assertIsNone(await asyncio.wait_for(late.get(), 1))
+
     async def test_display_settings_defaults_and_validation(self):
         s = self.svc.store.settings
         self.assertEqual((s["background"], s["glass_transparency"], s["glass_effect"]), ("sky", 45, True))

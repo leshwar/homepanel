@@ -76,7 +76,8 @@ async def get_state(request):
 async def events(request: Request):
     """Server-Sent Events: the UI keeps this open and updates tiles as states change.
     Each event is checked against the listener's profile when it's sent, so a device the
-    profile can't see never arrives, and the stream ends when the session does."""
+    profile can't see never arrives, and the stream ends when the session does, or when
+    the server shuts down (the UI then reconnects once it's back)."""
     svc = _svc(request)
     token = read_cookie(request.scope)
     opened_by = current_viewer.get()
@@ -100,6 +101,8 @@ async def events(request: Request):
             while True:
                 try:
                     ev = await asyncio.wait_for(q.get(), 20)
+                    if ev is None:              # the server is shutting down (end_streams)
+                        break
                     yield f"data: {json.dumps(ev)}\n\n"
                 except asyncio.TimeoutError:
                     yield ": keep-alive\n\n"

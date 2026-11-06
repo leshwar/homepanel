@@ -1,7 +1,35 @@
 """Unit tests for app/main.py helpers."""
 import unittest
 
-from app.main import ui_cache_header
+from app.main import GRACEFUL_SHUTDOWN_SECONDS, create_app, make_server, ui_cache_header
+
+
+class ServerShutdown(unittest.IsolatedAsyncioTestCase):
+    async def test_server_gives_up_on_open_connections_after_a_few_seconds(self):
+        import tempfile
+        server = make_server(create_app(tempfile.mkdtemp(), demo=True), "127.0.0.1", 0)
+        self.assertEqual(server.config.timeout_graceful_shutdown, GRACEFUL_SHUTDOWN_SECONDS)
+        self.assertLessEqual(GRACEFUL_SHUTDOWN_SECONDS, 5)
+
+    async def test_shutdown_ends_live_event_streams_first(self):
+        import tempfile
+        app = create_app(tempfile.mkdtemp(), demo=True)
+        server = make_server(app, "127.0.0.1", 0)
+        calls = []
+
+        class FakeService:
+            def end_streams(self):
+                calls.append("end_streams")
+
+        app.state.service = FakeService()
+        server.servers = []                       # not serving: nothing to close
+        server.lifespan = type("L", (), {"shutdown": staticmethod(lambda: _done(calls))})()
+        await server.shutdown()
+        self.assertEqual(calls, ["end_streams", "lifespan shutdown"])
+
+
+async def _done(calls):
+    calls.append("lifespan shutdown")
 
 
 class CachePolicy(unittest.TestCase):

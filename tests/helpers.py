@@ -3,9 +3,7 @@ import socket
 import threading
 import time
 
-import uvicorn
-
-from app.main import create_app
+from app.main import create_app, make_server
 
 
 def free_port() -> int:
@@ -23,8 +21,8 @@ class DemoServer:
     def __init__(self, data_dir: str, sign_in: bool = False):
         self.port = free_port()
         self.url = f"http://127.0.0.1:{self.port}"
-        self.server = uvicorn.Server(uvicorn.Config(create_app(data_dir, demo=True, sign_in=sign_in), host="127.0.0.1",
-                                                   port=self.port, log_config=None))
+        self.app = create_app(data_dir, demo=True, sign_in=sign_in)
+        self.server = make_server(self.app, "127.0.0.1", self.port, log_config=None)
         self.thread = threading.Thread(target=self.server.run, daemon=True)
 
     def start(self) -> "DemoServer":

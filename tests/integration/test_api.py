@@ -312,6 +312,52 @@ class ApiTests(unittest.TestCase):
         except urllib.error.HTTPError as e:
             self.assertEqual(e.code, 404)
 
+    def _send_image(self, method, path, data: bytes, content_type="image/tiff"):
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/v1{path}", data=data, method=method,
+                                     headers={"Content-Type": content_type})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                return r.status, json.loads(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, json.loads(e.read())
+
+    def test_wallpaper_from_a_mac_tiff(self):
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (1200, 675), (20, 10, 60)).save(buf, "TIFF")      # like a picture pasted on a Mac
+        status, w = self._send_image("POST", "/wallpapers?name=Pasted.tiff", buf.getvalue())
+        self.assertEqual((status, w["width"], w["height"]), (200, 1200, 675))
+        _, listing = self.call("GET", "/wallpapers")
+        self.assertIn(w["id"], [x["id"] for x in listing["wallpapers"]])
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{w['url']}", timeout=5) as r:
+            self.assertEqual(r.headers["Content-Type"], "image/jpeg")      # browsers can't show TIFF
+            self.assertIn("private", r.headers["Cache-Control"])
+        status, s = self.call("PUT", "/settings", {"background": "wallpaper", "wallpaper": w["id"], "wallpaper_dim": 30})
+        self.assertEqual((status, s["background"], s["wallpaper"], s["wallpaper_dim"]), (200, "wallpaper", w["id"], 30))
+        self.assertEqual(self.call("DELETE", f"/wallpapers/{w['id']}")[0], 200)
+        _, s = self.call("GET", "/state")
+        self.assertEqual(s["settings"]["wallpaper"], "shuffle")              # the one shown was removed
+        self.call("PUT", "/settings", {"background": "sky"})
+
+    def test_device_picture_put_get_delete(self):
+        import io
+        from PIL import Image
+        img = Image.new("RGBA", (800, 500), (0, 0, 0, 0))
+        img.paste((40, 60, 200, 255), (50, 50, 750, 450))
+        buf = io.BytesIO()
+        img.save(buf, "PNG")
+        status, d = self._send_image("PUT", "/devices/kt-kettle/picture", buf.getvalue(), "image/png")
+        self.assertEqual(status, 200)
+        self.assertTrue(d["picture_url"].endswith(".png"))
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{d['picture_url']}", timeout=5) as r:
+            self.assertEqual(r.headers["Content-Type"], "image/png")
+        status, d = self.call("DELETE", "/devices/kt-kettle/picture")
+        self.assertEqual((status, d["picture_url"]), (200, ""))
+        self.assertEqual(self.call("GET", "/devices/kt-kettle/picture")[0], 404)
+        status, err = self._send_image("PUT", "/devices/kt-kettle/picture", b"nope", "image/png")
+        self.assertEqual(status, 400)
+
     def test_tv_mac_address_can_be_set(self):
         status, d = self.call("PATCH", "/devices/bd-tv", {"mac": "a4:36:c7:1:2:3"})
         self.assertEqual((status, d["mac"]), (200, "A4:36:C7:01:02:03"))

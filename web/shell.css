@@ -297,7 +297,7 @@ html:is([data-sky="rain"], [data-sky="storm"]) .sky-rain { opacity: 1; }
 html[data-sky="snow"] .sky-snow { opacity: 1; }
 
 /* Display settings: the Sky swatch */
-.bg-swatch.sky { background: linear-gradient(180deg, #1b54c9, #7fb1ec 70%, #ec9a6c); }
+.bg-swatch.swatch-sky { background: linear-gradient(180deg, #1b54c9, #7fb1ec 70%, #ec9a6c); }
 
 @media (prefers-reduced-motion: reduce) {
   .sky > div { animation: none !important; }

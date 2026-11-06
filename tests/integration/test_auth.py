@@ -120,6 +120,21 @@ class SignInApiTests(unittest.TestCase):
         self.assertIn("admin", err["error"])
         self.assertEqual(sam.call("POST", "/scenes/movie/run", {})[0], 404)
 
+    def test_members_see_wallpapers_and_pictures_but_cant_change_them(self):
+        sam = self.client()
+        sam.sign_in(profile_id="sam", pin="2468")
+        status, walls, _ = sam.call("GET", "/wallpapers")
+        self.assertEqual(status, 200)
+        self.assertTrue(walls["wallpapers"])
+        req = urllib.request.Request(f"{self.server.url}/api/v1{walls['wallpapers'][0]['url'][7:]}")
+        with sam.opener.open(req, timeout=10) as r:
+            self.assertTrue(r.headers["Content-Type"].startswith("image/"))
+        self.assertEqual(sam.call("POST", "/wallpapers", {})[0], 403)
+        self.assertEqual(sam.call("DELETE", f"/wallpapers/{walls['wallpapers'][0]['id']}")[0], 403)
+        self.assertEqual(sam.call("DELETE", "/devices/bd-lamp/picture")[0], 403)
+        self.assertEqual(sam.call("GET", "/devices/lr-tv/picture")[0], 404)       # hidden from Sam: not even a hint
+        self.assertEqual(self.client().call("GET", "/wallpapers")[0], 401)       # nobody signed in
+
     def test_events_stream_never_sends_hidden_devices(self):
         sam, owner = self.client(), self.client()
         sam.sign_in(profile_id="sam", pin="2468")

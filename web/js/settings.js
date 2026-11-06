@@ -9,6 +9,8 @@ import { openFrame } from "./photoframe.js";
 import { FACES, faceId, faceHTML, faceInfo } from "./clockfaces.js";
 import { findLocation, describeFound, canUseDeviceLocation } from "./locate.js";
 import { DEVICE_ICONS, deviceIconName, svg } from "./icons.js";
+import { invalidateWallpapers, previewWallpaper } from "./wallpaper.js";
+import { devicePicture } from "./art.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
@@ -132,6 +134,17 @@ const VIEWS = {
           <option value="">No room</option>
           ${store.rooms.map((r) => `<option ${r === d.room ? "selected" : ""}>${esc(r)}</option>`).join("")}
         </select></label>
+        <span class="field"><span>Picture</span></span>
+        <div class="dev-pic-row">
+          <div class="tile-icon pic ${devicePicture(d)?.kind || ""}" id="d-pic-preview">${devicePicture(d)?.html || svg(deviceIconName(d))}</div>
+          <div class="btn-row" style="margin:0">
+            <label class="btn">${icon("image")}${d.picture ? "Change photo" : "Choose a photo"}
+              <input type="file" id="d-pic-input" data-device="${esc(id)}" accept="image/*,.tif,.tiff" hidden></label>
+            ${d.picture ? `<button class="btn" type="button" data-clear-pic="${esc(id)}">Remove photo</button>` : ""}
+          </div>
+        </div>
+        <small class="field"><small>A photo of your own ${esc(d.name)} shows on its tile. A PNG with a see-through
+          background looks best. Without a photo, "Auto" below shows a drawing of the device.</small></small>
         <span class="field"><span>Icon</span></span>
         <div class="icon-choices" role="radiogroup" aria-label="Icon">
           <label class="icon-choice"><input type="radio" name="d-icon" value="" ${!d.icon ? "checked" : ""}>
@@ -469,9 +482,25 @@ const VIEWS = {
         <label class="check"><input type="checkbox" name="clock_24h" ${s.clock_24h ? "checked" : ""}><span>24-hour clock</span></label>
         <span class="field"><span>Background</span></span>
         <div class="bg-choices" role="radiogroup" aria-label="Background">
-          ${[["sky", "Sky"], ["ocean", "Ocean"], ["aurora", "Aurora"], ["night", "Night"]].map(([v, l]) => `
+          ${[["sky", "Sky"], ["ocean", "Ocean"], ["aurora", "Aurora"], ["night", "Night"], ["wallpaper", "Wallpaper"]].map(([v, l]) => `
             <label class="bg-choice"><input type="radio" name="background" value="${v}" ${(s.background || "sky") === v ? "checked" : ""}>
-              <span class="bg-swatch ${v}"></span><span>${l}</span></label>`).join("")}
+              <span class="bg-swatch swatch-${v}">${v === "wallpaper" ? icon("image") : ""}</span><span>${l}</span></label>`).join("")}
+        </div>
+        <div class="wall-panel" id="wall-panel" ${(s.background || "sky") === "wallpaper" ? "" : "hidden"}>
+          <span class="field"><span>Wallpaper</span></span>
+          <div class="wall-grid" id="wall-grid" role="radiogroup" aria-label="Wallpaper"><p class="sub">Loading…</p></div>
+          <div class="btn-row" style="margin-top:8px">
+            <label class="btn">${icon("plus")}Add wallpapers<input type="file" id="wall-input" accept="image/*,.tif,.tiff" multiple hidden></label>
+          </div>
+          <small class="field"><small>Pictures from your phone or computer (JPEG, PNG, WebP or TIFF). They're resized for the
+            screen and their location data is removed. Portrait pictures are used on phones, landscape on the panel.</small></small>
+          <label class="field"><span>When shuffling, change every</span><select name="wallpaper_every">
+            ${[[15, "15 minutes"], [60, "hour"], [240, "4 hours"], [1440, "day"], [0, "time the screen opens"]].map(([v, l]) =>
+              `<option value="${v}" ${Number(s.wallpaper_every ?? 60) === v ? "selected" : ""}>${l}</option>`).join("")}
+          </select></label>
+          <label class="field"><span>Darken <b id="wall-dim-val">${s.wallpaper_dim ?? 25}%</b></span>
+            <input class="glass-range" type="range" name="wallpaper_dim" min="0" max="80" step="5" value="${s.wallpaper_dim ?? 25}">
+            <small>A little darker keeps the clock and tiles easy to read.</small></label>
         </div>
         <label class="field"><span>Glass transparency <b id="glass-val">${s.glass_transparency ?? 45}%</b></span>
           <input class="glass-range" type="range" name="glass_transparency" min="0" max="100" step="5" value="${s.glass_transparency ?? 45}">
@@ -480,6 +509,7 @@ const VIEWS = {
           <span>Frosted blur (turn off if the screen feels slow)</span></label>
         <div class="btn-row"><button class="btn primary" type="submit">Save</button></div>
       </form>`);
+    loadWallGrid();
   },
 
   async diagnostics() {
@@ -584,6 +614,46 @@ function fieldHtml(f, value) {
     <input name="${esc(f.key)}" type="${type}" value="${isMasked ? "" : esc(v)}" ${f.required && !isMasked ? "required" : ""}
       placeholder="${esc(isMasked ? "Saved. Leave blank to keep it." : f.placeholder || "")}" autocomplete="off" spellcheck="false">
     ${f.help ? `<small>${esc(f.help)}</small>` : ""}</label>`;
+}
+
+async function loadWallGrid() {
+  const grid = $("#wall-grid");
+  if (!grid) return;
+  let walls = [];
+  try { walls = (await api.wallpapers()).wallpapers || []; } catch (e) { grid.innerHTML = `<p class="sub">${esc(e.message)}</p>`; return; }
+  const current = $("[data-display]")?.dataset.wall ?? store.settings.wallpaper ?? "shuffle";
+  grid.innerHTML = `
+    <label class="wall-choice shuffle"><input type="radio" name="wallpaper" value="shuffle" ${current === "shuffle" ? "checked" : ""}>
+      <span class="wall-thumb">${icon("shuffle")}</span><span>Shuffle</span></label>
+    ${walls.map((w) => `
+      <div class="wall-item">
+        <label class="wall-choice"><input type="radio" name="wallpaper" value="${esc(w.id)}" ${current === w.id ? "checked" : ""}>
+          <span class="wall-thumb" style="background-image:url('${esc(w.url)}')"></span>
+          <span>${w.width && w.height ? (w.height > w.width ? "Portrait" : "Landscape") : ""}</span></label>
+        <button type="button" class="wall-del" data-del-wall="${esc(w.id)}" aria-label="Remove this wallpaper">${icon("trash")}</button>
+      </div>`).join("")}
+    ${walls.length ? "" : `<p class="sub">No wallpapers yet. Add some below.</p>`}`;
+}
+
+function displayPreview() {
+  const form = $("[data-display]");
+  if (!form) return;
+  const v = formValues(form);
+  previewWallpaper({ background: v.background, wallpaper: v.wallpaper || store.settings.wallpaper,
+                     wallpaper_dim: Number(v.wallpaper_dim ?? 25) });
+}
+
+async function uploadWallpapers(files) {
+  const list = [...files];
+  let done = 0;
+  for (const f of list) {
+    toast(`Adding wallpaper ${done + 1} of ${list.length}…`);
+    try { await api.uploadWallpaper(f); done++; } catch (e) { toast(`${f.name}: ${e.message}`, true); }
+  }
+  invalidateWallpapers();
+  if (done) toast(done === 1 ? "Wallpaper added" : `${done} wallpapers added`);
+  await loadWallGrid();
+  displayPreview();
 }
 
 const formValues = (form) => Object.fromEntries(new FormData(form).entries());
@@ -710,6 +780,17 @@ root.addEventListener("click", async (e) => {
       await api.saveSettings({ presence: people }); await reload(); return render();
     }
     if (t("[data-start-frame]")) { close(); return openFrame(); }
+    if (t("[data-clear-pic]")) {
+      await api.clearDevicePicture(t("[data-clear-pic]").dataset.clearPic);
+      await reload(); toast("Photo removed"); return render();
+    }
+    if (t("[data-del-wall]")) {
+      if (!confirm("Remove this wallpaper from the panel?")) return;
+      await api.deleteWallpaper(t("[data-del-wall]").dataset.delWall);
+      invalidateWallpapers();
+      await loadWallGrid();
+      return displayPreview();
+    }
     if (t("[data-del-photo]")) {
       if (!confirm("Remove this photo from the panel?")) return;
       await api.deletePhoto(t("[data-del-photo]").dataset.delPhoto); return loadThumbs();
@@ -793,7 +874,10 @@ root.addEventListener("submit", async (e) => {
       const v = formValues(form);
       await api.saveSettings({ dim_after_seconds: Number(v.dim_after_seconds), clock_24h: !!v.clock_24h,
                                glass_effect: !!v.glass_effect, background: v.background, clock_face: v.clock_face,
-                               glass_transparency: Number(v.glass_transparency) });
+                               glass_transparency: Number(v.glass_transparency),
+                               ...(v.wallpaper ? { wallpaper: v.wallpaper } : {}),
+                               wallpaper_every: Number(v.wallpaper_every ?? 60), wallpaper_dim: Number(v.wallpaper_dim ?? 25) });
+      previewWallpaper(null);
       toast("Saved"); await reload(); return back();
     }
   } catch (err) { toast(err.message, true); }
@@ -808,12 +892,29 @@ root.addEventListener("input", (e) => {
     const label = $("#glass-val");
     if (label) label.textContent = `${el.value}%`;
   }
-  if (el.name === "background") document.documentElement.dataset.bg = el.value;
+  if (el.name === "background") {
+    document.documentElement.dataset.bg = el.value;
+    const panel = $("#wall-panel");
+    if (panel) panel.hidden = el.value !== "wallpaper";
+  }
+  if (el.name === "wallpaper_dim") {
+    const label = $("#wall-dim-val");
+    if (label) label.textContent = `${el.value}%`;
+  }
+  if (["background", "wallpaper", "wallpaper_dim"].includes(el.name)) displayPreview();
   if (el.name === "glass_effect") document.documentElement.classList.toggle("glass", el.checked);
 });
 
 root.addEventListener("change", (e) => {
   if (e.target.id === "photo-input" && e.target.files.length) uploadFiles(e.target.files);
+  if (e.target.id === "wall-input" && e.target.files.length) { uploadWallpapers(e.target.files); e.target.value = ""; }
+  if (e.target.id === "d-pic-input" && e.target.files.length) {
+    const input = e.target;
+    toast("Adding the photo…");
+    api.setDevicePicture(input.dataset.device, input.files[0])
+      .then(async () => { await reload(); toast("Photo added"); render(); })
+      .catch((err) => toast(err.message, true));
+  }
 });
 
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isSettingsOpen()) back(); });

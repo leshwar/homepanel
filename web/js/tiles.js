@@ -9,6 +9,7 @@ import { store, command } from "./store.js";
 import { esc, icon, isMedia, glowVar, statusText, toast } from "./util.js";
 import { openDevice } from "./sheet.js";
 import { deviceIcon, svg } from "./icons.js";
+import { devicePicture } from "./art.js";
 
 // A short buzz where the browser can (Android, the Pi's touch screen); iOS ignores it.
 export function haptic(ms = 10) {
@@ -39,7 +40,7 @@ export function tileHtml(d, { size = "", ctx = "rooms", sub = "" } = {}) {
     <div class="${cls}" data-id="${esc(d.id)}" data-ctx="${ctx}" data-size="${esc(size)}" data-on="${on}"
          role="button" tabindex="0" style="--glow:${glowVar(d)};--level:${level}"
          aria-label="${esc(d.name)}, ${esc(status)}${tapOpens(d) ? "" : on ? ". Tap to turn off" : ". Tap to turn on"}">
-      <div class="tile-icon">${offline ? icon("wifi-off") : deviceIcon(d)}</div>
+      ${tilePicture(d, offline)}
       <button class="tile-more" data-more aria-label="${esc(d.name)} controls">${svg("dots")}</button>
       <div class="tile-tv-row">
         <div class="tile-text">
@@ -49,6 +50,14 @@ export function tileHtml(d, { size = "", ctx = "rooms", sub = "" } = {}) {
         ${tvControls}
       </div>
     </div>`;
+}
+
+// The picture spot: the user's photo, an illustration, or the line icon (always the
+// line icon while offline, so a problem is easy to spot).
+function tilePicture(d, offline) {
+  const pic = offline ? null : devicePicture(d);
+  if (!pic) return `<div class="tile-icon">${offline ? icon("wifi-off") : deviceIcon(d)}</div>`;
+  return `<div class="tile-icon pic ${pic.kind}">${pic.html}</div>`;
 }
 
 // Re-draw every tile showing this device (it can be on Home and in Rooms).

@@ -214,6 +214,7 @@ class Device:
     config: dict = field(default_factory=dict)
     caps: list[str] = field(default_factory=list)
     keep_on: bool = False          # skip this device in "All off" (e.g. a fridge plug)
+    picture: str = ""              # the user's own photo of it (file in data/device-pictures/), or ""
     # Live state – owned by the service, filled from adapter.refresh()/command()
     state: dict = field(default_factory=dict)
     # Extra info for the UI: available apps/inputs, model name …

@@ -16,7 +16,10 @@ DEFAULT_SETTINGS = {
     "clock_24h": False,
     "glass_effect": True,         # frosted-glass blur; turn off if a slow screen feels sluggish
     "glass_transparency": 45,     # 0 = solid tiles, 100 = almost clear glass
-    "background": "sky",          # sky (follows the weather and time of day) | ocean | aurora | night
+    "background": "sky",          # sky (follows the weather and time of day) | ocean | aurora | night | wallpaper
+    "wallpaper": "shuffle",       # with background "wallpaper": a wallpaper id, or "shuffle" through them all
+    "wallpaper_every": 60,        # shuffle: minutes per wallpaper (0 = a new one only when the page opens)
+    "wallpaper_dim": 25,          # darken the wallpaper this much (0–80 %) so text stays readable
     "idle_screen": "clock",       # what to show when idle: "clock" (resting clock) or "photos"
     "clock_face": "digital",      # resting clock face: digital | analog | words | date | night
     "frame_seconds": 15,          # photo frame: seconds per photo

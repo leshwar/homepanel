@@ -309,6 +309,56 @@ class UITests(unittest.TestCase):
         self.page.evaluate("""fetch('/api/v1/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
                               body: JSON.stringify({background: 'sky', glass_transparency: 45})})""")
 
+    def test_device_illustrations_and_own_photo(self):
+        # with the icon on "Auto", tiles show a drawing of the device
+        self.assertEqual(self.tile("lr-tv").locator(".tile-icon.art svg.art").count(), 1)
+        self.assertEqual(self.tile("lr-vacuum").locator(".tile-icon.art").count(), 1)
+        ids = self.page.evaluate("[...document.querySelectorAll('.tile svg.art [id]')].map(e => e.id)")
+        self.assertEqual(len(ids), len(set(ids)))               # each drawing has its own gradient ids
+        # your own photo of the device replaces the drawing
+        import os
+        import tempfile
+        from PIL import Image
+        path = os.path.join(tempfile.mkdtemp(), "my-kettle.png")
+        img = Image.new("RGBA", (600, 600), (0, 0, 0, 0))
+        img.paste((200, 200, 210, 255), (150, 100, 450, 500))
+        img.save(path, "PNG")
+        self.page.click("#open-settings")
+        self.page.click("[data-go=devices]")
+        self.page.click("[data-arg=kt-kettle]")
+        self.page.set_input_files("#d-pic-input", path)
+        self.page.wait_for_selector("text=Photo added")
+        self.page.wait_for_selector('#d-pic-preview img.dev-photo.cutout')
+        self.page.wait_for_selector("[data-clear-pic]")
+        self.assertEqual(self.tile("kt-kettle").locator("img.dev-photo").count(), 1)
+        self.page.click("[data-clear-pic]")
+        self.page.wait_for_selector("text=Photo removed")
+        self.assertEqual(self.tile("kt-kettle").locator("img.dev-photo").count(), 0)
+        self.assertEqual(self.errors, [])
+
+    def test_wallpaper_background(self):
+        root = "document.documentElement"
+        self.page.click("#open-settings")
+        self.page.click("[data-go=display]")
+        self.assertEqual(self.page.locator("#wall-panel").is_hidden(), True)
+        self.page.click(".bg-choice:has(input[value=wallpaper])")
+        self.page.wait_for_selector("#wall-panel:not([hidden]) .wall-choice")
+        self.page.wait_for_function(f"{root}.classList.contains('has-wallpaper')")       # live preview
+        self.page.wait_for_selector(".wall-layer .wp.show")
+        first = self.page.locator('#wall-grid input[name=wallpaper]:not([value=shuffle])').first
+        wid = first.get_attribute("value")
+        self.page.click(f'.wall-choice:has(input[value="{wid}"])')
+        self.page.fill("input[name=wallpaper_dim]", "40")
+        self.page.click("[data-display] button[type=submit]")
+        self.page.wait_for_selector("text=Saved")
+        self.page.reload()
+        self.page.wait_for_function(f"{root}.dataset.bg === 'wallpaper' && {root}.classList.contains('has-wallpaper')")
+        self.page.wait_for_function(f"document.querySelector('.wall-layer .wp.show').style.backgroundImage.includes('{wid}')")
+        self.assertAlmostEqual(float(self.page.evaluate(f"getComputedStyle({root}).getPropertyValue('--wall-dim')")), 0.4)
+        self.assertEqual(self.errors, [])
+        self.page.evaluate("""fetch('/api/v1/settings', {method: 'PUT', headers: {'Content-Type': 'application/json'},
+                              body: JSON.stringify({background: 'sky', wallpaper: 'shuffle', wallpaper_dim: 25})})""")
+
     def test_photo_frame_shows_photos_and_touch_exits(self):
         before = self.tile("lr-lamp").evaluate("el => el.classList.contains('on')")
         self.page.click("#open-frame")

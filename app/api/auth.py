@@ -31,12 +31,12 @@ PUBLIC = {"/api/v1/auth/session", "/api/v1/auth/sign-in", "/api/v1/auth/sign-out
           "/api/v1/health"}
 
 # What a locked wall panel may still read: its resting clock and photo frame.
-LOCKED_OK = [("GET", re.compile(r"^/api/v1/(weather|sun|photos|photos/[^/]+/image)$"))]
+LOCKED_OK = [("GET", re.compile(r"^/api/v1/(weather|sun|photos|photos/[^/]+/image|wallpapers|wallpapers/[^/]+/image)$"))]
 
 # Everything a member may do. Device routes are also checked against their device list.
 MEMBER_OK = [
-    ("GET", re.compile(r"^/api/v1/(state|events|weather|sun|photos|photos/[^/]+/image)$")),
-    ("GET", re.compile(r"^/api/v1/devices/[^/]+/(energy|map)$")),
+    ("GET", re.compile(r"^/api/v1/(state|events|weather|sun|photos|photos/[^/]+/image|wallpapers|wallpapers/[^/]+/image)$")),
+    ("GET", re.compile(r"^/api/v1/devices/[^/]+/(energy|map|picture)$")),
     ("POST", re.compile(r"^/api/v1/devices/[^/]+/(command|refresh)$")),
     ("POST", re.compile(r"^/api/v1/(all-off|scenes/[^/]+/run|auth/lock)$")),
     ("PATCH", re.compile(r"^/api/v1/profiles/me$")),

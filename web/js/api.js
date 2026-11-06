@@ -92,21 +92,29 @@ export const api = {
 
   photos: () => call("GET", "/photos"),
   deletePhoto: (id) => call("DELETE", `/photos/${encodeURIComponent(id)}`),
-  // One photo per request; the body is the file itself (no multipart needed).
-  uploadPhoto: async (file) => {
-    let res;
-    try {
-      res = await fetch(`${BASE}/photos?name=${encodeURIComponent(file.name || "photo")}`, {
-        method: "POST", credentials: "same-origin",
-        headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
-    } catch {
-      throw new ApiError("Can't reach the panel's server. Is it running?");
-    }
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw new ApiError((data && data.error) || `Upload failed (${res.status})`);
-    return data;
-  },
+  uploadPhoto: (file) => sendFile("POST", `/photos?name=${encodeURIComponent(file.name || "photo")}`, file),
+
+  wallpapers: () => call("GET", "/wallpapers"),
+  deleteWallpaper: (id) => call("DELETE", `/wallpapers/${encodeURIComponent(id)}`),
+  uploadWallpaper: (file) => sendFile("POST", `/wallpapers?name=${encodeURIComponent(file.name || "wallpaper")}`, file),
+  setDevicePicture: (id, file) => sendFile("PUT", `/devices/${encodeURIComponent(id)}/picture`, file),
+  clearDevicePicture: (id) => call("DELETE", `/devices/${encodeURIComponent(id)}/picture`),
 };
+
+// One picture per request; the body is the file itself (no multipart needed).
+async function sendFile(method, path, file) {
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method, credentials: "same-origin",
+      headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
+  } catch {
+    throw new ApiError("Can't reach the panel's server. Is it running?");
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError((data && data.error) || `Upload failed (${res.status})`);
+  return data;
+}
 
 // Live updates. Calls onEvent(event) for each server event, onStatus(connected).
 // Returns {stop, restart}: stop while signed out, restart after switching profile

@@ -529,3 +529,8 @@ class EcovacsRefusalThroughTheService(unittest.IsolatedAsyncioTestCase):
         d = await self.svc.command("v", "clean", "start")
         self.assertEqual(d["state"]["activity"], "cleaning")
         self.assertTrue(self.svc.store.devices["v"].config["clean_v2"])              # saved with the device
+
+        # rooms on a V2 model go as "freeClean" (a T90 accepts "spotArea" over V2 but doesn't move)
+        await self.svc.refresh("v")                                   # learns its rooms from the fake
+        await self.svc.command("v", "clean_rooms", [1, 2])
+        self.assertEqual(cloud.commands[-1], ("clean_area_v2", (self.fake.CleanMode.FREE_CLEAN, [1, 2], 1)))

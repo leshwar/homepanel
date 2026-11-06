@@ -52,7 +52,13 @@ web/
   gradients plus soft SVG shapes; Ocean, Aurora or Night via `html[data-bg]`) sits
   behind frosted-glass tiles, sheets and buttons. Settings → Display has the
   background, a **Glass transparency** slider (sets `--glass-alpha`, see `js/glass.js`)
-  and a **Frosted blur** switch (`html.glass`) for slow screens.
+  and a **Frosted blur** switch (`html.glass`) for slow screens. Readability takes
+  priority over making tiles completely clear: light tiles keep at least 72% backing
+  (84% when on); dark wallpaper tiles keep at least 80% (86% when on). Offline tiles
+  keep their backing too, with a disconnected icon and readable warning text rather
+  than fading the whole tile. Labels and nested buttons use the tile's text colors,
+  independently of the background-aware page title. Wallpaper rails also keep a
+  minimum backing, and headings over the picture get a soft shadow.
 - **Lit devices.** A device that is on gives off light: lamps glow in their real
   color, plugs in jade, TVs in indigo, and the background's top glow takes on the
   color of the lights that are on (`--room-glow`, `--warmth`).

@@ -514,7 +514,7 @@ const VIEWS = {
         <small class="field"><small>Auto picks light tiles on a dark background and dark tiles on a light one, so they always stand out.</small></small>
         <label class="field"><span>Glass transparency <b id="glass-val">${s.glass_transparency ?? 45}%</b></span>
           <input class="glass-range" type="range" name="glass_transparency" min="0" max="100" step="5" value="${s.glass_transparency ?? 45}">
-          <small>Lower is more solid and easier to read; higher shows more of the background.</small></label>
+          <small>Lower is more solid; higher shows more of the background. Tiles keep a minimum backing so their labels stay readable.</small></label>
         <label class="check"><input type="checkbox" name="glass_effect" ${s.glass_effect !== false ? "checked" : ""}>
           <span>Frosted blur (turn off if the screen feels slow)</span></label>
         <div class="btn-row"><button class="btn primary" type="submit">Save</button></div>

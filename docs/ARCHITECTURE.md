@@ -86,6 +86,9 @@ service.use(quiet_hours)
   seconds (set per adapter; cloud APIs poll slowly to stay within limits).
 - Two failed polls in a row mark the device offline with a readable error.
 - State changes are pushed to browsers over Server-Sent Events (`/api/v1/events`).
+  On shutdown (`SIGTERM`, `systemctl restart`) `make_server` in `app/main.py` ends those
+  streams first (`HomeService.end_streams()`), so uvicorn can close its connections and
+  run `service.stop()`; anything still open after 5 s is cancelled. The UI reconnects.
   The UI also applies optimistic updates so taps feel instant, and reverts with
   an error message if the command fails.
 

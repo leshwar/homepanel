@@ -96,6 +96,30 @@ def create_app(data_dir: str, demo: bool = False, port: int = 8080, sign_in: boo
     )
 
 
+GRACEFUL_SHUTDOWN_SECONDS = 5
+
+
+def make_server(app: Starlette, host: str, port: int, **config):
+    """The web server for `app`, set up to shut down promptly (SIGTERM, `systemctl restart`,
+    Ctrl+C) even while a browser has the panel open.
+
+    The UI's live event stream never ends on its own, and uvicorn waits for every open
+    connection to close before it runs the app's shutdown (which disconnects the adapters).
+    So when shutdown starts we end those streams first; anything else still running after
+    GRACEFUL_SHUTDOWN_SECONDS is cancelled."""
+    import uvicorn
+
+    class Server(uvicorn.Server):
+        async def shutdown(self, sockets=None):
+            service = getattr(app.state, "service", None)
+            if service is not None:
+                service.end_streams()
+            await super().shutdown(sockets)
+
+    config.setdefault("timeout_graceful_shutdown", GRACEFUL_SHUTDOWN_SECONDS)
+    return Server(uvicorn.Config(app, host=host, port=port, **config))
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="HomePanel smart home controller")
     p.add_argument("--host", default=os.environ.get("HOMEPANEL_HOST", "0.0.0.0"))
@@ -111,9 +135,8 @@ def main() -> None:
 
     log_path = setup_logging(args.logs, args.debug)
     log.info("Logging to %s", log_path)
-    import uvicorn
-    uvicorn.run(create_app(args.data, demo=args.demo, port=args.port, sign_in=args.sign_in), host=args.host, port=args.port,
-                log_config=None, access_log=False)
+    app = create_app(args.data, demo=args.demo, port=args.port, sign_in=args.sign_in)
+    make_server(app, args.host, args.port, log_config=None, access_log=False).run()
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ a hidden device never reaches that browser.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import time
@@ -245,6 +246,7 @@ class HomeService:
         self.unavailable: dict[str, list[str]] = {}   # adapter id -> missing python modules
         self.unsupported: dict[str, str] = {}         # adapter id -> why it can't run on this Python
         self._subscribers: dict[asyncio.Queue, Callable[[dict], bool] | None] = {}
+        self.closing = False                          # the server is shutting down: live streams end
         self._pollers: dict[str, asyncio.Task] = {}
         self._soon: dict[str, asyncio.TimerHandle] = {}   # pushed changes waiting to refresh
         self._failures: dict[str, int] = {}
@@ -339,10 +341,27 @@ class HomeService:
     # --- events -------------------------------------------------------------
     def subscribe(self, allow: Callable[[dict], bool] | None = None) -> asyncio.Queue:
         """A queue of live events. `allow(event)` decides per event whether this listener
-        gets it (the API passes one that checks the listener's profile each time)."""
+        gets it (the API passes one that checks the listener's profile each time).
+        A `None` in the queue means "the server is shutting down: end the stream"."""
         q: asyncio.Queue = asyncio.Queue(maxsize=200)
         self._subscribers[q] = allow
+        if self.closing:
+            q.put_nowait(None)
         return q
+
+    def end_streams(self) -> None:
+        """Tell every live listener (the UI's event stream) to finish, so the web server can
+        close its connections and shut down instead of waiting for them forever. Called by
+        the server when it starts shutting down; the UI reconnects on its own afterwards."""
+        self.closing = True
+        for q in list(self._subscribers):
+            while True:
+                try:
+                    q.put_nowait(None)
+                    break
+                except asyncio.QueueFull:   # make room: this listener is going away anyway
+                    with contextlib.suppress(asyncio.QueueEmpty):
+                        q.get_nowait()
 
     def unsubscribe(self, q: asyncio.Queue) -> None:
         self._subscribers.pop(q, None)

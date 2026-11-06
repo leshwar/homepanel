@@ -3,6 +3,7 @@
 // live updates, the idle resting clock and the sky background.
 
 import { api, connectEvents } from "./api.js";
+import { setMarkup, updateRoomCounts } from "./render.js";
 import { store, onChange, reload, upsertDevice, setRoom, setView, devicesIn, applySnapshot } from "./store.js";
 import { $, esc, icon, glow, toast } from "./util.js";
 import { refreshSheet, closeSheet } from "./sheet.js";
@@ -48,16 +49,17 @@ function tabOrder() {
 }
 
 const onCount = (r) => devicesIn(r).filter(isOn).length;
-const countBadge = (n) => (n ? `<span class="count" aria-label="${n} on">${n}</span>` : "");
+const countBadge = (room) => `<span class="count" data-room-count="${esc(room)}" hidden></span>`;
 
 // Phones and the portrait panel: a row of text tabs over the tiles.
 function renderTabs() {
   const el = $("#rooms");
   const order = tabOrder();
   el.hidden = !order.length || store.view !== "rooms";
-  el.innerHTML = order.map((id) =>
+  setMarkup(el, order.map((id) =>
     `<button class="room" role="tab" data-room="${esc(id)}" aria-selected="${store.room === id}">${
-      esc(id === "all" ? "All" : roomLabel(id))}${countBadge(onCount(id))}</button>`).join("");
+      esc(id === "all" ? "All" : roomLabel(id))}${countBadge(id)}</button>`).join(""));
+  updateRoomCounts(el, onCount);
 }
 
 // iPad and the landscape panel: Home plus every room down the left side.
@@ -67,9 +69,9 @@ function renderRail() {
   const item = (id) => {
     const sel = !home && store.room === id;
     return `<button class="rail-item" role="tab" data-room="${esc(id)}" aria-selected="${sel}">${roomIcon(id)}<span>${
-      esc(id === "all" ? "All rooms" : roomLabel(id))}</span>${countBadge(onCount(id))}</button>`;
+      esc(id === "all" ? "All rooms" : roomLabel(id))}</span>${countBadge(id)}</button>`;
   };
-  $("#rail").innerHTML = `
+  setMarkup($("#rail"), `
     <div class="rail-head">${esc(store.settings.home_name || "Home")}</div>
     <button class="rail-item" data-nav="home" aria-current="${home ? "page" : "false"}">${svg("home")}<span>Home</span></button>
     <p class="rail-label">Rooms</p>
@@ -77,7 +79,8 @@ function renderRail() {
     <div class="rail-foot">
       <button class="rail-item" data-add-device>${icon("plus")}<span>Add a device</span></button>
       <button class="rail-item" data-open-settings>${svg("settings")}<span>Settings</span></button>
-    </div>`;
+    </div>`);
+  updateRoomCounts($("#rail"), onCount);
 }
 
 function renderDock() {
@@ -166,7 +169,7 @@ function updateHeads() {
   document.querySelectorAll(".room-head[data-head]").forEach((el) => {
     const tmp = document.createElement("div");
     tmp.innerHTML = roomHead(el.dataset.head, !el.classList.contains("single"));
-    el.replaceWith(tmp.firstElementChild);
+    if (el.outerHTML !== tmp.firstElementChild.outerHTML) el.replaceWith(tmp.firstElementChild);
   });
 }
 
@@ -362,7 +365,9 @@ function setupLive() {
 onChange((what, id) => {
   if (what === "device") {
     const d = store.devices.get(id);
-    if (!updateTiles(id, (dev, el) => (el.dataset.ctx === "home" ? dev.room || "" : "")) && store.view === "rooms") renderGrid();
+    const shown = updateTiles(id);
+    // A poll for a device in another room must not rebuild the visible grid.
+    if (!shown && store.view === "rooms" && devicesIn(store.room).some((dev) => dev.id === id)) renderGrid();
     renderAmbience();
     refreshSheet(id);
     renderNav();

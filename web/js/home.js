@@ -11,6 +11,7 @@
 // Cancel puts everything back; Done saves.
 
 import { api } from "./api.js";
+import { setMarkup, updateRoomCounts } from "./render.js";
 import { store, devicesIn, roomGroups, OTHER } from "./store.js";
 import { $, esc, icon, toast } from "./util.js";
 import { openSettings } from "./settings.js";
@@ -78,6 +79,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 
 // ---------- widgets ----------
 const isOn = (d) => !!d.state?.on && d.state?.online !== false;
+const updateCounts = (el) => updateRoomCounts(el, (r) => devicesIn(r).filter(isOn).length);
 
 function clockWidget(w, now) {
   const [t, ampm] = splitTime(fmt(now));
@@ -128,11 +130,9 @@ function scenesWidget() {
 
 function roomsWidget() {
   const groups = roomGroups();
-  const rows = groups.map((r) => {
-    const on = devicesIn(r).filter(isOn).length;
-    return `<button class="w-room" data-go-room="${esc(r)}">${roomIcon(r)}<span>${esc(r === OTHER ? "Other" : r)}</span>${
-      on ? `<b class="count" aria-label="${on} on">${on}</b>` : ""}</button>`;
-  });
+  const rows = groups.map((r) =>
+    `<button class="w-room" data-go-room="${esc(r)}">${roomIcon(r)}<span>${esc(r === OTHER ? "Other" : r)}</span>
+      <b class="count" data-room-count="${esc(r)}" hidden></b></button>`);
   return `<div class="w-fill w-rooms"><span class="w-label">Rooms</span><div class="w-room-list">${
     rows.join("") || `<p>Add devices and rooms to see them here.</p>`}</div></div>`;
 }
@@ -176,6 +176,13 @@ export function renderHome({ enter = false } = {}) {
     !visible.length ? `<div class="empty"><h2>Your Home page is empty</h2><p>Add the clock, weather, scenes or your rooms.</p>
       <button class="btn primary" data-edit-home>${svg("pencil")}Edit Home page</button></div>` : ""}${
     isEditing() ? editBar() : ""}`;
+  // Seed the owned region before its first live count update, so even that
+  // update keeps the room buttons (and their focus/scroll position) intact.
+  for (const w of visible.filter((w) => w.type === "rooms")) {
+    const box = el.querySelector(`.widget[data-wid="${CSS.escape(w.id)}"]`);
+    setMarkup(box, roomsWidget() + (isEditing() ? chrome(w) : ""));
+  }
+  updateCounts(el);
   if (enter && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     el.querySelectorAll(".widget").forEach((w, i) => w.animate(
       [{ opacity: 0, transform: "translateY(10px) scale(.98)" }, { opacity: 1, transform: "none" }],
@@ -211,7 +218,10 @@ export function refreshHomeParts(types = ["rooms", "weather", "scenes"]) {
     if (w.hidden || !types.includes(w.type)) continue;
     const box = el.querySelector(`.widget[data-wid="${CSS.escape(w.id)}"]`);
     const body = widgetBody(w, now);
-    if (box && body != null) box.innerHTML = body;
+    if (box && body != null) {
+      setMarkup(box, body);
+      if (w.type === "rooms") updateCounts(box);
+    }
   }
 }
 
@@ -260,7 +270,10 @@ function setSize(id, size) {
     box.classList.remove(...SIZES.map((s) => `s-${s}`));
     box.classList.add(`s-${size}`);
     const body = widgetBody(w, new Date());
-    if (body != null) box.innerHTML = body + chrome(w);
+    if (body != null) {
+      box.innerHTML = body + chrome(w);
+      updateCounts(box);
+    }
   }
 }
 

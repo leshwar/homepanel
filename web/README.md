@@ -17,14 +17,15 @@ web/
 └── js/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
     ├── store.js    client state, optimistic commands, change notifications
+    ├── render.js   unchanged-markup cache and in-place room count badges
     ├── util.js     escaping, icons, colors/glow, status text, toasts, storage
     ├── glass.js    glass transparency → CSS variable
     ├── app.js      the shell: room rail / dock / tabs, Rooms view, live updates, idle clock
     ├── auth.js     sign-in: profile picker, PIN pad, email + password, first-run setup, the
     │               profile button (switch / sign out) and the wall panel's idle lock
     ├── profiles.js Settings → Profiles and sign-in (admins) and Settings → Your profile
-    ├── home.js     the Home page: widgets (clock, other places' clocks, weather, scenes, rooms,
-    │               devices) and edit mode (hold to move, drag a corner to resize, hide, Done)
+    ├── home.js     the Home page: widgets (clock, other places' clocks, weather, scenes, rooms)
+    │               and edit mode (hold to move, drag a corner to resize, hide, Done)
     ├── tiles.js    device tiles: tap = on/off, long-press or "…" = controls (+ haptics)
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
     ├── sky.js      weather from the server → html[data-sky] / [data-period] for the Sky background
@@ -51,7 +52,13 @@ web/
   gradients plus soft SVG shapes; Ocean, Aurora or Night via `html[data-bg]`) sits
   behind frosted-glass tiles, sheets and buttons. Settings → Display has the
   background, a **Glass transparency** slider (sets `--glass-alpha`, see `js/glass.js`)
-  and a **Frosted blur** switch (`html.glass`) for slow screens.
+  and a **Frosted blur** switch (`html.glass`) for slow screens. Readability takes
+  priority over making tiles completely clear: light tiles keep at least 72% backing
+  (84% when on); dark wallpaper tiles keep at least 80% (86% when on). Offline tiles
+  keep their backing too, with a disconnected icon and readable warning text rather
+  than fading the whole tile. Labels and nested buttons use the tile's text colors,
+  independently of the background-aware page title. Wallpaper rails also keep a
+  minimum backing, and headings over the picture get a soft shadow.
 - **Lit devices.** A device that is on gives off light: lamps glow in their real
   color, plugs in jade, TVs in indigo, and the background's top glow takes on the
   color of the lights that are on (`--room-glow`, `--warmth`).
@@ -81,7 +88,10 @@ web/
   kind, or one picked in Settings → device → Icon.
 - **iPhone and iPad.** `viewport-fit=cover` with `env(safe-area-inset-*)` padding,
   `100dvh` heights, no sideways scrolling, and "Add to Home Screen" tags. Checked at
-  393×852 (iPhone 15 Pro), 820×1180 and 1180×820 (iPad Air), 720×1280 and 1280×720.
+  320×568 through 393×852 (phones), 568×320 (phone landscape), 768×1024,
+  820×1180, 1024×768 and 1180×820 (tablets), 720×1280 and 1280×720 (panels).
+  The dock keeps a safe edge inset, long room names wrap, and short-screen rails
+  scroll without shrinking their touch targets.
 - **Animations** are short (150–300 ms) and only move or fade: tile press and "pop" when
   something turns on, tab and page switches, the sheet sliding in and out, edit-mode
   wiggle.
@@ -92,7 +102,8 @@ web/
   always everything). "Other" nudges you to give its devices a room.
 - **Portrait first** (Touch Display 2 is 720×1280): device tiles in 2 columns on a
   phone, 3 in portrait, 4–5 in landscape (they size to their column, not the window).
-  Home widgets sit on a square grid of 2, 4 or 6 columns.
+  Home widgets sit on a square grid of 2, 4 or 6 columns, stepping up only when
+  their content area reaches 600 or 960 px (after the sidebar and padding).
 - Font: IBM Plex Sans (installed on the Pi by install.sh), falling back to Inter / system fonts.
 
 Color tokens (`app.css`): `--night` page, `--dusk` surfaces, `--slate` controls,
@@ -105,7 +116,9 @@ colors, `--ember` warnings.
 re-renders only what changed (a single tile for device updates). User actions go
 through `store.command()`, which updates the tile instantly, calls the API, and
 reverts with an error toast if it fails. Live updates from other screens and
-phones arrive over Server-Sent Events.
+phones arrive over Server-Sent Events. Navigation and Home room lists keep their
+DOM nodes when their structure is unchanged; count badges update in place, preserving
+focus and scroll. Updates to devices in another room don't rebuild the visible grid.
 
 ## Device sheets
 

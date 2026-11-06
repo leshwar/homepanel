@@ -43,6 +43,7 @@ class LifeSpan(str, enum.Enum):
 
 class CleanMode(str, enum.Enum):
     SPOT_AREA = "spotArea"
+    FREE_CLEAN = "freeClean"
 
 
 class DeebotError(Exception): ...
@@ -342,7 +343,7 @@ class EcovacsAdapterTests(unittest.IsolatedAsyncioTestCase):
         await self.a.command(d, Action.CLEAN, Clean.PAUSE)          # goes straight to V2 now
         await self.a.command(d, Action.CLEAN_ROOMS, [1, 2])
         self.assertEqual(cloud.commands, [("clean_v2", CleanAction.PAUSE),
-                                          ("clean_area_v2", (CleanMode.SPOT_AREA, [1, 2], 1))])
+                                          ("clean_area_v2", (CleanMode.FREE_CLEAN, [1, 2], 1))])   # rooms as freeClean
 
     async def test_refused_command_is_an_error_not_a_guess(self):
         d = self.device()

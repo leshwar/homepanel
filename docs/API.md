@@ -346,7 +346,9 @@ curl -X POST "http://homepanel.local:8080/api/v1/photos?name=beach.jpg" \
 - `{"type": "automation", "name": "...", "result": "ok"}` — an automation just ran (admins only)
 
 Each event is checked against the listener's profile as it's sent: device events only
-for devices that profile can see. The stream ends when the session does.
+for devices that profile can see. The stream ends when the session does, and when the
+server shuts down or restarts (so a restart never waits on open panels); reconnect when
+it ends — `EventSource` does this by itself, every 2 s (`retry: 2000`).
 
 ```js
 const es = new EventSource("/api/v1/events");

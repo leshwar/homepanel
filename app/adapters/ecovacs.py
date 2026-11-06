@@ -441,7 +441,9 @@ class EcovacsAdapter(DeviceAdapter):
         elif action == Action.CLEAN_ROOMS:
             rooms = [int(r) for r in value]
             await self._send(device, bot, caps.clean.action.area(CleanMode.SPOT_AREA, rooms, 1),
-                             v2=lambda: CleanAreaV2(CleanMode.SPOT_AREA, rooms, 1))
+                             # V2 models take rooms as "freeClean" ("<times>,<room ids>"): the T90 Pro
+                             # Omni accepts "spotArea" over V2 but then doesn't move (see deebot-client #1865)
+                             v2=lambda: CleanAreaV2(CleanMode.FREE_CLEAN, rooms, 1))
             st["activity"] = Activity.CLEANING
         elif action == Action.SET_SUCTION:
             await self._send(device, bot, caps.fan_speed.set(_pick(caps.fan_speed.types, value)))

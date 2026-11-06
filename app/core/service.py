@@ -32,7 +32,7 @@ from .automations import Automations
 from .history import History
 from .layout import LayoutError, clean_layout, default_layout, migrate_layout
 from .net import in_container, normalize_mac, parse_color
-from .photos import PhotoLibrary
+from .photos import DevicePictures, PhotoLibrary
 from .presence import Presence
 from .profiles import ADMIN, MEMBER, Profiles, Sessions, Viewer, current_viewer, hash_secret, sees
 from .geolocate import Geolocator
@@ -43,7 +43,8 @@ from .voice import Voice
 log = logging.getLogger("homepanel")
 
 COMMAND_TIMEOUT = 10.0
-BACKGROUNDS = ("sky", "ocean", "aurora", "night")   # sky: follows the weather and time of day
+BACKGROUNDS = ("sky", "ocean", "aurora", "night", "wallpaper")   # sky: follows the weather and time of day
+WALLPAPER_EVERY = (0, 15, 60, 240, 1440)             # shuffle: minutes per wallpaper
 IDLE_SCREENS = ("clock", "photos")
 CLOCK_FACES = ("digital", "analog", "words", "date", "night")
 REFRESH_TIMEOUT = 8.0
@@ -258,6 +259,8 @@ class HomeService:
         self.history = History(os.path.join(data_dir, "demo-history.db" if demo else "history.db"))
         self.automations = Automations(self)
         self.photos = PhotoLibrary(os.path.join(data_dir, "demo-photos" if demo else "photos"))
+        self.wallpapers = PhotoLibrary(os.path.join(data_dir, "demo-wallpapers" if demo else "wallpapers"))
+        self.device_pictures = DevicePictures(os.path.join(data_dir, "demo-device-pictures" if demo else "device-pictures"))
         self.weather = Weather(lambda: self.store.settings)
         self.geo = Geolocator()          # only used when the user taps "Use my location"
         self.presence = Presence(lambda: self.store.settings.get("presence") or [], self.automations.on_presence)
@@ -315,6 +318,8 @@ class HomeService:
         self._migrate_layouts()
         if self.demo and not self.photos.list():
             await asyncio.to_thread(self.photos.seed_demo)
+        if self.demo and not self.wallpapers.list():
+            await asyncio.to_thread(self.wallpapers.seed_demo, 3)
         if self.demo and not self.history.has_data():
             await asyncio.to_thread(self._seed_demo_history)
         await asyncio.to_thread(self.history.prune)
@@ -383,6 +388,7 @@ class HomeService:
         out["pairing"] = bool(d.state.get("needs_pairing"))
         if d.kind == "tv":
             out["mac"] = d.config.get("mac") or ""   # not secret; shown so it can be checked or entered
+        out["picture_url"] = f"/api/v1/devices/{d.id}/picture?v={d.picture}" if d.picture else ""
         return out
 
     def adapter_meta(self, aid: str) -> dict:
@@ -736,6 +742,39 @@ class HomeService:
             raise AdapterError(d.state.get("error") or "Pairing didn't finish.")
         return self.public_device(d)
 
+    # --- pictures and wallpapers --------------------------------------------
+    async def set_device_picture(self, device_id: str, data: bytes) -> dict:
+        """The user's own photo for a device's tile (replaces the built-in artwork)."""
+        d = self.get(device_id)
+        name = await asyncio.to_thread(self.device_pictures.save, d.id, data)
+        old, d.picture = d.picture, name
+        if old and old != name:
+            await asyncio.to_thread(self.device_pictures.remove, old)
+        self.store.save()
+        self._publish_device(d)
+        return self.public_device(d)
+
+    async def clear_device_picture(self, device_id: str) -> dict:
+        d = self.get(device_id)
+        old, d.picture = d.picture, ""
+        await asyncio.to_thread(self.device_pictures.remove, old)
+        self.store.save()
+        self._publish_device(d)
+        return self.public_device(d)
+
+    def device_picture_path(self, device_id: str) -> tuple[str, str]:
+        d = self.get(device_id)
+        if not d.picture:
+            raise KeyError(device_id)
+        return self.device_pictures.path(d.picture)
+
+    def delete_wallpaper(self, wallpaper_id: str) -> None:
+        self.wallpapers.delete(wallpaper_id)
+        if self.store.settings.get("wallpaper") == wallpaper_id:     # it was showing: go back to shuffling
+            self.store.settings["wallpaper"] = "shuffle"
+            self.store.save()
+            self._publish_layout()
+
     def update_device(self, device_id: str, changes: dict) -> dict:
         d = self.get(device_id)
         for k in ("name", "room", "icon", "kind", "keep_on"):
@@ -769,6 +808,7 @@ class HomeService:
                 await a.forget(d)
             except Exception:
                 pass
+        await asyncio.to_thread(self.device_pictures.remove, d.picture)
         for s in self.store.scenes:
             s["actions"] = [x for x in s["actions"] if x["device_id"] != device_id]
         self.store.automations = [a for a in self.store.automations if a["do"].get("device_id") != device_id]
@@ -892,6 +932,26 @@ class HomeService:
                 changes[key] = None
         if "background" in changes and changes["background"] not in BACKGROUNDS:
             raise AdapterError(f"Background should be one of: {', '.join(BACKGROUNDS)}.")
+        if "wallpaper" in changes:
+            w = str(changes["wallpaper"] or "shuffle")
+            if w != "shuffle":
+                try:
+                    self.wallpapers.path(w)
+                except KeyError:
+                    raise AdapterError("That wallpaper isn't on the panel any more. Pick another one.")
+            changes["wallpaper"] = w
+        if "wallpaper_every" in changes:
+            try:
+                every = int(changes["wallpaper_every"])
+                assert every in WALLPAPER_EVERY
+            except Exception:
+                raise AdapterError("Change the wallpaper every 15 minutes, hour, 4 hours, day, or never.")
+            changes["wallpaper_every"] = every
+        if "wallpaper_dim" in changes:
+            try:
+                changes["wallpaper_dim"] = max(0, min(80, int(float(changes["wallpaper_dim"]))))
+            except (TypeError, ValueError):
+                raise AdapterError("Darken should be a number from 0 to 80.")
         if "glass_transparency" in changes:
             try:
                 changes["glass_transparency"] = max(0, min(100, int(float(changes["glass_transparency"]))))

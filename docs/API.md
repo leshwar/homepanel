@@ -38,8 +38,8 @@ PINs and passwords are hashed with scrypt; they are never returned or logged.
 lists only their devices and the scenes made of them, and leaves out `adapters`,
 `automations`, `presence` and `settings.presence`.
 
-Members may: `GET /state`, `/events`, `/weather`, `/sun`, `/photos`, the energy and
-map of their devices; `POST` commands and refresh to their devices, `/all-off` (their
+Members may: `GET /state`, `/events`, `/weather`, `/sun`, `/photos`, `/wallpapers`, the
+energy, map and picture of their devices; `POST` commands and refresh to their devices, `/all-off` (their
 devices only), `/scenes/{id}/run` (scenes made of their devices), `/auth/lock`; and
 change their own profile and layout. Everything else is for admins.
 
@@ -306,6 +306,27 @@ and `presence: [{"name": "Asha", "ip": "192.168.1.23"}]`.
 | POST | `/photos?name=IMG_1.jpg` | the image file itself as the body (`Content-Type: image/*`), one per request, max 30 MB; returns the stored photo |
 | DELETE | `/photos/{id}` | — |
 | GET | `/photos/{id}/image` | the image |
+
+### Wallpapers and device pictures
+
+Wallpapers are the user's own background pictures (Settings → Display and clock →
+Wallpaper). Uploads take JPEG, PNG, WebP, GIF or TIFF (TIFF is converted to JPEG, or
+PNG when it has transparency, since browsers can't show TIFF), are shrunk to at most
+2560 px and lose their metadata.
+
+| Method | Path | Body → Response |
+|---|---|---|
+| GET | `/wallpapers` | `{"wallpapers": [{id, name, size, added, width, height, url}]}` |
+| POST | `/wallpapers?name=sky.tiff` | the image file as the body; returns the stored wallpaper (admins) |
+| DELETE | `/wallpapers/{id}` | — (if it was the chosen one, the setting goes back to `"shuffle"`) (admins) |
+| GET | `/wallpapers/{id}/image` | the image |
+| PUT | `/devices/{id}/picture` | the image file as the body: the user's own photo for the device's tile, at most 512 px; a PNG with transparency stays PNG (admins) |
+| DELETE | `/devices/{id}/picture` | — back to the built-in drawing (admins) |
+| GET | `/devices/{id}/picture` | the image; a device's `picture_url` in `/state` points here when it has one |
+
+Settings: `background` can be `"wallpaper"`; `wallpaper` is a wallpaper id or `"shuffle"`;
+`wallpaper_every` is minutes per wallpaper when shuffling (0, 15, 60, 240 or 1440; 0 = a new
+one each time a screen opens); `wallpaper_dim` darkens it, 0–80 %.
 
 Photos are stored in `data/photos/`, rotated upright, resized to 2560 px on the
 long side and saved without metadata (no GPS). Settings: `idle_screen`

@@ -346,11 +346,63 @@ html[data-bg="ocean"] .clock-time, html[data-bg="aurora"] .clock-time { text-sha
 .bg-swatch { width: 96px; height: 64px; border-radius: 14px; box-shadow: inset 0 0 0 1px rgb(255 255 255 / .15); }
 .bg-choice input:checked + .bg-swatch { box-shadow: 0 0 0 3px var(--paper); }
 .bg-choice input:focus-visible + .bg-swatch { outline: 3px solid var(--indigo); outline-offset: 3px; }
-.bg-swatch.ocean { background: linear-gradient(165deg, #2a50f0, #0b1a5e); }
-.bg-swatch.aurora { background: linear-gradient(160deg, #1fa595, #6d3fd8); }
-.bg-swatch.night { background: #151a22; }
+.bg-swatch.swatch-ocean { background: linear-gradient(165deg, #2a50f0, #0b1a5e); }
+.bg-swatch.swatch-aurora { background: linear-gradient(160deg, #1fa595, #6d3fd8); }
+.bg-swatch.swatch-night { background: #151a22; }
 input[type="range"].glass-range { width: 100%; height: 44px; accent-color: var(--paper); }
 
 @media (prefers-reduced-transparency: reduce) {
   :root { --glass-alpha: .92 !important; --glass-blur: 0px !important; }
 }
+
+/* Wallpaper background (wallpaper.js): the user's pictures, cross-fading, darkened a
+   little (--wall-dim) so text on the glass stays readable. The shapes, sky and room
+   light sit on top only when there's no wallpaper. */
+.wall-layer { position: absolute; inset: 0; display: none; }
+.wall-layer .wp { position: absolute; inset: 0; background: center / cover no-repeat; opacity: 0;
+                 transition: opacity 1.6s ease; }
+.wall-layer .wp.show { opacity: 1; }
+.wall-layer::after { content: ""; position: absolute; inset: 0; pointer-events: none;
+                    background: rgb(5 8 18 / var(--wall-dim, .25)); }
+html[data-bg="wallpaper"] .wall-layer { display: block; }
+html.has-wallpaper .backdrop .bg-shapes { display: none; }
+html[data-bg="wallpaper"] .clock-time { text-shadow: 0 2px 24px rgb(0 0 0 / .45); }
+.bg-swatch.swatch-wallpaper { background: linear-gradient(135deg, #3b2a6a, #0e1a3a);
+                       display: grid; place-items: center; color: var(--paper); }
+@media (prefers-reduced-motion: reduce) { .wall-layer .wp { transition: none; } }
+
+/* Settings → Display: wallpaper picker */
+.wall-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 12px; }
+.wall-item { position: relative; }
+.wall-choice { display: grid; gap: 6px; justify-items: center; font-size: 14px; color: var(--haze); cursor: pointer; }
+.wall-choice input { position: absolute; opacity: 0; pointer-events: none; }
+.wall-thumb { width: 100%; aspect-ratio: 4 / 3; border-radius: 14px; background: var(--slate) center / cover no-repeat;
+              display: grid; place-items: center; color: var(--paper); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .15); }
+.wall-choice input:checked + .wall-thumb { box-shadow: 0 0 0 3px var(--paper); }
+.wall-choice input:focus-visible + .wall-thumb { outline: 3px solid var(--indigo); outline-offset: 3px; }
+.wall-del { position: absolute; top: 4px; right: 4px; width: 44px; height: 44px; border-radius: 50%; display: grid;
+            place-items: center; background: rgb(10 14 24 / .6); color: var(--paper); }
+
+/* Device pictures on tiles (art.js): an illustration or the user's own photo, a bit
+   bigger than the line icon. A light's illustration glows in its color when on. */
+.tile-icon.pic { width: 64px; height: 64px; border-radius: 16px; background: none; box-shadow: none; margin: -6px 0 0 -4px; }
+.tile.on .tile-icon.pic { background: none; box-shadow: none; }
+.tile-icon.pic .art { width: 64px; height: 64px; overflow: visible; filter: drop-shadow(0 4px 10px rgb(0 0 0 / .35)); }
+.tile-icon.art .art-glow, .tile-icon.art .art-led { opacity: 0; transition: opacity .4s ease; }
+.tile.on .tile-icon.art .art-glow { opacity: 1; }
+.tile.on .tile-icon.art .art-led { opacity: 1; }
+.tile:not(.on) .tile-icon.art .art-bulb, .tile:not(.on) .tile-icon.art .art-strip { filter: saturate(.25) brightness(.7); }
+.tile:not(.on) .tile-icon.art .art-screen { opacity: .25; }
+.tile.on .tile-icon.art .art-spin { animation: art-spin 1.6s linear infinite; }
+@keyframes art-spin { to { transform: rotate(360deg); } }
+.tile-icon.photo .dev-photo { width: 64px; height: 64px; border-radius: 14px; object-fit: cover; display: block;
+                              box-shadow: 0 4px 12px rgb(0 0 0 / .35); }
+.tile-icon.photo .dev-photo.cutout { object-fit: contain; border-radius: 0; box-shadow: none;
+                                     filter: drop-shadow(0 4px 10px rgb(0 0 0 / .4)); }
+.tile.on .tile-icon.photo .dev-photo { box-shadow: 0 0 0 2px rgb(var(--glow)), 0 0 24px rgb(var(--glow) / .5); }
+.tile.on .tile-icon.photo .dev-photo.cutout { box-shadow: none; filter: drop-shadow(0 0 14px rgb(var(--glow) / .7)); }
+@media (prefers-reduced-motion: reduce) { .tile.on .tile-icon.art .art-spin { animation: none; } }
+
+/* Edit device → Picture */
+.dev-pic-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+.dev-pic-row .tile-icon { margin: 0; }

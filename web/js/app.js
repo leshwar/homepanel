@@ -14,6 +14,7 @@ import { renderAmbient } from "./clockfaces.js";
 import { svg, roomIcon } from "./icons.js";
 import { tileHtml, updateTiles, bindTiles } from "./tiles.js";
 import { applySky, refreshWeather, onWeather } from "./sky.js";
+import { applyWallpaper } from "./wallpaper.js";
 import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEditing, stopEditing } from "./home.js";
 import { startAuth } from "./auth.js";
 import "./profiles.js";      // Settings → Profiles
@@ -214,6 +215,7 @@ function renderAmbience() {
   root.dataset.bg = store.settings.background || "sky";
   applyTransparency(store.settings.glass_transparency ?? 45);
   applySky();
+  applyWallpaper();
   const lit = [...store.devices.values()].filter((d) => d.kind === "light" && d.state?.on && d.state?.online !== false);
   const warmth = Math.min(1, lit.length / 4);
   const avg = lit.length

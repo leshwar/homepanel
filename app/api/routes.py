@@ -326,6 +326,60 @@ async def photo_image(request):
     return FileResponse(path, media_type=media_type, headers={"Cache-Control": "public, max-age=86400"})
 
 
+# --- wallpapers and device pictures --------------------------------------------------
+
+async def _image_body(request) -> bytes:
+    if int(request.headers.get("content-length") or 0) > MAX_UPLOAD_BYTES:
+        raise PhotoError("That picture is too large.")
+    return await request.body()
+
+
+def _wallpaper_out(w: dict) -> dict:
+    return {**w, "url": f"/api/v1/wallpapers/{w['id']}/image"}
+
+
+@handle_errors
+async def list_wallpapers(request):
+    walls = await asyncio.to_thread(_svc(request).wallpapers.list)
+    return {"wallpapers": [_wallpaper_out(w) for w in walls]}
+
+
+@handle_errors
+async def upload_wallpaper(request):
+    """Body is the raw image file (JPEG, PNG, WebP, GIF or TIFF). One per request."""
+    data = await _image_body(request)
+    w = await asyncio.to_thread(_svc(request).wallpapers.add, data, request.query_params.get("name", ""))
+    return _wallpaper_out(w)
+
+
+@handle_errors
+async def delete_wallpaper(request):
+    await asyncio.to_thread(_svc(request).delete_wallpaper, request.path_params["id"])
+    return {"ok": True}
+
+
+@handle_errors
+async def wallpaper_image(request):
+    path, media_type = _svc(request).wallpapers.path(request.path_params["id"])
+    return FileResponse(path, media_type=media_type, headers={"Cache-Control": "private, max-age=86400"})
+
+
+@handle_errors
+async def put_device_picture(request):
+    return await _svc(request).set_device_picture(request.path_params["id"], await _image_body(request))
+
+
+@handle_errors
+async def delete_device_picture(request):
+    return await _svc(request).clear_device_picture(request.path_params["id"])
+
+
+@handle_errors
+async def device_picture(request):
+    path, media_type = _svc(request).device_picture_path(request.path_params["id"])
+    return FileResponse(path, media_type=media_type, headers={"Cache-Control": "private, max-age=86400"})
+
+
 # --- diagnostics -------------------------------------------------------------------
 
 @handle_errors
@@ -551,4 +605,11 @@ routes = [
     Route("/api/v1/photos", upload_photo, methods=["POST"]),
     Route("/api/v1/photos/{id}", delete_photo, methods=["DELETE"]),
     Route("/api/v1/photos/{id}/image", photo_image, methods=["GET"]),
+    Route("/api/v1/wallpapers", list_wallpapers, methods=["GET"]),
+    Route("/api/v1/wallpapers", upload_wallpaper, methods=["POST"]),
+    Route("/api/v1/wallpapers/{id}", delete_wallpaper, methods=["DELETE"]),
+    Route("/api/v1/wallpapers/{id}/image", wallpaper_image, methods=["GET"]),
+    Route("/api/v1/devices/{id}/picture", device_picture, methods=["GET"]),
+    Route("/api/v1/devices/{id}/picture", put_device_picture, methods=["PUT"]),
+    Route("/api/v1/devices/{id}/picture", delete_device_picture, methods=["DELETE"]),
 ]

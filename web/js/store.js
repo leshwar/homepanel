@@ -55,21 +55,26 @@ export function upsertDevice(d) {
 
 const pick = (o, keys) => Object.fromEntries(keys.filter((k) => k in o).map((k) => [k, o[k]]));
 
+const inFlight = new Map();   // device id -> commands sent and not answered yet
+
 // Send a command with an optimistic state change. Reverts and shows the error if it fails.
 export async function command(id, action, value, optimistic = {}) {
   const d = store.devices.get(id);
   if (!d) return;
   const before = { ...d.state };
   d.state = { ...d.state, ...optimistic };
+  inFlight.set(id, (inFlight.get(id) || 0) + 1);
   store.busy.add(id);
   emit("device", id);
+  // Busy until the last of this device's commands answers, so an earlier answer can't flash an old value.
+  const settle = () => { const n = inFlight.get(id) - 1; n ? inFlight.set(id, n) : (inFlight.delete(id), store.busy.delete(id)); };
   try {
     const updated = await api.command(id, action, value);
-    store.busy.delete(id);
+    settle();
     upsertDevice(updated);
     return true;
   } catch (e) {
-    store.busy.delete(id);
+    settle();
     d.state = before;
     emit("device", id);
     toast(e.message, true);

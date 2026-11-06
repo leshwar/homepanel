@@ -46,6 +46,7 @@ log = logging.getLogger("homepanel")
 COMMAND_TIMEOUT = 10.0
 BACKGROUNDS = ("sky", "ocean", "aurora", "night", "wallpaper")   # sky: follows the weather and time of day
 WALLPAPER_EVERY = (0, 15, 60, 240, 1440)             # shuffle: minutes per wallpaper
+TILE_STYLES = ("auto", "light", "dark")              # auto: contrast with the background
 IDLE_SCREENS = ("clock", "photos")
 CLOCK_FACES = ("digital", "analog", "words", "date", "night")
 REFRESH_TIMEOUT = 8.0
@@ -966,6 +967,8 @@ class HomeService:
             except Exception:
                 raise AdapterError("Change the wallpaper every 15 minutes, hour, 4 hours, day, or never.")
             changes["wallpaper_every"] = every
+        if "tile_style" in changes and changes["tile_style"] not in TILE_STYLES:
+            raise AdapterError("Tiles should be auto, light or dark.")
         if "wallpaper_dim" in changes:
             try:
                 changes["wallpaper_dim"] = max(0, min(80, int(float(changes["wallpaper_dim"]))))
@@ -1059,7 +1062,7 @@ class HomeService:
         Nothing private: no location unless asked (a locked panel), no people, no layout."""
         keys = ("home_name", "background", "glass_effect", "glass_transparency", "clock_24h", "clock_face",
                 "dim_after_seconds", "idle_screen", "frame_seconds", "frame_shuffle", "frame_clock",
-                "frame_night_clock", "temperature_unit", "lock_after_minutes")
+                "frame_night_clock", "temperature_unit", "lock_after_minutes", "tile_style")
         out = {k: self.store.settings.get(k) for k in keys}
         if with_location:
             out.update({k: self.store.settings.get(k) for k in ("latitude", "longitude", "place_name", "weather_enabled")})

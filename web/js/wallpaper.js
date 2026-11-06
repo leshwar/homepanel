@@ -10,6 +10,7 @@
 
 import { api } from "./api.js";
 import { store } from "./store.js";
+import { applyTiles, measureLuma, setWallpaperLuma } from "./tone.js";
 
 let list = null;          // [{id, url, width, height}], null = not loaded yet
 let loadedAt = 0;
@@ -67,6 +68,7 @@ export async function applyWallpaper() {
     return;
   }
   root.style.setProperty("--wall-dim", String((Number(s.wallpaper_dim ?? 25) || 0) / 100));
+  applyTiles();                               // the darken setting changes how bright it looks
   const all = await wallpapers();
   const w = pickWallpaper(all, s);
   root.classList.toggle("has-wallpaper", !!w);   // none added yet: the plain night backdrop shows
@@ -79,6 +81,10 @@ export async function applyWallpaper() {
       layers[front].classList.add("show");
       layers[1 - front].classList.remove("show");
       shown = w.url;
+      // Light or dark tiles to stand out from it: switch halfway through the cross-fade,
+      // so text never flips to dark while the old dark picture is still showing.
+      const luma = measureLuma(img);
+      setTimeout(() => setWallpaperLuma(luma), 800);
     };
     img.src = w.url;
   }

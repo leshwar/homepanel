@@ -10,6 +10,7 @@
 
 import { api } from "./api.js";
 import { store } from "./store.js";
+import { applyTiles } from "./tone.js";
 
 let weather = null;
 let key = "";
@@ -59,4 +60,5 @@ export function applySky(now = new Date()) {
   const root = document.documentElement;
   root.dataset.sky = skyAt();
   root.dataset.period = periodAt(now);
+  applyTiles();                       // keep the tiles in step with the background
 }

@@ -2,10 +2,12 @@
 
     pip install playwright && playwright install chromium
 """
+import json
 import os
 import shutil
 import tempfile
 import unittest
+import urllib.request
 
 try:
     from playwright.sync_api import sync_playwright
@@ -335,6 +337,60 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector("text=Photo removed")
         self.assertEqual(self.tile("kt-kettle").locator("img.dev-photo").count(), 0)
         self.assertEqual(self.errors, [])
+
+    def _put_settings(self, **changes):
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/v1/settings", method="PUT",
+                                     data=json.dumps(changes).encode(), headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read())
+
+    def _bright_wallpaper(self):
+        import io
+        from PIL import Image
+        buf = io.BytesIO()
+        Image.new("RGB", (1600, 1000), (250, 238, 214)).save(buf, "JPEG")      # pale cream: a light background
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}/api/v1/wallpapers?name=cream.jpg", method="POST",
+                                     data=buf.getvalue(), headers={"Content-Type": "image/jpeg"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read())["id"]
+
+    def _text_luma(self, page, selector):
+        return page.evaluate(f"""(() => {{ const c = getComputedStyle(document.querySelector('{selector}')).color
+            .match(/\\d+(\\.\\d+)?/g).map(Number); return (0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2]) / 255; }})()""")
+
+    def test_tiles_contrast_with_the_background(self):
+        root = "document.documentElement"
+        try:
+            # a dark background (the Sky, Ocean…): light tiles with dark text, page text stays light
+            self._put_settings(background="ocean", tile_style="auto")
+            page = self.open(view="rooms")
+            page.wait_for_function(f"{root}.dataset.tiles === 'light' && {root}.dataset.tone === 'dark'")
+            self.assertLess(self._text_luma(page, '.tile[data-id="lr-tv"] .tile-name'), 0.3)
+            self.assertGreater(self._text_luma(page, ".topbar-title h1"), 0.7)
+            page.close()
+            # a bright wallpaper: dark tiles with light text, and the page title turns dark
+            wid = self._bright_wallpaper()
+            self._put_settings(background="wallpaper", wallpaper=wid, wallpaper_dim=0)
+            page = self.open(view="rooms")
+            page.wait_for_function(f"{root}.dataset.tiles === 'dark' && {root}.dataset.tone === 'light'")
+            self.assertGreater(self._text_luma(page, '.tile[data-id="lr-tv"] .tile-name'), 0.7)
+            self.assertLess(self._text_luma(page, ".topbar-title h1"), 0.3)
+            # darkening it a lot makes it a dark background again
+            self._put_settings(wallpaper_dim=80)
+            page.reload()
+            page.wait_for_function(f"{root}.dataset.tiles === 'light' && {root}.dataset.tone === 'dark'")
+            # choosing a style by hand wins, previewed live in Settings → Display
+            page.click("#open-settings")
+            page.click("[data-go=display]")
+            page.click('.seg-choice:has(input[value="dark"])')
+            page.wait_for_function(f"{root}.dataset.tiles === 'dark'")
+            page.click("[data-display] button[type=submit]")
+            page.wait_for_selector("text=Saved")
+            page.reload()
+            page.wait_for_function(f"{root}.dataset.tiles === 'dark'")
+            page.close()
+        finally:
+            self._put_settings(background="sky", wallpaper="shuffle", wallpaper_dim=25, tile_style="auto")
 
     def test_wallpaper_background(self):
         root = "document.documentElement"

@@ -111,6 +111,14 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         await self.svc.stop()
         shutil.rmtree(self.dir, ignore_errors=True)
 
+    async def test_tile_style_setting(self):
+        self.assertEqual(self.svc.store.settings["tile_style"], "auto")      # contrast with the background by default
+        for style in ("light", "dark", "auto"):
+            self.assertEqual(self.svc.update_settings({"tile_style": style})["tile_style"], style)
+        with self.assertRaises(AdapterError):
+            self.svc.update_settings({"tile_style": "neon"})
+        self.assertEqual(self.svc.display_settings()["tile_style"], "auto")  # the sign-in screen uses it too
+
     async def test_demo_has_wallpapers_and_wallpaper_settings_are_checked(self):
         walls = self.svc.wallpapers.list()
         self.assertEqual(len(walls), 3)

@@ -32,6 +32,8 @@ web/
     ├── voice.js    the mic: speech to text in the browser (or a typed box), reply, choices, confirm
     ├── remote.js   TV and speaker remote: D-pad / touchpad / number pad, rockers, apps, pointer
     ├── vacuum.js   robot vacuum: map, status, main button, rooms, Options, Maintenance
+    ├── effects.js  light effects in the light sheet: searchable scenes (Scenes / DIY / Snapshots),
+    │               music mode + sensitivity, strip parts (tap parts, then a color), toggles
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
     ├── clockfaces.js  resting clock faces (digital, analog, words, date, night) + burn-in drift
     ├── locate.js   "Use my location": device location, else approximate from the server
@@ -113,6 +115,9 @@ device can do (its `caps`):
 - *Lights*: a tall brightness pill (tap = on/off, drag = dim, relative like Apple Home),
   a color wheel (the rim snaps to pure colors), a warm-to-cool slider and a few presets.
   Dragging previews live, at most one command every 300 ms, and the final value always wins.
+  Lights that list effects add Scenes (search box, grouped Scenes / DIY / Snapshots, the
+  playing one highlighted, Update list), Music (mode chips and a sensitivity slider), Strip
+  parts (tap parts, then a color) and Options toggles (`effects.js`).
 - *TV remote*: power, the TV's name with a "connected" dot, mute; a round D-pad with Menu,
   Input, Exit and List around it; a switch between D-pad, touchpad (TVs with `pointer`)
   and number pad; volume and channel rockers (hold to repeat), Home, Play/Pause, Back; and
@@ -129,5 +134,5 @@ device can do (its `caps`):
 ## Adding a control for a new capability
 
 1. Add the capability/action in `app/core/adapter.py` (`Cap`, `Action`).
-2. Render it in `sheet.js` (TVs: `remote.js`, vacuums: `vacuum.js`), guarded by the cap.
+2. Render it in `sheet.js` (TVs: `remote.js`, vacuums: `vacuum.js`, light effects: `effects.js`), guarded by the cap.
 3. Send it with `command(d.id, "your_action", value, {optimistic state})`.

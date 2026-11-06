@@ -1,0 +1,28 @@
+{
+ "requestId": "r2",
+ "msg": "success",
+ "code": 200,
+ "payload": {
+  "sku": "H605C",
+  "device": "AA:BB:CC:DD:EE:FF:00:11",
+  "capabilities": [
+   {
+    "type": "devices.capabilities.diy_color_setting",
+    "instance": "diyScene",
+    "parameters": {
+     "dataType": "ENUM",
+     "options": [
+      {
+       "name": "Movie night",
+       "value": 8216931
+      },
+      {
+       "name": "Game day",
+       "value": 8216930
+      }
+     ]
+    }
+   }
+  ]
+ }
+}

@@ -15,6 +15,7 @@ export const isMedia = (d) => d.kind === "tv" || d.kind === "speaker";
 const LAMP = [242, 179, 91];
 const JADE = [124, 199, 165];
 const INDIGO = [150, 166, 255];
+const EFFECT = [196, 120, 255];     // a light playing a scene or following music
 
 export function kelvinToRgb(k) {
   const t = k / 100;
@@ -30,6 +31,9 @@ export function glow(d) {
   if (isMedia(d)) return INDIGO;
   if (d.kind !== "light") return JADE;
   const s = d.state || {};
+  const part = s.color_mode === "segments" && (s.segments || []).find(Boolean);
+  if (part) return [1, 3, 5].map((i) => parseInt(part.slice(i, i + 2), 16));
+  if (s.color_mode === "effect" || s.color_mode === "music") return EFFECT;
   if (s.color_mode === "color" && s.color) {
     const { r, g, b } = s.color;
     const max = Math.max(r, g, b, 1);     // full-saturation version so dim colors still read
@@ -60,7 +64,12 @@ export function statusText(d, apps = []) {
   if (s.online == null && s.on == null && s.activity == null) return "Connecting…";
   if (d.kind === "vacuum") return vacuumText(s);
   if (!s.on) return "Off";
-  if (d.kind === "light" && s.brightness != null && d.caps.includes("brightness")) return `On, ${s.brightness}%`;
+  if (d.kind === "light") {
+    const effect = s.color_mode === "effect" && (d.meta?.effects || []).find((e) => e.id === s.effect);
+    const what = effect ? effect.name : s.color_mode === "music" ? "Music" : "On";
+    if (s.brightness != null && d.caps.includes("brightness")) return `${what}, ${s.brightness}%`;
+    if (what !== "On") return what;
+  }
   if (isMedia(d)) {
     const app = (d.meta?.apps || apps).find((a) => a.id === s.app);
     const input = (d.meta?.inputs || []).find((x) => x.id === s.input);

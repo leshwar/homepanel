@@ -117,6 +117,37 @@ class ApiTests(unittest.TestCase):
         status, _ = self.call("POST", "/devices/lr-plug/command", {"action": "dock"})
         self.assertEqual(status, 400)
 
+    def test_light_effects(self):
+        _, st = self.call("GET", "/state")
+        strip = next(d for d in st["devices"] if d["id"] == "lr-strip")
+        for cap in ("effects", "music", "segments", "toggles"):
+            self.assertIn(cap, strip["caps"])
+        self.assertEqual({e["group"] for e in strip["meta"]["effects"]}, {"Scenes", "DIY", "Snapshots"})
+        self.assertEqual(strip["meta"]["segments"], 10)
+
+        status, d = self.call("POST", "/devices/lr-strip/command", {"action": "set_effect", "value": "diy-movie-night"})
+        self.assertEqual((status, d["state"]["effect"], d["state"]["color_mode"]), (200, "diy-movie-night", "effect"))
+        status, d = self.call("POST", "/devices/lr-strip/command",
+                              {"action": "set_music", "value": {"mode": "energic", "sensitivity": 35}})
+        self.assertEqual((status, d["state"]["music"], d["state"]["effect"]), (200, {"mode": "energic", "sensitivity": 35}, None))
+        status, d = self.call("POST", "/devices/lr-strip/command",
+                              {"action": "set_segments", "value": {"segments": [9], "color": "#ff5cb8"}})
+        self.assertEqual((status, d["state"]["segments"][9], d["state"]["color_mode"]), (200, "#ff5cb8", "segments"))
+        status, d = self.call("POST", "/devices/lr-strip/command",
+                              {"action": "set_toggle", "value": {"id": "sync", "on": True}})
+        self.assertEqual((status, d["state"]["toggles"]["sync"]), (200, True))
+        status, _ = self.call("POST", "/devices/lr-strip/command", {"action": "update_effects"})
+        self.assertEqual(status, 200)
+        # plain-language refusals
+        for dev, body, words in (("lr-strip", {"action": "set_effect", "value": "nope"}, "doesn't have the option"),
+                                 ("lr-lamp", {"action": "set_effect", "value": "scene-sunset"}, "can't play scenes"),
+                                 ("lr-strip", {"action": "set_segments", "value": {"segments": [12], "color": "#fff"}},
+                                  "numbered 0 to 9"),
+                                 ("kt-pendant", {"action": "set_music", "value": "energic"}, "can't follow music")):
+            status, err = self.call("POST", f"/devices/{dev}/command", body)
+            self.assertEqual(status, 400, body)
+            self.assertIn(words, err["error"])
+
     def test_vacuum_rooms_suction_and_map(self):
         status, d = self.call("POST", "/devices/lr-vacuum/command", {"action": "clean_rooms", "value": [2]})
         self.assertEqual((status, d["state"]["activity"]), (200, "cleaning"))

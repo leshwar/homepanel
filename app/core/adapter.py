@@ -67,6 +67,11 @@ class Cap:
     MAP = "map"                # a picture of the floor plan: GET /devices/{id}/map
     POINTER = "pointer"        # an on-screen pointer the panel can move, click and scroll (touchpad)
     SOUND_MODE = "sound_mode"  # set_sound_mode (meta["sound_modes"])
+    # Light effects. The device lists what it has in meta; the UI draws one section per cap.
+    EFFECTS = "effects"        # set_effect: meta["effects"] = [{"id","name","group"}] (group: Effect.GROUPS)
+    MUSIC = "music"            # set_music: meta["music_modes"] = [{"id","name"}]; light follows sound
+    SEGMENTS = "segments"      # set_segments: meta["segments"] = how many parts of a strip can be colored apart
+    TOGGLES = "toggles"        # set_toggle: meta["toggles"] = [{"id","name"}] (Effect.TOGGLES), e.g. night light
 
 
 class Action:
@@ -93,6 +98,12 @@ class Action:
     STATION = "station"                # value: id from meta["station_actions"]
     LOCATE = "locate"                  # no value
     SET_SOUND_MODE = "set_sound_mode"  # value: id from meta["sound_modes"]
+    SET_EFFECT = "set_effect"          # value: id from meta["effects"]
+    SET_MUSIC = "set_music"            # value: {"mode": id from meta["music_modes"], "sensitivity": 0-100}
+    # value: {"segments": [0-based indexes < meta["segments"]], "color": rgb, and/or "brightness": 0-100}
+    SET_SEGMENTS = "set_segments"
+    SET_TOGGLE = "set_toggle"          # value: {"id": id from meta["toggles"], "on": bool}
+    UPDATE_EFFECTS = "update_effects"  # no value: read the device's effect lists again (they're cached)
     # value: {"dx": int, "dy": int} to move, {"click": true} to click, {"scroll": int} to scroll
     # (positive = down). The service normalizes it to exactly one of those three shapes.
     POINTER = "pointer"
@@ -100,7 +111,7 @@ class Action:
     ALL = (POWER, TOGGLE, BRIGHTNESS, COLOR, COLOR_TEMP, VOLUME, VOLUME_UP,
            VOLUME_DOWN, MUTE, CHANNEL_UP, CHANNEL_DOWN, KEY, LAUNCH_APP, SET_INPUT,
            CLEAN, DOCK, CLEAN_ROOMS, SET_SUCTION, SET_CLEAN_MODE, STATION, LOCATE, SET_SOUND_MODE,
-           POINTER)
+           POINTER, SET_EFFECT, SET_MUSIC, SET_SEGMENTS, SET_TOGGLE, UPDATE_EFFECTS)
 
     # Fire-and-forget actions that don't change the device's state: the service doesn't
     # broadcast or re-read the device after them, and logs them only in debug mode.
@@ -115,11 +126,17 @@ class Action:
         LAUNCH_APP: Cap.APPS, SET_INPUT: Cap.INPUTS, CLEAN: Cap.CLEAN, DOCK: Cap.DOCK,
         CLEAN_ROOMS: Cap.ROOMS, SET_SUCTION: Cap.SUCTION, SET_CLEAN_MODE: Cap.CLEAN_MODE,
         STATION: Cap.STATION, LOCATE: Cap.LOCATE, SET_SOUND_MODE: Cap.SOUND_MODE, POINTER: Cap.POINTER,
+        SET_EFFECT: Cap.EFFECTS, SET_MUSIC: Cap.MUSIC, SET_SEGMENTS: Cap.SEGMENTS, SET_TOGGLE: Cap.TOGGLES,
+        UPDATE_EFFECTS: Cap.EFFECTS,
     }
+
+    # What each action is, for "<device> can't …" messages.
+    WORDS = {SET_EFFECT: "play scenes", SET_MUSIC: "follow music", SET_SEGMENTS: "color parts of the strip",
+             SET_TOGGLE: "switch that feature", UPDATE_EFFECTS: "play scenes"}
 
     # Actions whose value must be one of the ids the device lists in device.meta[...].
     OPTIONS = {SET_SUCTION: "suction_levels", SET_CLEAN_MODE: "clean_modes", STATION: "station_actions",
-               SET_SOUND_MODE: "sound_modes"}
+               SET_SOUND_MODE: "sound_modes", SET_EFFECT: "effects"}
 
 
 class Key:
@@ -134,6 +151,16 @@ class Key:
     ALL = (UP, DOWN, LEFT, RIGHT, OK, BACK, HOME, MENU, SOURCE,
            PLAY, PAUSE, STOP, REWIND, FORWARD, EXIT, CHANNEL_LIST, INFO, *DIGITS)
     MEDIA = (PLAY, PAUSE, STOP, REWIND, FORWARD)   # allowed with Cap.MEDIA alone
+
+
+class Effect:
+    """Shared words for light effects (Cap.EFFECTS, Cap.MUSIC, Cap.TOGGLES)."""
+    SCENES, DIY, SNAPSHOTS = "Scenes", "DIY", "Snapshots"     # meta["effects"][i]["group"], in display order
+    GROUPS = (SCENES, DIY, SNAPSHOTS)
+    NIGHT_LIGHT, GRADIENT, SYNC = "night_light", "gradient", "sync"   # meta["toggles"] ids
+    TOGGLES = (NIGHT_LIGHT, GRADIENT, SYNC)
+    # state["color_mode"] is "color" or "temp" for plain light; these mean an effect is showing:
+    MODES = ("effect", "music", "segments")
 
 
 class Pointer:

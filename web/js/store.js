@@ -47,7 +47,8 @@ export async function reload() {
 export function upsertDevice(d) {
   if (store.busy.has(d.id)) {           // keep the optimistic value until our own command returns
     const local = store.devices.get(d.id);
-    if (local) d.state = { ...d.state, ...pick(local.state, ["on", "brightness", "color", "color_temp", "color_mode", "volume", "muted"]) };
+    if (local) d.state = { ...d.state, ...pick(local.state, ["on", "brightness", "color", "color_temp", "color_mode", "volume", "muted",
+                                                         "effect", "music", "segments", "toggles"]) };
   }
   store.devices.set(d.id, d);
   emit("device", d.id);

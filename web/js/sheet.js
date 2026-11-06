@@ -9,6 +9,7 @@ import { openSettings } from "./settings.js";
 import { remoteTop, remoteBody, attachRemote, remoteClick, remoteBusy, startRepeat, stopTilt, onRemoteChange } from "./remote.js";
 
 import { vacuumBody, picked } from "./vacuum.js";
+import { effectsBody, effectsClick, attachEffects, effectsBusy, keepEffects } from "./effects.js";
 const sheetState = { shownId: null, missed: false };   // last device shown; an update came in mid-drag
 
 let currentId = null;
@@ -53,7 +54,7 @@ new MutationObserver(() => { if ($("#sheet").hidden) { sheetState.shownId = null
 export function refreshSheet(id) {
   if (!currentId) return;
   if (id && id !== currentId) return;
-  if (dragging || remoteBusy.active) { sheetState.missed = true; return; }
+  if (dragging || remoteBusy.active || effectsBusy()) { sheetState.missed = true; return; }
   sheetState.missed = false;
   if (!store.devices.has(currentId)) return closeSheet();
   render();
@@ -110,6 +111,7 @@ function render() {
   sheet.classList.toggle("sheet-vac", !tv && vac);
   sheet.classList.toggle("sheet-light", !tv && !vac && isLight(d));
   sheet.style.setProperty("--glow", glowVar(d));
+  keepEffects(sheet, same);
   sheet.innerHTML = `
     <button class="grab" data-close aria-label="Close"></button>
     ${head}
@@ -127,7 +129,10 @@ function render() {
     mapImg.addEventListener("load", () => mapImg.parentNode.classList.remove("empty"));
   }
   if (tv) attachRemote(sheet, d);
-  if (!blocked && isLight(d)) attachLight(d);
+  if (!blocked && isLight(d)) {
+    attachLight(d);
+    attachEffects(sheet, d, () => { if (sheetState.missed) refreshSheet(); });
+  }
 }
 
 // ---------- lights ----------
@@ -182,7 +187,8 @@ function lightBody(d) {
         aria-pressed="${!!(colorOn && cur === c.c)}"></button>`).join("")}</div>` : "";
 
   const more = strip + presets;
-  return `<div class="light ${strip ? "wide" : ""}"><div class="light-ctl">${pill}${side}</div>${more ? `<div class="light-more">${more}</div>` : ""}</div>`;
+  return `<div class="light ${strip ? "wide" : ""}"><div class="light-ctl">${pill}${side}</div>${more ? `<div class="light-more">${more}</div>` : ""}</div>`
+    + effectsBody(d);
 }
 
 const tempWord = (k) => (k < 3000 ? "Warm" : k < 4500 ? "Neutral" : "Cool");
@@ -425,6 +431,11 @@ $("#sheet").addEventListener("click", async (e) => {
   if (t("[data-sound-mode]")) { const m = t("[data-sound-mode]").dataset.soundMode; return command(d.id, "set_sound_mode", m, { sound_mode: m }); }
   if (isMedia(d)) {
     const r = remoteClick(e, d, sendKey(d));
+    if (r === "render") return render();
+    if (r) return;
+  }
+  if (isLight(d)) {
+    const r = effectsClick(e, d);
     if (r === "render") return render();
     if (r) return;
   }

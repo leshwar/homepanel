@@ -58,6 +58,30 @@ the panel may take up to that long to notice.
 instantly: in the Govee app open the light → ⚙ → turn on **LAN Control**. They'll
 show up in the same search marked "local".
 
+### Scenes, music mode and strip parts
+
+With the API key saved, a Govee light's controls also show what the light can do
+beyond plain color (only the sections your light supports appear):
+
+- **Scenes**: Govee's built-in scenes, your **DIY** scenes and saved **Snapshots**,
+  with a search box. The highlighted one is playing.
+- **Music**: Energic, Rhythm, Spectrum, Rolling (names come from the light), and a
+  sensitivity slider. The light listens with its own microphone.
+- **Strip parts** (RGBIC strips and TV backlights): tap parts, then a color.
+- **Options**: Gradient, Screen sync (Govee's DreamView) and Night light, where listed.
+
+These only exist in Govee's cloud API, so they need the API key even for lights with
+LAN Control (on/off, brightness and color still go over your Wi-Fi). The list of scenes
+is read once when the light is added (or on its first check after upgrading) and kept;
+made a new DIY scene or snapshot in the Govee app? Tap **Update list** under Scenes.
+A light added by IP address alone can't use scenes: remove it and add it with **Search**.
+
+Govee's cloud allows a couple of commands a second per light and about 10,000
+requests a day per key. The panel never polls scenes and slows down a burst of
+changes; if it's still too much it says so instead of failing quietly. Govee doesn't
+report which scene is playing, so after a scene started from the Govee app the
+panel keeps showing the last one it set.
+
 Newer Govee devices with **Matter** support are a future option (see the roadmap).
 
 ## TP-Link Kasa / Tapo

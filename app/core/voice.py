@@ -156,9 +156,9 @@ STRONG = re.compile(r"\b(volume|louder|quieter|softer|mute|unmute|channel)\b|\b(
 # Which device.meta list each option-taking action reads, in the order "set X to Y" tries them.
 OPTION_ACTIONS = [("inputs", Action.SET_INPUT, Cap.INPUTS), ("sound_modes", Action.SET_SOUND_MODE, Cap.SOUND_MODE),
                   ("suction_levels", Action.SET_SUCTION, Cap.SUCTION), ("clean_modes", Action.SET_CLEAN_MODE, Cap.CLEAN_MODE),
-                  ("apps", Action.LAUNCH_APP, Cap.APPS)]
+                  ("effects", Action.SET_EFFECT, Cap.EFFECTS), ("apps", Action.LAUNCH_APP, Cap.APPS)]
 OPTION_NOISE = {"mode", "input", "source", "setting", "level", "power", "suction", "sound", "the", "to", "app",
-                "channel", "on"}
+                "channel", "on", "scene", "effect"}
 
 
 def _numbers(tokens: list[str]) -> list[str]:
@@ -377,7 +377,8 @@ class RulesParser:
     def _all_names(home: Home) -> list[str]:
         out = [d.name for d in home.devices] + [s.get("name", "") for s in home.scenes] + list(home.rooms)
         for d in home.devices:
-            for key in ("apps", "inputs", "sound_modes", "suction_levels", "clean_modes", "rooms", "station_actions"):
+            for key in ("apps", "inputs", "sound_modes", "suction_levels", "clean_modes", "rooms", "station_actions",
+                        "effects"):
                 out += [str(o.get("name", "")) for o in d.meta.get(key, []) if isinstance(o, dict)]
         return out
 
@@ -1093,6 +1094,8 @@ def describe(step: Step, d: Device | None) -> tuple[str, str, str]:
         return ("Set", name, f"to {_opt_name(d, 'sound_modes', v) if d else v}")
     if a == Action.SET_SUCTION:
         return ("Set", name, f"to {_opt_name(d, 'suction_levels', v) if d else v} suction")
+    if a == Action.SET_EFFECT:
+        return ("Set", name, f"to {_opt_name(d, 'effects', v) if d else v}")
     if a == Action.SET_CLEAN_MODE:
         return ("Set", name, f"to {_opt_name(d, 'clean_modes', v) if d else v}")
     if a == Action.CLEAN:

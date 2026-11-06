@@ -4,11 +4,12 @@ from __future__ import annotations
 import asyncio
 import random
 
-from ..core.adapter import Action, Activity, Cap, Clean, Device, DeviceAdapter, Found, Kind, register
+from ..core.adapter import Action, Activity, Cap, Clean, Device, DeviceAdapter, Effect, Found, Kind, register
 
 LIGHT_CAPS = [Cap.POWER, Cap.BRIGHTNESS, Cap.COLOR, Cap.COLOR_TEMP]
 TV_CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.CHANNEL, Cap.REMOTE, Cap.MEDIA, Cap.APPS, Cap.INPUTS]
 POINTER_TV_CAPS = [*TV_CAPS, Cap.POINTER]   # like an LG TV: has a touchpad pointer
+STRIP_CAPS = [*LIGHT_CAPS, Cap.EFFECTS, Cap.MUSIC, Cap.SEGMENTS, Cap.TOGGLES]   # like an RGBIC light strip
 SPEAKER_CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.INPUTS, Cap.SOUND_MODE]
 
 DEMO = [
@@ -16,7 +17,7 @@ DEMO = [
      {"on": True, "brightness": 80, "color_temp": 3000, "color_mode": "temp"}),
     ("lr-lamp", "Floor lamp", Kind.LIGHT, "Living room", LIGHT_CAPS,
      {"on": True, "brightness": 45, "color_temp": 2400, "color_mode": "temp"}),
-    ("lr-strip", "TV backlight", Kind.LIGHT, "Living room", LIGHT_CAPS,
+    ("lr-strip", "TV backlight", Kind.LIGHT, "Living room", STRIP_CAPS,
      {"on": False, "brightness": 60, "color": {"r": 120, "g": 80, "b": 255}, "color_mode": "color"}),
     ("lr-tv", "Samsung TV", Kind.TV, "Living room", TV_CAPS,
      {"on": True, "volume": 18, "muted": False, "app": "netflix", "input": None}),
@@ -49,6 +50,20 @@ VACUUM_META = {
     "clean_modes": [{"id": "vacuum", "name": "Vacuum"}, {"id": "mop", "name": "Mop"},
                     {"id": "vacuum_and_mop", "name": "Vacuum and mop"}],
     "station_actions": [{"id": "empty_dustbin", "name": "Empty dustbin"}, {"id": "wash_mop", "name": "Wash mop"}],
+}
+
+STRIP_META = {
+    "model": "Demo light strip",
+    "effects": [*({"id": f"scene-{n.lower().replace(' ', '-')}", "name": n, "group": Effect.SCENES} for n in (
+                    "Sunrise", "Sunset", "Aurora", "Forest", "Deep sea", "Candlelight", "Fireworks", "Party",
+                    "Rainbow", "Starry sky", "Snowfall", "Ocean waves")),
+                {"id": "diy-movie-night", "name": "Movie night", "group": Effect.DIY},
+                {"id": "diy-game-day", "name": "Game day", "group": Effect.DIY},
+                {"id": "snap-reading", "name": "Reading", "group": Effect.SNAPSHOTS}],
+    "music_modes": [{"id": "energic", "name": "Energic"}, {"id": "rhythm", "name": "Rhythm"},
+                    {"id": "spectrum", "name": "Spectrum"}, {"id": "rolling", "name": "Rolling"}],
+    "segments": 10,
+    "toggles": [{"id": Effect.GRADIENT, "name": "Gradient"}, {"id": Effect.SYNC, "name": "Screen sync"}],
 }
 
 # A simple pretend floor plan: four rooms and the dock.
@@ -105,6 +120,8 @@ class DemoAdapter(DeviceAdapter):
             device.meta = dict(VACUUM_META)
         elif device.kind == Kind.SPEAKER:
             device.meta = dict(SPEAKER_META)
+        elif Cap.EFFECTS in device.caps:
+            device.meta = dict(STRIP_META)
         await self.refresh(device)
 
     async def map_image(self, device: Device):
@@ -118,6 +135,8 @@ class DemoAdapter(DeviceAdapter):
             device.meta = dict(VACUUM_META)
         if device.kind == Kind.SPEAKER and not device.meta:
             device.meta = dict(SPEAKER_META)
+        if device.config["_uid"] == "lr-strip" and not device.meta.get("effects"):   # older demo data
+            device.caps, device.meta = list(STRIP_CAPS), dict(STRIP_META)
         state = dict(self._state.setdefault(device.config["_uid"], {"on": False}))
         if device.config["_uid"] in WATTS:          # these demo plugs measure power
             lo, hi = WATTS[device.config["_uid"]]
@@ -132,9 +151,24 @@ class DemoAdapter(DeviceAdapter):
         elif action == Action.BRIGHTNESS:
             s.update(on=True, brightness=value)
         elif action == Action.COLOR:
-            s.update(on=True, color=value, color_mode="color")
+            s.update(on=True, color=value, color_mode="color", effect=None, music=None, segments=None)
         elif action == Action.COLOR_TEMP:
-            s.update(on=True, color_temp=value, color_mode="temp")
+            s.update(on=True, color_temp=value, color_mode="temp", effect=None, music=None, segments=None)
+        elif action == Action.SET_EFFECT:
+            s.update(on=True, effect=value, color_mode="effect", music=None, segments=None)
+        elif action == Action.SET_MUSIC:
+            s.update(on=True, music=value, color_mode="music", effect=None, segments=None)
+        elif action == Action.SET_SEGMENTS:
+            n = int(device.meta.get("segments") or 0)
+            colors = (list(s.get("segments") or []) + [None] * n)[:n]
+            if "color" in value:
+                for i in value["segments"]:
+                    colors[i] = "#{r:02x}{g:02x}{b:02x}".format(**value["color"])
+            s.update(on=True, segments=colors, color_mode="segments", effect=None, music=None)
+        elif action == Action.SET_TOGGLE:
+            s["toggles"] = {**(s.get("toggles") or {}), value["id"]: value["on"]}
+        elif action == Action.UPDATE_EFFECTS:
+            device.meta = {**device.meta, "effects": list(STRIP_META["effects"])}
         elif action == Action.VOLUME:
             s["volume"] = value
         elif action == Action.VOLUME_UP:

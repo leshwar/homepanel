@@ -71,6 +71,8 @@ web/
   than fading the whole tile. Labels and nested buttons use the tile's text colors,
   independently of the background-aware page title. Wallpaper rails also keep a
   minimum backing, and headings over the picture get a soft shadow.
+  Settings cards/lists and simple-speaker controls use opaque surfaces so dashboard
+  content cannot overlap their text; background previews remain visible around settings cards.
 - **Lit devices.** A device that is on gives off light: lamps glow in their real
   color, plugs in jade, TVs in indigo, and the background's top glow takes on the
   color of the lights that are on (`--room-glow`, `--warmth`).

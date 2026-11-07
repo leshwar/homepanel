@@ -1,6 +1,7 @@
 """Bundled typography integrity and preview state, without network/browser."""
 import base64
 import hashlib
+import re
 import shutil
 import subprocess
 import unittest
@@ -11,6 +12,13 @@ NODE = shutil.which("node")
 
 
 class FontAssetTests(unittest.TestCase):
+    def test_settings_text_surfaces_do_not_use_dashboard_transparency(self):
+        css = (WEB / "app.css").read_text()
+        rule = re.search(r"#settings :is\(\.card, \.list\) \{([^}]+)\}", css).group(1)
+        self.assertIn("background-color: var(--dusk)", rule)
+        self.assertIn("backdrop-filter: none", rule)
+        self.assertNotIn("--glass-alpha", rule)
+
     def test_unmodified_variable_font_and_license_are_bundled(self):
         font = (WEB / "fonts/manrope-variable.ttf").read_bytes()
         self.assertEqual(len(font), 164700)

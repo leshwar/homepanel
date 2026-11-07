@@ -72,6 +72,8 @@ class TypographyTests(unittest.TestCase):
         self.assertTrue(page.locator("body").evaluate("e => getComputedStyle(e).fontFamily.startsWith('Manrope')"))
         original = self.state()
         self.open_display()
+        self.assertFalse(page.locator("[data-display]").evaluate("e => getComputedStyle(e).backgroundColor.startsWith('rgba')"))
+        self.assertEqual(page.locator("[data-display]").evaluate("e => getComputedStyle(e).backdropFilter"), "none")
         slider = page.locator('input[name="font_size"]')
         self.assertEqual([slider.get_attribute(k) for k in ("min", "max", "step")], ["0", "2", "1"])
         self.assertEqual(slider.get_attribute("aria-valuetext"), "Medium")

@@ -14,7 +14,8 @@ import { purifierBody } from "./purifier.js";
 import { vacuumBody, picked } from "./vacuum.js";
 import { effectsBody, effectsClick, attachEffects, effectsBusy, keepEffects } from "./effects.js";
 import { simpleSpeaker, speakerTop, speakerBody, attachSpeaker, speakerBusy, clearSpeakerInteraction } from "./speaker.js";
-const sheetState = { shownId: null, missed: false };   // last device shown; an update came in mid-drag
+const sheetState = { shownId: null, missed: false, force: false };
+const pressedPointers = new Set();
 
 let currentId = null;
 let dragging = null;
@@ -33,6 +34,8 @@ export const isSheetOpen = () => !$("#sheet").hidden;
 let closing = null;
 export function openDevice(id) {
   cancelLightDrag(); clearControlGestures(); cancelRemoteInteraction();
+  pressedPointers.clear();
+  sheetState.missed = false; sheetState.force = false;
   if (!isSheetOpen()) returnFocus = document.activeElement;
   clearSpeakerInteraction();
   clearTimeout(closing);
@@ -46,6 +49,7 @@ export function openDevice(id) {
 
 export function closeSheet() {
   cancelLightDrag(); clearControlGestures(); cancelRemoteInteraction();
+  pressedPointers.clear();
   clearSpeakerInteraction();
   currentId = null;
   const sheet = $("#sheet"), scrim = $("#scrim");
@@ -66,7 +70,11 @@ new MutationObserver(() => { if ($("#sheet").hidden) { sheetState.shownId = null
 export function refreshSheet(id, force = false) {
   if (!currentId) return;
   if (id && id !== currentId) return;
-  if (dragging || controlGestureBusy() || remoteBusy.active || effectsBusy() || speakerBusy()) { sheetState.missed = true; return; }
+  if (pressedPointers.size || dragging || controlGestureBusy() || remoteBusy.active || effectsBusy() || speakerBusy()) {
+    sheetState.missed = true; sheetState.force ||= force; return;
+  }
+  force ||= sheetState.force;
+  sheetState.force = false;
   sheetState.missed = false;
   if (!store.devices.has(currentId)) return closeSheet();
   render(force);
@@ -440,6 +448,11 @@ async function loadEnergy(id) {
 
 // ---------- events ----------
 $("#scrim").addEventListener("click", closeSheet);
+$("#sheet").addEventListener("pointerdown", e => pressedPointers.add(e.pointerId), { capture: true });
+for (const event of ["pointerup", "pointercancel"]) addEventListener(event, e => {
+  pressedPointers.delete(e.pointerId);
+  setTimeout(() => { if (sheetState.missed) refreshSheet(); }, 0);
+});
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isSheetOpen()) closeSheet(); });
 $("#sheet").addEventListener("keydown", (e) => {
   if (e.key !== "Tab") return;

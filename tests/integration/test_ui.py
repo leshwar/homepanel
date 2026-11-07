@@ -741,11 +741,12 @@ class UITests(unittest.TestCase):
         mac = self.page.evaluate("fetch('/api/v1/state').then(r => r.json()).then(s => s.devices.find(d => d.id === 'lr-tv').mac)")
         self.assertEqual(mac, "64:E4:A5:03:04:05")
 
-    def test_demo_mode_explains_how_to_add_real_devices(self):
+    def test_internal_fixtures_direct_real_device_use_to_the_canonical_app(self):
         self.page.click("#open-settings")
         self.page.click("[data-go=add]")
         self.page.click("[data-arg=shelly]")          # a brand with no extra libraries, so always available
-        self.page.wait_for_selector("text=You're in demo mode")
+        self.page.wait_for_selector("text=Internal test fixtures, not household data.")
+        self.assertIn("native panel on port 8080", self.page.locator("#settings .note").inner_text())
 
     def test_diagnostics_says_where_to_open_on_a_phone(self):
         self.page.click("#open-settings")

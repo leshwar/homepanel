@@ -16,7 +16,7 @@ class GridTests(unittest.TestCase):
         result = subprocess.run(
             [NODE, "--input-type=module", "-e",
              'import assert from "node:assert/strict";\n'
-             'const {arrange, remember, place, fits, columnsFor, watchGridWidth} = await import(process.argv[1]);\n' + script, module],
+             'const {arrange, remember, place, fits, columnsFor, watchGridWidth, bindGridEditor} = await import(process.argv[1]);\n' + script, module],
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -35,6 +35,29 @@ class GridTests(unittest.TestCase):
                 assert.equal(place(items, cols, 'a', {x: 0, y: -1, size: '1x1'}), false);
                 assert.deepEqual(arrange(items, cols), saved);
             }
+        """)
+
+    def test_settling_does_not_scale_touch_targets_below_their_layout_size(self):
+        self.run_js("""
+            const handlers = {}, animations = [], items = [{id:'a',size:'1x1'}];
+            globalThis.getComputedStyle = () => ({gridTemplateColumns:'100px 100px',
+              columnGap:'10px',gridAutoRows:'100px',rowGap:'10px'});
+            globalThis.matchMedia = () => ({matches:false});
+            globalThis.CSS = {escape:value=>value};
+            const grid = {};
+            const box = {dataset:{wid:'a'}, parentElement:grid, style:{},
+              classList:{add(){},remove(){}}, getBoundingClientRect:()=>({left:0,top:0})};
+            const root = {clientWidth:500,dataset:{},setPointerCapture(){},
+              addEventListener:(name,fn)=>{handlers[name]=fn;},
+              querySelector:()=>({animate:frames=>animations.push(frames)})};
+            bindGridEditor(root,{enabled:()=>true,items:()=>items,render(){},error:message=>assert.fail(message)});
+            const target={closest:selector=>selector==='.layout-item'?box:selector==='[data-resize]'?{}:null};
+            const event={target,button:0,pointerId:1,clientX:0,clientY:0,preventDefault(){}};
+            handlers.pointerdown(event); handlers.pointerup(event);
+            assert.equal(animations.length,1);
+            assert.match(animations[0][0].transform,/translate/);
+            assert.ok(animations[0].every(frame=>!frame.transform.includes('scale')));
+            assert.equal(root.dataset.gridGesture,undefined);
         """)
 
     def test_responsive_projection_does_not_mutate_saved_positions(self):

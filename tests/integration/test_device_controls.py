@@ -201,6 +201,21 @@ class DevicePanelTests(unittest.TestCase):
         page.keyboard.press("Escape"); page.mouse.up()
         self.assertEqual(self.commands, [])
 
+    def test_search_blur_does_not_replace_a_scene_button_while_pressed(self):
+        page = self.page
+        self.open("lr-strip")
+        page.click('[data-control-section="scenes"] > summary')
+        page.fill(".fx-search", "sunset")
+        button = page.locator('[data-effect="scene-sunset"]')
+        button.evaluate("e => {window.pressedScene=e;}")
+        box = button.bounding_box()
+        page.mouse.move(box["x"] + 20, box["y"] + 20); page.mouse.down()
+        page.evaluate("async () => (await import('/js/store.js')).reload()")
+        self.assertTrue(button.evaluate("e => e === window.pressedScene"))
+        page.mouse.up()
+        page.wait_for_selector('[data-effect="scene-sunset"][aria-pressed="true"]')
+        self.assertEqual(self.commands, [{"action": "set_effect", "value": "scene-sunset"}])
+
     def test_brightness_only_capability_does_not_invent_power_or_color_controls(self):
         page = self.page
         self.open("lr-lamp")

@@ -115,7 +115,7 @@ export function attachSpeaker(root, d, onIdle) {
       choosing = ["Escape", "Tab"].includes(e.key) ? null : select;
       if (e.key === "Escape") { e.stopPropagation(); setTimeout(onIdle, 0); }
     });
-    select.addEventListener("blur", () => { if (choosing === select) choosing = null; onIdle(); });
+    select.addEventListener("blur", () => { if (choosing === select) choosing = null; queueMicrotask(onIdle); });
     select.addEventListener("change", () => {
       choosing = null;
       if (!select.value) return;

@@ -160,7 +160,7 @@ export function bindGridEditor(root, { enabled, items, render, error }) {
     render();
     const settled = root.querySelector(`[data-wid="${CSS.escape(g.id)}"]`);
     if (settled && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      settled.animate([{ opacity: .75, transform: "scale(.98)" }, { opacity: 1, transform: "none" }],
+      settled.animate([{ opacity: .75, transform: "translateY(3px)" }, { opacity: 1, transform: "none" }],
         { duration: 200, easing: "cubic-bezier(.2,.8,.2,1)" });
     }
     setTimeout(() => { suppressClick = false; }, 0);

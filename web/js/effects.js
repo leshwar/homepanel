@@ -132,7 +132,7 @@ export function attachEffects(sheet, d, onIdle) {
   const search = sheet.querySelector(".fx-search");
   if (search) {
     search.addEventListener("input", () => { ui.query = search.value; filter(sheet); });
-    search.addEventListener("blur", onIdle);
+    search.addEventListener("blur", () => queueMicrotask(onIdle));
   }
   const range = sheet.querySelector("[data-sensitivity]");
   if (range) {

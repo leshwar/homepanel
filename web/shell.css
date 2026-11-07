@@ -21,6 +21,9 @@ body { min-height: 100dvh; -webkit-touch-callout: none; overflow-x: hidden; }
 .topbar-title h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.12;
                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .topbar-title p { margin: 2px 0 0; color: var(--haze); font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html[data-view="home"] #title { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; clip-path: inset(50%); }
+html[data-view="home"] .topbar-title p { margin: 0; }
+html[data-view="home"] .topbar { min-height: 48px; }
 .topbar-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; flex: none; max-width: 100%; }
 .topbar-actions > button { flex-shrink: 0; }
 .topbar-clock { height: 48px; padding: 0 16px; border-radius: 24px; font-size: 19px; font-weight: 500;
@@ -36,8 +39,6 @@ body { min-height: 100dvh; -webkit-touch-callout: none; overflow-x: hidden; }
 
 /* ---------- room rail (iPad, landscape panel) ---------- */
 .rail { display: none; }
-.rail-head { font-size: 24px; font-weight: 700; letter-spacing: -0.01em; padding: 4px 14px 14px; overflow: hidden;
-             text-overflow: ellipsis; white-space: nowrap; }
 .rail-label { margin: 18px 14px 6px; color: var(--haze); font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
 .rail-rooms { display: flex; flex-direction: column; gap: 4px; }
 .rail-item { flex-shrink: 0; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 0 14px; border-radius: 16px;
@@ -320,7 +321,7 @@ html[data-sky="snow"] .sky-snow { opacity: 1; }
 .w-fill > .w-label, .w-fill > .w-sub, .w-fill > .w-greet, .w-fill > .w-date { flex: none; }
 .w-scene-list, .w-room-list { flex: 1 1 auto; }
 /* text straight on the sky stays readable over bright clouds */
-html[data-bg="sky"] :is(.topbar-title, .room-head, .rail-head, .rail-label, .nudge) { text-shadow: 0 1px 14px rgb(0 8 40 / .5); }
+html[data-bg="sky"] :is(.topbar-title, .room-head, .rail-label, .nudge) { text-shadow: 0 1px 14px rgb(0 8 40 / .5); }
 html[data-bg="sky"] .w-wx .cf-wx-icon { color: var(--paper); }
 
 /* wide (one row tall) scene and room lists: one row that scrolls sideways */

@@ -846,6 +846,38 @@ class UITests(unittest.TestCase):
     def order(self, page):
         return page.eval_on_selector_all(".home-grid > .widget", "els => els.map(e => e.dataset.wid)")
 
+    def test_home_headings_are_not_visible_but_status_navigation_and_room_titles_remain(self):
+        page = self.home()
+        try:
+            for width, height in ((720, 1280), (1280, 720)):
+                with self.subTest(width=width):
+                    page.set_viewport_size({"width": width, "height": height})
+                    page.wait_for_timeout(100)
+                    self.assertEqual(page.locator("#rail .rail-head").count(), 0)
+                    self.assertEqual(page.get_by_role("heading", name="Home", exact=True).count(), 1)
+                    title = page.locator("#title")
+                    self.assertEqual(title.evaluate("e => getComputedStyle(e).clipPath"), "inset(50%)")
+                    self.assertLessEqual(title.bounding_box()["height"], 1)
+                    self.assertRegex(page.inner_text("#subtitle"), r"^(Everything is off|[0-9]+ (thing is|things are) on)$")
+                    self.assertLessEqual(page.locator(".topbar").bounding_box()["height"], 80 if width < 768 else 48)
+                    for control in ("#voice-btn", "#edit-home", "#all-off", "#open-frame", "#profile-btn"):
+                        self.assertTrue(page.locator(control).is_visible())
+                        self.assertGreaterEqual(page.locator(control).bounding_box()["height"], 48)
+                    nav = '#rail [data-nav="home"]' if width >= 768 else '#dock [data-nav="home"]'
+                    self.assertTrue(page.locator(nav).is_visible())
+                    if width >= 768:
+                        self.assertLessEqual(page.locator(nav).bounding_box()["y"], 24)
+                    self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
+                    page.click('[data-go-room="Kitchen"]')
+                    page.wait_for_selector('#title:text-is("Kitchen")')
+                    self.assertEqual(title.evaluate("e => getComputedStyle(e).clipPath"), "none")
+                    self.assertGreater(title.bounding_box()["height"], 20)
+                    self.assertTrue(page.locator('[data-room-off="Kitchen"]').is_visible())
+                    page.click(nav)
+                    page.wait_for_function("document.documentElement.dataset.view === 'home'")
+        finally:
+            page.close()
+
     def drag_to_cell(self, page, selector, x, y, cancel=False):
         box = page.locator(selector)
         box.scroll_into_view_if_needed()

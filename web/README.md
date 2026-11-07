@@ -85,7 +85,9 @@ web/
   and "Other" only when a device has no room. Phones and the portrait panel: a floating
   dock (Home, Rooms, Settings, +); Rooms shows the same list as tabs over the tiles.
   Only rooms with devices the signed-in profile can see are listed. The chosen room is
-  remembered on each screen.
+  remembered on each screen. Home has no repeated visible brand/page headings:
+  its heading remains available to screen readers, with the status count and
+  actions visible. Room page titles remain visible.
 - **Tap = do the obvious thing** (toggle). Long-press or "…" = full controls (with a
   short vibration where the browser supports it). TVs, and devices with no on/off like
   a robot vacuum, open their controls on tap so they're never switched by accident.

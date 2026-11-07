@@ -141,7 +141,7 @@ class ReadabilityTests(unittest.TestCase):
                         self.assertEqual(state["opacity"], 1, selector)
                         self.assertGreaterEqual(state["alpha"], .72 if expected == "light" else .8, selector)
                     if size[0] >= 768:
-                        for selector in ('#rail .rail-head', '#rail .rail-label'):
+                        for selector in ('#rail [data-nav="home"]', '#rail .rail-label'):
                             self.assertGreaterEqual(self.surface(selector)["contrast"], 4.5, selector)
                     page.evaluate("async () => (await import('/js/store.js')).setView('home')")
                     for selector in ('.w-zone .w-label', '.w-zone .w-sub', '.w-room > span',

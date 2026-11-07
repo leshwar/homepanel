@@ -3,6 +3,7 @@
 Node is only a development/test dependency; the panel still has no build step.
 """
 import base64
+import re
 import shutil
 import subprocess
 import unittest
@@ -10,6 +11,21 @@ from pathlib import Path
 
 NODE = shutil.which("node")
 SOURCE = Path(__file__).resolve().parents[2] / "web/js/render.js"
+
+
+class HeadingStructureTests(unittest.TestCase):
+    def test_home_keeps_accessible_heading_and_navigation_without_brand_heading(self):
+        web = SOURCE.parents[1]
+        self.assertIn('<h1 id="title">Home</h1>', (web / "index.html").read_text())
+        app = (web / "js/app.js").read_text()
+        self.assertIn('data-nav="home"', app)
+        self.assertNotIn('class="rail-head"', app)
+        css = (web / "shell.css").read_text()
+        rule = re.search(r'html\[data-view="home"\] #title \{([^}]+)\}', css).group(1)
+        for declaration in ("position: absolute", "width: 1px", "height: 1px", "clip-path: inset(50%)"):
+            self.assertIn(declaration, rule)
+        self.assertNotIn("display: none", rule)
+        self.assertNotIn("visibility: hidden", rule)
 
 
 @unittest.skipUnless(NODE, "Node.js is needed for the JS unit tests")

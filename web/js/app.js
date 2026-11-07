@@ -79,7 +79,6 @@ function renderRail() {
       esc(id === "all" ? "All rooms" : roomLabel(id))}</span>${countBadge(id)}</button>`;
   };
   setMarkup($("#rail"), `
-    <div class="rail-head">${esc(store.settings.home_name || "Home")}</div>
     <button class="rail-item" data-nav="home" aria-current="${home ? "page" : "false"}">${svg("home")}<span>Home</span></button>
     <p class="rail-label">Rooms</p>
     <div class="rail-rooms" role="tablist" aria-orientation="vertical" aria-label="Rooms">${order.map(item).join("")}</div>
@@ -103,7 +102,7 @@ function renderNav() {
   renderDock();
 }
 
-// Title over the content: the greeting on Home, the room on wide screens.
+// Home keeps an accessible heading and visible status; rooms show their titles.
 function renderTitle() {
   const home = store.view === "home";
   const all = [...store.devices.values()];

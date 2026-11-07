@@ -236,8 +236,7 @@ const VIEWS = {
              If they still don't show up, add them by IP address.</p></div>`) : "";
 
     page(a.name, `
-      ${store.demo ? `<div class="note">You're in demo mode, with pretend devices. To add your real ${esc(a.name)},
-        run the panel without --demo (make run) and open it at port 8080.</div>` : ""}
+      ${store.demo ? `<div class="note">Internal test fixtures, not household data. Use the existing native panel on port 8080 for real devices.</div>` : ""}
       ${accountCard}
       ${needsAccount ? "" : `
       <div class="card">
@@ -415,7 +414,10 @@ const VIEWS = {
           <small>Shown on the resting clock. Type it, or let "Use my location" fill it in.</small></label>
         <label class="check"><input type="checkbox" name="weather_enabled" ${s.weather_enabled || forWeather ? "checked" : ""}>
           <span>Show the weather on the resting clock</span></label>
-        <p><small>The panel asks Open-Meteo (free, no account) for the weather about every 20 minutes, sending your location rounded to about 1 km. It's the panel's only internet call that isn't for a device. Without internet the clock just leaves the weather out.</small></p>
+        <p><small>Weather data by <a class="link" href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>
+          (<a class="link" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>).
+          The panel asks about every 20 minutes, sending your location rounded to about 1 km. No account is needed.
+          Without internet it uses a recent cached reading or shows weather as unavailable.</small></p>
         <label class="field"><span>Temperature</span><select name="temperature_unit">
           ${[["F", "°F (Fahrenheit)"], ["C", "°C (Celsius)"]].map(([v, l]) => `<option value="${v}" ${(s.temperature_unit || "F") === v ? "selected" : ""}>${l}</option>`).join("")}
         </select></label>

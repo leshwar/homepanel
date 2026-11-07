@@ -119,7 +119,8 @@ optional passwords are scrypt hashes. Profiles without passwords open with one t
 On upgrade, existing PIN hashes and idle-lock settings are retired; profiles,
 layouts, password hashes and integration credentials are preserved. Previously
 locked sessions become usable. A new installation creates an "Owner" profile
-ready to select. Demo mode without `--sign-in` acts as Owner without a session.
+ready to select. Isolated automated fixtures may act as Owner without a session;
+that test harness is not a user-facing deployment.
 Profile permissions still filter API data and commands, but an unprotected admin
 can be selected by anyone who reaches the service. Use trusted LAN/private
 tailnet access, not a publicly exposed port.

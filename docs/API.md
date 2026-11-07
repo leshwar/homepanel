@@ -45,9 +45,9 @@ energy, map and picture of their devices; `POST` commands and refresh to their d
 devices only), `/scenes/{id}/run` (scenes made of their devices); and
 change their own profile, Home layout and room layouts. Everything else is for admins.
 
-Demo mode (`--demo`) doesn't ask anyone to sign in: requests without a session act
-as the Owner. Add `--sign-in` (or `HOMEPANEL_SIGN_IN=1`) to try it like a real panel:
-Owner uses `owner@example.com` / `homepanel`; Sam opens with just `{"profile_id": "sam"}`.
+The native application always uses the profile/session rules above. Automated
+tests can use isolated fixture profiles and optional automatic selection; those
+fixtures are not a second user-facing app and must never use household data.
 
 ```bash
 # sign in once, keep the cookie, then use the API as that profile

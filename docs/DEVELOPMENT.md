@@ -10,9 +10,9 @@
     └── feature-photo-frame/
 ```
 
-Git *worktrees* let several branches be checked out at once, each in its own
-folder, sharing one repository. You can run the demo of two branches side by side
-and compare them, and switching tasks never needs a `git stash`.
+Git *worktrees* let several source branches be checked out at once, each in its own
+folder, sharing one repository. They are editing/rollback copies, not separate apps.
+The user-facing application stays on the single native service at port 8080.
 
 ### First time (macOS)
 
@@ -32,8 +32,8 @@ the worktree to create its virtual environment. No container runtime is needed.
 | Start a change | `./scripts/dev/wt.sh new feature/my-change` (or `make wt-new b=feature/my-change`) |
 | Go to its folder | `cd "$(./scripts/dev/wt.sh path feature/my-change)"` |
 | Try someone's branch / PR | `./scripts/dev/wt.sh get ui/glass-look` |
-| Run a branch's native demo | `make setup` in that branch once, then `./scripts/dev/wt.sh demo ui/glass-look` → prints a free loopback URL (8081, 8082, …) |
-| Run the panel natively | inside its folder: `make setup` once, then `make run` → http://localhost:8080 (`make dev` for pretend devices) |
+| First native startup | `make setup` once, then `make run` → http://localhost:8080 (only when no service already runs) |
+| Check a feature | targeted tests in its source worktree; deploy to the existing native service when authorized |
 | Final validation | inside the branch folder: `make lint`, `REQUIRE_UI_TESTS=1 make test`, `make check-tests` |
 | See all branch folders | `./scripts/dev/wt.sh list` |
 | Clean up merged branches | `./scripts/dev/wt.sh prune` |
@@ -61,6 +61,17 @@ working directory at it. Keep the existing interpreter and supply explicit
 `--data /absolute/live/data --logs /absolute/live/logs` paths so the new worktree
 does not create an empty household. Keep the old revision/configuration for rollback.
 This does not merge or push the feature to `main`.
+
+All user-facing previews come from the deployed 8080 application and its actual
+profile, layout, theme and font size. Never make real data match test fixtures.
+A normal page refresh revalidates HTML/CSS/JS; already-open tabs keep loaded JS
+until refreshed. Record the viewport and selected profile when comparing captures:
+portrait/landscape arrangements and distinct profile layouts can legitimately differ.
+
+Internal tests still use temporary simulated devices and free loopback ports.
+They run the same application implementation, not a second product or household.
+There is no `make dev`/`wt-demo` preview workflow. The hidden subprocess fixture
+switch is rejected on 8080, non-loopback interfaces and existing household data.
 
 ## Private access
 

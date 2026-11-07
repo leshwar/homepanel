@@ -8,11 +8,15 @@ Thanks for helping! Bug reports from real hardware are just as valuable as code.
 git clone https://github.com/leshwar/homepanel.git
 cd homepanel
 make setup
-make dev        # http://localhost:8080 with pretend devices
+make test-unit  # isolated logic checks; do not start a parallel preview app
 ```
 
 Using Claude Code? It picks up [CLAUDE.md](CLAUDE.md) automatically, which
 describes the layers and rules below.
+
+Use the existing native panel on 8080 for user-facing verification and screenshots.
+Only start `make run` for a new installation with no service already running.
+Mutation tests use temporary fixtures, never real household devices or data.
 
 ## Where things go
 

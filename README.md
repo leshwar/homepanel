@@ -4,14 +4,9 @@ An open-source, touch-screen smart home panel for the Raspberry Pi. One dark,
 simple screen for the lights, plugs and TVs in your home — from many brands at
 once — controlled directly over your Wi-Fi.
 
-<p align="center">
-  <img src="docs/screenshots/home.png" width="270" alt="Home screen: lit lamp tiles glowing in their colors, a TV tile with volume buttons, plugs">
-  <img src="docs/screenshots/room.png" width="270" alt="Home screen filtered to the Living room">
-  <img src="docs/screenshots/night.png" width="270" alt="Night clock shown when the panel is idle">
-</p>
-<p align="center">
-  <img src="docs/screenshots/landscape.png" width="830" alt="Home screen in landscape on a 1280x720 display">
-</p>
+Use the running native panel at **http://localhost:8080**. Its saved household,
+profiles, layouts and display settings are the source of truth for feature checks
+and screenshots; there is no separate user-facing demo application.
 
 - **Touch-first glass UI.** A **Home page** of widgets you arrange yourself (long-press to edit): a big clock, clocks for India and the US, weather, scenes and your rooms, the same on every screen. **All rooms** and a page for each room, listed down the side on an iPad or a landscape panel and as tabs on a phone: tap a room to see just its devices. Tap a tile to switch it, long-press (or tap "…") for full controls.
 - **A sky that matches outside.** The background follows the weather and time of day (or pick Ocean, Aurora or Night), under frosted-glass tiles with adjustable transparency. Lit lights glow in their real color.
@@ -66,7 +61,7 @@ Want another brand? It's usually one file — see [app/adapters/README.md](app/a
 
 Details and prices: [docs/HARDWARE.md](docs/HARDWARE.md).
 
-## Try it on your computer first (no hardware needed)
+## Run the native panel
 
 Needs Python 3.11 or newer.
 
@@ -74,7 +69,7 @@ Needs Python 3.11 or newer.
 git clone https://github.com/leshwar/homepanel.git
 cd homepanel
 make setup        # creates .venv and installs everything
-make dev          # pretend devices → open http://localhost:8080
+make run          # real panel → open http://localhost:8080
 ```
 
 Without `make` (e.g. Windows):
@@ -82,17 +77,15 @@ Without `make` (e.g. Windows):
 ```bash
 python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
-pip install -r requirements-dev.txt
-python -m app.main --demo --debug
+pip install -r requirements.txt
+python -m app.main --debug
 ```
 
-The demo opens straight to the panel. To try sign-in and profiles too, start it
-with `python -m app.main --demo --sign-in`: choose Sam with one tap, or choose
-Owner and enter the demo password `homepanel`
-(Sam only sees the bedroom and the kitchen pendant).
-
-To control **your real devices** from your laptop (same Wi-Fi), run `make run`
-(or `python -m app.main --debug`), open http://localhost:8080, then Settings → Add a device.
+If the panel already runs as a service, use that existing instance instead of
+starting a second server. Updates restart its existing supervisor while keeping
+the same data directory. On first setup, choose Owner and add devices in Settings.
+Automated tests use temporary simulated devices internally, never the household
+data or live device controls.
 
 ## Sign-in and profiles
 
@@ -143,8 +136,9 @@ is easier there).
 Server-only (no screen): `./scripts/install.sh --no-kiosk`.
 
 HomePanel runs natively with Python; no container runtime is needed.
-Use `make wt-demo b=feature/x` for an isolated branch preview on a free loopback
-port when the real-device panel already uses 8080. See [development and deployment](docs/DEVELOPMENT.md).
+Feature verification and previews use the same running panel on 8080. Source
+worktrees are for editing/testing and rollback, not extra application instances.
+See [development and deployment](docs/DEVELOPMENT.md).
 
 ## Voice commands
 
@@ -191,7 +185,7 @@ Native phone apps are planned for later (see [ROADMAP](docs/ROADMAP.md)).
 | Log file (rotates, 5 × 2 MB) | `logs/homepanel.log` |
 | On the Pi, live | `journalctl -u homepanel -f` |
 | In the app | Settings → Diagnostics and logs (and "Download log file") |
-| Verbose logging | add `--debug` (or `make dev` / `make run`, which already do) |
+| Verbose logging | add `--debug` (`make run` already does) |
 | Bug-report bundle | `./scripts/collect-logs.sh` → attach the `.tar.gz` to an issue (no keys or tokens included) |
 
 Common fixes are in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
@@ -251,7 +245,7 @@ pull requests that change code must include both kinds of tests. Merges to
 
 ## Status
 
-Early but working: the app, UI, demo mode and test suite run end to end. The
+Early but working: the native app, UI and isolated test suite run end to end. The
 device adapters follow each brand's documented protocol or library; the Shelly
 and Home Assistant adapters are tested against simulated devices, and the others
 still need testing against real hardware. Reports are welcome: open an issue

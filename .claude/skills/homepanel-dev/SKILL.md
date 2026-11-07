@@ -1,6 +1,6 @@
 ---
 name: homepanel-dev
-description: Use when working on the HomePanel repo on a developer's machine — setting up the project folder, starting a change in a git worktree, running a native branch demo, testing, and opening a pull request.
+description: Use when working on HomePanel locally — isolated source worktrees, targeted tests, safe updates to the single native 8080 application, and requested pull requests.
 ---
 
 # HomePanel development workflow
@@ -11,10 +11,10 @@ description: Use when working on the HomePanel repo on a developer's machine —
   main clone of https://github.com/leshwar/homepanel and **always stays on `main`**.
   Update it with `git -C "$HOMEPANEL_HOME" pull`; never commit there.
 - Every branch gets its own folder under `$HOMEPANEL_HOME/.worktrees/<branch-with-dashes>`
-  (git-ignored), created with `scripts/dev/wt.sh`. Several branches can be open and
-  running at the same time.
-- Run natively with the worktree's `.venv`. Real-device settings live in
-  `$HOMEPANEL_HOME/data` (git-ignored); branch demos use separate demo data.
+  (git-ignored), created with `scripts/dev/wt.sh`. These are source/rollback copies,
+  not extra user-facing app instances.
+- The one native application runs on 8080 through its existing supervisor.
+  Real-device settings stay in `$HOMEPANEL_HOME/data` (git-ignored).
 
 If the project folder doesn't exist yet:
 
@@ -36,16 +36,17 @@ cd "$(./scripts/dev/wt.sh path <type>/<short-name>)"
 The new branch starts from the latest `origin/main`. Do all edits, tests and commits
 inside that worktree folder.
 
-## Try a branch or a pull request
+## Check a branch or a pull request
 
 ```bash
 ./scripts/dev/wt.sh get ui/glass-look            # check out an existing branch in its own folder
-./scripts/dev/wt.sh demo ui/glass-look           # native demo on a free loopback port (8081, 8082, …)
 ```
 
-Run `make setup` once in each branch worktree before its first demo. Two branches
-can run side by side, each with its own port and data. `make dev` uses port 8080
-by default; use the worktree demo helper if the real panel already uses 8080.
+Run `make setup` if the worktree lacks test dependencies, then focused tests.
+When live deployment is authorized, update the existing native service with a
+validated pinned revision and its existing data/log paths (see docs/DEVELOPMENT.md).
+Do not launch a demo or another preview server. User-facing captures must be
+from actual 8080 with its current profile/settings, never fabricated fixtures.
 
 ## Final validation before merge
 

@@ -1,7 +1,36 @@
 """Unit tests for app/main.py helpers."""
 import unittest
+import contextlib
+import io
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
 
-from app.main import GRACEFUL_SHUTDOWN_SECONDS, create_app, make_server, ui_cache_header
+from app.main import GRACEFUL_SHUTDOWN_SECONDS, create_app, main, make_server, ui_cache_header
+
+
+class NativeEntryPointTests(unittest.TestCase):
+    def test_public_help_has_no_separate_demo_workflow(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as result:
+            main(["--help"])
+        self.assertEqual(result.exception.code, 0)
+        self.assertNotIn("--demo", out.getvalue())
+        self.assertNotIn("--sign-in", out.getvalue())
+        self.assertIn("--data", out.getvalue())
+
+    def test_internal_fixtures_cannot_use_8080_public_interfaces_or_live_data(self):
+        with tempfile.TemporaryDirectory() as directory:
+            Path(directory, "homepanel.json").write_text("{}")
+            for args in (["--demo"],
+                         ["--demo", "--host", "127.0.0.1", "--port", "18080"],
+                         ["--demo", "--host", "0.0.0.0", "--port", "18080", "--data", directory],
+                         ["--demo", "--host", "127.0.0.1", "--port", "18080", "--data", directory]):
+                with self.subTest(args=args), patch("app.main.setup_logging") as logging, contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as result:
+                        main(args)
+                    self.assertEqual(result.exception.code, 2)
+                    logging.assert_not_called()
 
 
 class ServerShutdown(unittest.IsolatedAsyncioTestCase):

@@ -21,7 +21,7 @@ class DemoServer:
     def __init__(self, data_dir: str, sign_in: bool = False):
         self.port = free_port()
         self.url = f"http://127.0.0.1:{self.port}"
-        self.app = create_app(data_dir, demo=True, sign_in=sign_in)
+        self.app = create_app(data_dir, demo=True, port=self.port, sign_in=sign_in)
         self.server = make_server(self.app, "127.0.0.1", self.port, log_config=None)
         self.thread = threading.Thread(target=self.server.run, daemon=True)
 

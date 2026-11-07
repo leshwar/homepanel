@@ -56,6 +56,9 @@ temporary data and simulated devices. Shared helpers are in `tests/helpers.py`;
 adapter examples are in `tests/integration/test_fake_devices.py`. No test needs
 real devices or internet access. Device fixtures in `tests/fixtures/` are useful
 recorded shapes, not redundant suites.
+These fixtures are internal test infrastructure, not user-facing demo apps.
+Never point mutation tests at the canonical 8080 instance or its household data.
+User-facing previews and screenshots come only from the actual deployed app.
 
 Run `make setup` when dev dependencies are missing. Chromium tests can skip in a
 minimal local environment, but **must not skip for final validation or CI**:

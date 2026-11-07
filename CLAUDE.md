@@ -7,14 +7,12 @@ plain-JS web UI). Read `docs/ARCHITECTURE.md` before larger changes.
 
 ```bash
 make setup      # .venv + dev dependencies (+ Playwright Chromium)
-make dev        # run with pretend devices: http://localhost:8080
-make run        # run against real devices on this Wi-Fi
+make run        # start native 8080 only if its existing service is not already running
 make test-unit         # tests/unit: logic only, no network
 make test-integration  # tests/integration: real server, fake devices, browser UI
 make test       # both, once on the final revision before merge
 make check-tests  # PR rule: app/ or web/ changes need a unit AND an integration test
 make lint       # ruff
-make wt-demo b=feature/x  # native branch demo on a free loopback port
 python -m unittest discover -s tests -t .    # tests without pytest
 ```
 
@@ -38,6 +36,12 @@ Logs: `logs/homepanel.log` (run with `--debug` for detail). In the UI: Settings 
 Follow the `homepanel-dev` skill (`.claude/skills/homepanel-dev/SKILL.md`): the main
 clone stays on `main`; each change gets a worktree from `scripts/dev/wt.sh new <branch>`.
 See `docs/DEVELOPMENT.md`.
+
+There is one user-facing native application on 8080. Do not start a parallel
+demo/preview or substitute fixture layouts/data in user-facing screenshots.
+Use the actual deployed profile/settings for previews, avoiding secret fields.
+Keep mutation tests isolated from live household devices. Pinned release/source
+worktrees are versioned code and rollback copies, not additional applications.
 
 ## Pull requests and tests
 

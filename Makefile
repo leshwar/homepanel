@@ -4,7 +4,7 @@ PY ?= python3
 VENV := .venv
 BIN := $(VENV)/bin
 
-.PHONY: help setup dev run test test-unit test-integration test-ui check-tests lint logs debug-bundle clean wt-new wt-get wt-list wt-demo wt-remove
+.PHONY: help setup run test test-unit test-integration test-ui check-tests lint logs debug-bundle clean wt-new wt-get wt-list wt-remove
 
 help:            ## Show this help
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  make %-13s %s\n", $$1, $$2}'
@@ -15,10 +15,7 @@ setup:           ## Create .venv and install everything (incl. test tools)
 	$(BIN)/pip install -r requirements-dev.txt
 	-$(BIN)/playwright install chromium
 
-dev:             ## Run with pretend devices on http://localhost:8080 (auto-reload not needed)
-	$(BIN)/python -m app.main --demo --debug
-
-run:             ## Run against real devices on your Wi-Fi
+run:             ## Start the native panel on 8080 (only when its service is not already running)
 	$(BIN)/python -m app.main --debug
 
 test:            ## Final unit + integration pass (do not also run the separate suites)
@@ -53,9 +50,6 @@ wt-get:          ## Existing branch (e.g. a PR) in its own folder: make wt-get b
 
 wt-list:         ## List worktree folders
 	./scripts/dev/wt.sh list
-
-wt-demo:         ## Native demo of a branch on a free port: make wt-demo b=ui/glass-look
-	./scripts/dev/wt.sh demo $(b)
 
 wt-remove:       ## Remove a branch's folder: make wt-remove b=ui/glass-look
 	./scripts/dev/wt.sh remove $(b)

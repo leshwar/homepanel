@@ -44,9 +44,10 @@ app/
 ## Running
 
 ```bash
-python -m app.main --demo --debug     # pretend devices
 python -m app.main                    # real devices
 python -m app.main --help             # all options (host, port, data dir, logs dir)
 ```
 
 Environment variables: `HOMEPANEL_HOST`, `HOMEPANEL_PORT`, `HOMEPANEL_DATA`, `HOMEPANEL_LOGS`.
+Use the existing native 8080 service when already installed; do not launch a
+parallel preview. Simulated adapters and temporary servers are internal test infrastructure.

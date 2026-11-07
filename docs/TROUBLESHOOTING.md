@@ -2,7 +2,8 @@
 
 First, look at the logs: **Settings → Diagnostics and logs → Problems only**, or
 on the Pi run `journalctl -u homepanel -f`, or `tail -f logs/homepanel.log`.
-Run with `--debug` (`make dev` / `make run` do) for more detail.
+Run with `--debug` (`make run` does) for more detail. If the panel is already
+supervised, restart that service rather than launching a second instance.
 
 To report a bug, run `./scripts/collect-logs.sh` and attach the `.tar.gz` to a
 GitHub issue. It contains logs and system info but no API keys or device tokens.

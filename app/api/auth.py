@@ -13,9 +13,9 @@ Only the sign-in routes (/api/v1/auth/...) and a minimal /api/v1/health work
 without a session. Members get an allow-list of routes; anything new is admin-only
 until it is added here.
 
-Demo mode without --sign-in: requests with no session act as the first admin, so
-`make dev` and worktree demos open straight to the panel. Signing in to another
-profile still works (and is how the demo shows per-profile devices).
+Internal automated fixtures can let requests without a session act as the first
+admin. Signing in to another fixture profile still exercises per-profile devices.
+The native user-facing service never enables that automatic fixture selection.
 """
 from __future__ import annotations
 

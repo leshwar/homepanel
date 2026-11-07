@@ -64,7 +64,7 @@ registerViews({
       <button class="btn primary" data-go="profile">${icon("plus")}Add a profile</button>
       <form class="card" data-this-screen style="margin-top:20px">
         <h3>This screen</h3>
-        ${s.auto ? `<p>Demo mode: nobody needs to sign in. Start the demo with --sign-in to try it like a real panel.</p>` : `
+        ${s.auto ? `<p>Internal test fixtures. The user-facing panel uses its saved profiles on port 8080.</p>` : `
         <label class="check"><input type="checkbox" name="panel" ${s.panel ? "checked" : ""}>
           <span>This screen is the wall panel: keep it signed in</span></label>`}
         <p>Idle screens show the clock or photos without locking. Phones and laptops stay signed in for 30 days after they're last used.</p>

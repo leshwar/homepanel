@@ -5,7 +5,6 @@
 #   ./scripts/dev/wt.sh new  ui/better-remote   # new branch from the latest main, in .worktrees/ui-better-remote
 #   ./scripts/dev/wt.sh get  ui/glass-look      # check out an existing branch (e.g. a PR) in its own folder
 #   ./scripts/dev/wt.sh list                    # all worktrees
-#   ./scripts/dev/wt.sh demo ui/glass-look      # run that branch's native demo on its own port
 #   ./scripts/dev/wt.sh path ui/glass-look      # print the folder (cd "$(./scripts/dev/wt.sh path x)")
 #   ./scripts/dev/wt.sh remove ui/glass-look    # delete the folder (the branch itself is kept)
 #   ./scripts/dev/wt.sh prune                   # remove folders whose branches were merged into main
@@ -21,13 +20,6 @@ slug() { echo "$1" | tr '/ ' '--' | tr -cd 'A-Za-z0-9._-'; }
 path_for() { echo "$WT_DIR/$(slug "$1")"; }
 need() { [ -n "${1:-}" ] || { echo "Branch name needed. Example: $0 ${2:-new} feature/my-change"; exit 1; }; }
 
-free_port() {
-  for p in $(seq 8081 8099); do
-    if ! (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then echo "$p"; return; fi
-  done
-  echo "No free port between 8081 and 8099" >&2; exit 1
-}
-
 cmd="${1:-help}"; branch="${2:-}"
 case "$cmd" in
   new)
@@ -39,7 +31,8 @@ case "$cmd" in
     echo
     echo "Ready: $dest  (branch $branch, from the latest main)"
     echo "  cd \"$dest\""
-    echo "  make dev          # or: $0 demo $branch"
+    echo "  make setup        # once, then run targeted tests in this source worktree"
+    echo "  Deploy validated changes to the existing native 8080 service; do not start a second app."
     echo "  git push -u origin $branch   # when you're ready to open a PR"
     ;;
   get)
@@ -61,15 +54,9 @@ case "$cmd" in
     path_for "$branch"
     ;;
   demo)
-    need "$branch" demo
-    dest="$(path_for "$branch")"
-    [ -d "$dest" ] || { echo "No worktree for $branch. Create it with: $0 get $branch"; exit 1; }
-    python="$dest/.venv/bin/python"
-    [ -x "$python" ] || { echo "Run make setup in $dest first."; exit 1; }
-    port="${HOMEPANEL_DEMO_PORT:-$(free_port)}"
-    echo "Demo of $branch → http://localhost:$port   (Ctrl+C to stop)"
-    cd "$dest"
-    exec "$python" -m app.main --demo --debug --host 127.0.0.1 --port "$port"
+    echo "Branch demos are retired. Use the canonical app at http://localhost:8080." >&2
+    echo "Run isolated tests for development; do not start another user-facing instance." >&2
+    exit 1
     ;;
   remove)
     need "$branch" remove

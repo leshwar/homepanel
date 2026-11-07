@@ -8,7 +8,7 @@
 - [ ] `make lint` passes
 
 ## Checked by hand
-- [ ] Tried it in `make dev` (UI changes: screenshot in portrait 720×1280)
+- [ ] Checked the authorized native 8080 deployment (UI evidence: actual profile/settings, no secret fields)
 - [ ] Tested with real hardware: <!-- brand + model, or "n/a" -->
 
 ## Docs

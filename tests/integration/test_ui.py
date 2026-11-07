@@ -220,6 +220,14 @@ class UITests(unittest.TestCase):
         finally:
             self.page.request.put(self.server.url + "/api/v1/rooms", data={"rooms": original})
 
+    def test_weather_data_attribution_is_visible_in_location_settings(self):
+        self.page.click("#open-settings")
+        self.page.click('[data-go="location"]')
+        source = self.page.locator('#settings a[href="https://open-meteo.com/"]')
+        self.assertTrue(source.is_visible())
+        self.assertEqual(source.get_attribute("rel"), "noopener")
+        self.assertTrue(self.page.locator('#settings a[href="https://creativecommons.org/licenses/by/4.0/"]').is_visible())
+
     def test_sidebar_adds_empty_rooms_and_reorders_with_accessible_controls(self):
         page = self.page
         page.set_viewport_size({"width": 1280, "height": 720})

@@ -5,7 +5,7 @@
 // Everything is drawn from the device's capabilities, so it works for any brand.
 
 import { api } from "./api.js";
-import { esc, icon, statusText, storage, toast } from "./util.js";
+import { esc, icon, storage, toast } from "./util.js";
 
 // True while a finger is on the touchpad: the sheet doesn't re-render under it.
 export const remoteBusy = { active: false };
@@ -14,9 +14,9 @@ const has = (d, c) => d.caps.includes(c);
 
 // ---------- centre modes ----------
 const MODES = [
-  { id: "dpad", label: "D-pad", ic: "dpad", ok: (d) => has(d, "remote") },
+  { id: "dpad", label: "Buttons", ic: "dpad", ok: (d) => has(d, "remote") },
   { id: "touchpad", label: "Touchpad", ic: "touchpad", ok: (d) => has(d, "pointer") },
-  { id: "numbers", label: "Number pad", text: "123", ok: (d) => has(d, "remote") },
+  { id: "numbers", label: "Numbers", text: "123", ok: (d) => has(d, "remote") },
 ];
 const modesFor = (d) => MODES.filter((m) => m.ok(d));
 
@@ -31,27 +31,11 @@ export function setMode(d, mode) {
 }
 
 // ---------- markup ----------
-export function remoteTop(d) {
-  const s = d.state || {};
-  const on = !!s.on;
-  const dot = s.online === false || s.needs_pairing ? "warn" : on ? "on" : "off";
-  const sub = statusText(d);
-  return `<div class="remote-top">
-      ${has(d, "power") ? `<button class="rbtn power ${on ? "is-on" : ""}" data-power aria-pressed="${on}"
-          aria-label="Turn ${esc(d.name)} ${on ? "off" : "on"}">${icon("power")}</button>` : `<span class="rbtn-space"></span>`}
-      <div class="tv-pill" role="status"><i class="dot ${dot}" aria-hidden="true"></i>
-        <span class="tv-name">${esc(d.name)}</span>${sub && sub !== "On" ? `<span class="tv-sub">${esc(sub)}</span>` : ""}</div>
-      ${has(d, "mute") && on ? `<button class="rbtn ${s.muted ? "is-muted" : ""}" data-mute aria-pressed="${!!s.muted}"
-          aria-label="${s.muted ? "Unmute" : "Mute"}">${icon(s.muted ? "mute" : "vol")}</button>` : `<span class="rbtn-space"></span>`}
-    </div>`;
-}
-
 export function remoteBody(d) {
   const s = d.state || {};
-  if (!s.on) {
+  if (has(d, "power") && s.on !== true) {
     return `<div class="tv-off">
-        <p>${esc(d.name)} is off.</p>
-        ${has(d, "power") ? `<button class="btn primary" data-power>${icon("power")}Turn on</button>` : ""}
+        <p>${s.on === false ? "Turn the device on to use its controls." : "Waiting for device status."}</p>
       </div>`;
   }
   // Sound bars and other speakers: no remote keys or apps, just volume, sound mode and input.
@@ -62,10 +46,14 @@ export function remoteBody(d) {
   const modes = modesFor(d);
   const left = `${mode ? `<div class="remote-stage">${stage(d, mode)}</div>` : ""}
       ${modes.length > 1 ? `<div class="seg remote-modes" role="group" aria-label="Remote layout">${modes.map((m) =>
-        `<button data-mode="${m.id}" aria-pressed="${m.id === mode}" aria-label="${m.label}">${m.ic ? icon(m.ic) : `<b>${m.text}</b>`}</button>`).join("")}</div>` : ""}`;
+        `<button data-mode="${m.id}" aria-pressed="${m.id === mode}" aria-label="${m.label}">${m.ic ? icon(m.ic) : `<b>${m.text}</b>`}<span>${m.label}</span></button>`).join("")}</div>` : ""}`;
   return `<div class="remote" data-layout="${mode || "none"}">
       ${mode ? `<div class="remote-col">${left}</div>` : ""}
-      <div class="remote-col">${keys(d, s)}${appPages(d, s)}${soundModes(d, s)}</div>
+      <div class="remote-col">${keys(d, s)}${appPages(d, s)}${soundModes(d, s)}${has(d, "remote") ? `
+        <details class="control-section" data-control-section="remote-more"><summary>More remote keys</summary>
+          <div class="remote-extra">${[["MENU", "Menu"], ["SOURCE", "Input menu"], ["EXIT", "Exit"], ["CHANNEL_LIST", "Channel list"]]
+            .map(([key, label]) => `<button class="btn" data-key="${key}">${label}</button>`).join("")}</div>
+        </details>` : ""}</div>
     </div>`;
 }
 
@@ -84,11 +72,7 @@ function stage(d, mode) {
         <button class="num small" data-key="INFO">Info</button>${n("0")}<button class="num small" data-key="OK">OK</button>
       </div>`;
   }
-  const corner = (cls, key, label, ic) =>
-    `<button class="corner ${cls}" data-key="${key}" aria-label="${label}">${icon(ic)}<span>${label}</span></button>`;
   return `
-    ${corner("tl", "MENU", "Menu", "gear")}${corner("tr", "SOURCE", "Input", "input")}
-    ${corner("bl", "EXIT", "Exit", "exit")}${corner("br", "CHANNEL_LIST", "List", "list")}
     <div class="dpad" role="group" aria-label="Navigation">
       <button class="up" data-key="UP" data-repeat aria-label="Up">${icon("up")}</button>
       <button class="left" data-key="LEFT" data-repeat aria-label="Left">${icon("left")}</button>
@@ -103,18 +87,18 @@ function keys(d, s) {
   const media = nav || has(d, "media");
   const vol = has(d, "volume") ? `<div class="rocker" role="group" aria-label="Volume">
       <button data-act="volume_up" data-repeat aria-label="Volume up">${icon("plus")}</button>
-      <span>${s.volume != null ? `<b>${s.volume}</b>` : ""}Vol</span>
+      <span>${s.volume != null ? `<b>${s.volume}</b>` : ""}Volume</span>
       <button data-act="volume_down" data-repeat aria-label="Volume down">${icon("minus")}</button></div>` : `<span></span>`;
   const ch = has(d, "channel") ? `<div class="rocker" role="group" aria-label="Channel">
       <button data-act="channel_up" data-repeat aria-label="Channel up">${icon("up")}</button>
-      <span>Ch</span>
+      <span>Channel</span>
       <button data-act="channel_down" data-repeat aria-label="Channel down">${icon("down")}</button></div>` : `<span></span>`;
   const mid = [
-    nav && `<button class="rbtn" data-key="HOME" aria-label="Home">${icon("home")}</button>`,
-    media && `<button class="rbtn" data-playpause aria-label="Play or pause">${icon("playpause")}</button>`,
-    nav && `<button class="rbtn wide" data-key="BACK" aria-label="Back">${icon("back")}</button>`,
-    !nav && media && `<button class="rbtn" data-key="REWIND" aria-label="Rewind">${icon("rew")}</button>`,
-    !nav && media && `<button class="rbtn" data-key="FORWARD" aria-label="Fast forward">${icon("ff")}</button>`,
+    nav && `<button class="rbtn labeled" data-key="HOME" aria-label="Home">${icon("home")}<span>Home</span></button>`,
+    media && `<button class="rbtn labeled" data-playpause aria-label="Play or pause">${icon("playpause")}<span>Play / pause</span></button>`,
+    nav && `<button class="rbtn wide labeled" data-key="BACK" aria-label="Back">${icon("back")}<span>Back</span></button>`,
+    !nav && media && `<button class="rbtn labeled" data-key="REWIND" aria-label="Rewind">${icon("rew")}<span>Rewind</span></button>`,
+    !nav && media && `<button class="rbtn labeled" data-key="FORWARD" aria-label="Fast forward">${icon("ff")}<span>Forward</span></button>`,
   ].filter(Boolean).join("");
   if (!mid && !has(d, "volume") && !has(d, "channel")) return "";
   return `<div class="remote-keys">${vol}<div class="remote-mid">${mid}</div>${ch}</div>`;
@@ -132,17 +116,17 @@ function volBar(d, s) {
 function soundModes(d, s) {
   const modes = has(d, "sound_mode") ? d.meta?.sound_modes || [] : [];
   if (!modes.length) return "";
-  return `<div class="remote-section"><div class="section-label"><span>Sound mode</span></div>
+  return `<details class="control-section remote-section" data-control-section="sound-modes"><summary>Sound mode</summary>
     <div class="chips">${modes.map((m) => `<button class="chip" data-sound-mode="${esc(m.id)}"
-      aria-pressed="${s.sound_mode === m.id}">${esc(m.name)}</button>`).join("")}</div></div>`;
+      aria-pressed="${s.sound_mode === m.id}">${esc(m.name)}</button>`).join("")}</div></details>`;
 }
 
 function inputChips(d, s) {
   const inputs = has(d, "inputs") ? d.meta?.inputs || [] : [];
   if (!inputs.length) return "";
-  return `<div class="remote-section"><div class="section-label"><span>Input</span></div>
+  return `<details class="control-section remote-section" data-control-section="inputs"><summary>Input</summary>
     <div class="chips">${inputs.map((x) => `<button class="chip" data-input="${esc(x.id)}"
-      aria-pressed="${s.input === x.id}">${icon("input")}${esc(x.name)}</button>`).join("")}</div></div>`;
+      aria-pressed="${s.input === x.id}">${icon("input")}${esc(x.name)}</button>`).join("")}</div></details>`;
 }
 
 // Well-known streaming apps first (by name), then the rest A–Z, then inputs.
@@ -165,8 +149,9 @@ function appPages(d, s) {
   const pages = [...chunk(apps).map((p) => p.map(appBtn)), ...chunk(inputs).map((p) => p.map(inBtn))];
   const dots = pages.length > 1 ? `<div class="dots" aria-hidden="true">${pages.length <= 8
     ? pages.map((_, i) => `<i class="${i === 0 ? "on" : ""}"></i>`).join("") : `<span id="page-num">1 / ${pages.length}</span>`}</div>` : "";
-  return `<div class="remote-apps">${dots}<div class="app-pages" id="app-pages" data-keep-scroll aria-label="Apps and inputs">${pages.map((p, i) =>
-      `<div class="app-page" style="--per:${per}" aria-label="Page ${i + 1} of ${pages.length}">${p.join("")}</div>`).join("")}</div></div>`;
+  return `<details class="control-section remote-apps" data-control-section="apps"><summary>Apps and inputs</summary>
+      ${dots}<div class="app-pages" id="app-pages" data-keep-scroll aria-label="Apps and inputs">${pages.map((p, i) =>
+      `<div class="app-page" style="--per:${per}" aria-label="Page ${i + 1} of ${pages.length}">${p.join("")}</div>`).join("")}</div></details>`;
 }
 
 // ---------- behaviour ----------
@@ -211,10 +196,13 @@ export function remoteClick(e, d, send) {
 const tick = () => navigator.vibrate?.(8);
 
 // Press and hold arrows, volume and channel to repeat.
-const repeat = { timer: 0, fired: false };
+const repeat = { timer: 0, fired: false, pointer: null, x: 0, y: 0 };
 export function startRepeat(e, send) {
   const b = e.target.closest("[data-repeat]");
-  if (!b) return;
+  if (!b || b.disabled || e.button > 0) return;
+  b.setPointerCapture(e.pointerId);
+  Object.assign(repeat, { pointer: e.pointerId, x: e.clientX, y: e.clientY });
+  remoteBusy.active = true;
   repeat.fired = false;
   clearTimeout(repeat.timer);
   const fire = () => {
@@ -225,9 +213,18 @@ export function startRepeat(e, send) {
   };
   repeat.timer = setTimeout(fire, 450);
 }
-export const stopRepeat = () => clearTimeout(repeat.timer);
+export const stopRepeat = () => {
+  clearTimeout(repeat.timer);
+  if (repeat.pointer !== null) { repeat.pointer = null; remoteBusy.active = false; setTimeout(idle, 0); }
+};
 addEventListener("pointerup", stopRepeat);
 addEventListener("pointercancel", stopRepeat);
+addEventListener("pointermove", e => {
+  if (e.pointerId === repeat.pointer && Math.hypot(e.clientX - repeat.x, e.clientY - repeat.y) > 8) {
+    repeat.fired = true;
+    stopRepeat();
+  }
+});
 
 // ---------- pointer: batched moves ----------
 // One request in flight at a time; moves that arrive meanwhile are added up and sent
@@ -272,6 +269,16 @@ class PointerSender {
 }
 const senders = new Map();
 export const pointerFor = (id) => { if (!senders.has(id)) senders.set(id, new PointerSender(id)); return senders.get(id); };
+let cancelPad = () => {};
+export function cancelRemoteInteraction() {
+  stopRepeat(); stopTilt(); cancelPad();
+  repeat.fired = false;
+  for (const sender of senders.values()) {
+    clearTimeout(sender.timer);
+    Object.assign(sender, { timer: 0, dx: 0, dy: 0, wheel: 0, clicks: 0 });
+  }
+  addEventListener("blur", cancelRemoteInteraction);
+}
 
 // Faster finger, further pointer (like a laptop touchpad).
 const accel = (dist) => 1.6 + Math.min(2.4, dist / 10);
@@ -280,6 +287,7 @@ function attachTouchpad(pad, d) {
   const sender = pointerFor(d.id);
   const spot = pad.querySelector(".touch-spot");
   const pts = new Map();
+  cancelPad = () => { pts.clear(); remoteBusy.active = false; pad.classList.remove("touching"); };
   let moved = 0, downAt = 0, multi = false;
   const show = (e) => {
     const r = pad.getBoundingClientRect();

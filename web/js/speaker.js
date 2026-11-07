@@ -1,12 +1,12 @@
 // Capability-driven controls for speakers without a TV remote/transport.
 import { store, command } from "./store.js";
 import { esc, icon } from "./util.js";
+import { bindRelativeRange } from "./device-controls.js";
 
 const has = (d, cap) => d.caps.includes(cap);
 export const simpleSpeaker = (d) => d.kind === "speaker" && !has(d, "remote") && !has(d, "media")
   && !(has(d, "apps") && d.meta?.apps?.length);
 const clamp = (n) => Math.max(0, Math.min(100, Math.round(n)));
-export const draggedVolume = (base, startX, x, width) => clamp(base + (x - startX) / Math.max(1, width) * 100);
 let interaction = null, choosing = null;
 const openSelectSupported = CSS.supports("selector(select:open)");
 export const speakerBusy = () => !!interaction || (openSelectSupported
@@ -104,44 +104,9 @@ export function attachSpeaker(root, d, onIdle) {
   };
   const range = root.querySelector("[data-speaker-volume]");
   if (range) {
-    let pointerChange = false;
-    for (const event of ["touchstart", "touchmove"]) range.addEventListener(event, (e) => e.preventDefault(), { passive: false });
-    range.addEventListener("pointerdown", (e) => {
-      if (range.disabled || e.button > 0) return;
-      e.preventDefault(); // relative drag, never a jump to where the track was touched
-      range.focus({ preventScroll: true });
-      range.setPointerCapture(e.pointerId);
-      const base = clamp(latest().volume ?? Number(range.value));
-      interaction = { kind: "pointer", pointer: e.pointerId, base, value: base,
-        x: e.clientX, width: range.getBoundingClientRect().width, moved: false };
-    });
-    range.addEventListener("pointermove", (e) => {
-      const drag = interaction;
-      if (drag?.kind !== "pointer" || drag.pointer !== e.pointerId) return;
-      e.preventDefault();
-      if (Math.abs(e.clientX - drag.x) > 6) drag.moved = true;
-      if (drag.moved) { drag.value = draggedVolume(drag.base, drag.x, e.clientX, drag.width); show(drag.value); }
-    });
-    const finish = (e) => {
-      const drag = interaction;
-      if (drag?.kind !== "pointer" || drag.pointer !== e.pointerId) return;
-      e.preventDefault();
-      const value = drag.value;
-      pointerChange = true;
-      setTimeout(() => { pointerChange = false; }, 0);
-      if (e.type !== "pointercancel" && drag.moved && value !== drag.base) {
-        send("volume", value, { volume: value }, "[data-speaker-volume]");
-      } else {
-        interaction = null; show(latest().volume ?? drag.base); onIdle();
-      }
-    };
-    range.addEventListener("pointerup", finish);
-    range.addEventListener("pointercancel", finish);
-    range.addEventListener("input", () => { if (interaction?.kind !== "pointer") show(Number(range.value)); });
-    range.addEventListener("change", () => {
-      if (interaction?.kind === "pointer" || pointerChange) return;
-      const value = Number(range.value);
-      send("volume", value, { volume: value }, "[data-speaker-volume]");
+    bindRelativeRange(range, {
+      value: () => clamp(latest().volume ?? Number(range.value)), preview: show,
+      commit: value => send("volume", value, { volume: value }, "[data-speaker-volume]"), idle: onIdle,
     });
   }
   root.querySelectorAll("[data-speaker-select]").forEach((select) => {

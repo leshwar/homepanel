@@ -20,19 +20,11 @@ class SpeakerUITests(unittest.TestCase):
           globalThis.CSS = {supports:() => false};
           globalThis.fakeSpeaker = {store:{devices:new Map()}, command:() => {},
             esc:value => String(value ?? '').replaceAll('<','&lt;').replaceAll('>','&gt;'), icon:() => '<svg></svg>'};
-          const {simpleSpeaker,speakerTop,speakerBody,draggedVolume} = await import(process.argv[1]);
+          const {simpleSpeaker,speakerTop,speakerBody} = await import(process.argv[1]);
         """
         result = subprocess.run([NODE, "--input-type=module", "-e", harness + script, module],
                                 capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-
-    def test_relative_volume_never_jumps_to_track_touch_and_clamps(self):
-        self.run_js("""
-          assert.equal(draggedVolume(8, 180, 180, 200), 8);
-          assert.equal(draggedVolume(8, 180, 220, 200), 28);
-          assert.equal(draggedVolume(8, 180, 0, 200), 0);
-          assert.equal(draggedVolume(90, 0, 100, 200), 100);
-        """)
 
     def test_simple_speaker_does_not_replace_tv_or_richer_media_controls(self):
         self.run_js("""

@@ -58,9 +58,9 @@ export function vacuumBody(d) {
       ${seg(m.suction_levels, s.suction, "data-suction")}</div>`,
     has(d, "clean_mode") && m.clean_modes?.length && `<div class="opt"><div class="opt-label">${icon("drop")}Mode</div>
       ${seg(m.clean_modes, s.clean_mode, "data-clean-mode", modeIcon)}</div>`,
-    has(d, "station") && m.station_actions?.length && `<div class="opt"><div class="opt-label">${icon("home")}Station</div>
+    has(d, "station") && m.station_actions?.length && `<details class="control-section" data-control-section="station"><summary>Dock actions</summary>
       <div class="station">${m.station_actions.map((o) => `<button class="btn" data-station="${esc(String(o.id))}">
-        ${icon(stationIcon(String(o.id)))}<span>${esc(o.name)}</span></button>`).join("")}</div></div>`,
+        ${icon(stationIcon(String(o.id)))}<span>${esc(o.name)}</span></button>`).join("")}</div></details>`,
   ].filter(Boolean).join("");
 
   const parts = s.parts || [];
@@ -68,8 +68,6 @@ export function vacuumBody(d) {
 
   return `<div class="vac">
     <div class="vac-col">
-      ${has(d, "map") ? `<div class="vac-map"><img src="${api.mapUrl(d.id, s.map_rev || 0)}" alt="Map of your home">
-        <span>The map shows up after the first clean.</span></div>` : ""}
       <div class="vac-status" role="status">
         <span class="vac-state ${a || ""}">${icon(ic)}<b>${charging ? "Charging" : label}</b></span>
         ${s.battery != null ? `<span class="vac-batt ${s.battery <= 20 ? "low" : ""}" style="--pct:${s.battery}"
@@ -79,14 +77,17 @@ export function vacuumBody(d) {
       ${lastText ? `<p class="vac-last">${esc(lastText)}</p>` : ""}
       ${s.problem ? `<div class="note warn">${esc(s.problem)}</div>` : ""}
       <div class="vac-actions">${main}${side}</div>
+      ${has(d, "map") ? `<div class="vac-map loading" aria-busy="true"><img src="${api.mapUrl(d.id, s.map_rev || 0)}" alt="Map of your home">
+        <span role="status">Loading map...</span></div>` : ""}
     </div>
     <div class="vac-col">
-      ${rooms.length ? `<div class="section-label"><span>Rooms</span>
+      ${rooms.length ? `<details class="control-section" data-control-section="vac-rooms"><summary>Choose rooms${chosen.size ? ` (${chosen.size} selected)` : ""}</summary>
+        <div class="section-label"><span>Rooms</span>
           ${chosen.size ? `<button class="link" data-rooms-clear>Clear</button>` : `<b class="soft">Tap rooms to clean only those</b>`}</div>
         <div class="chips">${rooms.map((r) => { const on = chosen.has(String(r.id)); return `<button class="chip room-chip"
-          data-room-pick="${esc(String(r.id))}" aria-pressed="${on}">${on ? icon("check") : ""}${esc(r.name)}</button>`; }).join("")}</div>` : ""}
-      ${options ? `<div class="section-label"><span>Options</span></div><div class="opts">${options}</div>` : ""}
-      ${parts.length ? `<details class="vac-parts">
+          data-room-pick="${esc(String(r.id))}" aria-pressed="${on}">${on ? icon("check") : ""}${esc(r.name)}</button>`; }).join("")}</div></details>` : ""}
+      ${options ? `<details class="control-section" data-control-section="vac-options"><summary>Cleaning options</summary><div class="opts">${options}</div></details>` : ""}
+      ${parts.length ? `<details class="vac-parts" data-control-section="maintenance">
           <summary class="maint-row">${icon("wrench")}<span class="grow"><span class="title">Maintenance</span>
             <span class="sub ${worst.percent <= 10 ? "warn" : ""}">${worst.percent <= 10 ? `${esc(worst.name)} needs replacing`
               : `All parts good. ${esc(worst.name)} at ${worst.percent}%`}</span></span>${icon("down", "chev")}</summary>

@@ -37,6 +37,7 @@ web/
     ├── voice.js    the mic: speech to text in the browser (or a typed box), reply, choices, confirm
     ├── remote.js   TV and speaker remote: D-pad / touchpad / number pad, rockers, apps, pointer
     ├── speaker.js  opaque simple-speaker controls: labeled power/mute, relative volume and compact selectors
+    ├── device-controls.js shared headings/power states and safe release-to-apply range gestures
     ├── vacuum.js   robot vacuum: map, status, main button, rooms, Options, Maintenance
     ├── effects.js  light effects in the light sheet: searchable scenes (Scenes / DIY / Snapshots),
     │               music mode + sensitivity, strip parts (tap parts, then a color), toggles
@@ -71,7 +72,7 @@ web/
   than fading the whole tile. Labels and nested buttons use the tile's text colors,
   independently of the background-aware page title. Wallpaper rails also keep a
   minimum backing, and headings over the picture get a soft shadow.
-  Settings cards/lists and simple-speaker controls use opaque surfaces so dashboard
+  Settings cards/lists and all device controls use opaque surfaces so dashboard
   content cannot overlap their text; background previews remain visible around settings cards.
 - **Lit devices.** A device that is on gives off light: lamps glow in their real
   color, plugs in jade, TVs in indigo, and the background's top glow takes on the
@@ -125,6 +126,18 @@ keyboard behavior and guarded persistence; the library only handles dragging.
 - **Tap = do the obvious thing** (toggle). Long-press or "…" = full controls (with a
   short vibration where the browser supports it). TVs, and devices with no on/off like
   a robot vacuum, open their controls on tap so they're never switched by accident.
+- **Device controls.** Opaque, theme-aware panels have a named status header, a
+  reachable Close button and labeled Power/Mute actions where supported. TV
+  navigation/volume stay primary; apps, inputs and extra keys are grouped.
+  Lights keep distinct brightness/color/white controls, with scenes, music sync,
+  strip segments and options in expandable sections. Vacuum status and the
+  primary cleaning action come before its map; room selection, cleaning options,
+  dock actions and maintenance expand separately. Expanded sections and keyboard
+  focus survive live updates, and reset when another device opens.
+  Brightness, white-temperature and numeric range controls apply on release;
+  tapping a slider track, canceling a drag or closing the panel does not send a
+  command. Color-wheel taps and named presets remain explicit choices. Offline
+  or unpaired panels show recovery actions instead of unusable device controls.
 - **Icons.** Each device gets an icon from its name ("Floor lamp", "Kettle plug") or
   kind, or one picked in Settings → device → Icon.
 - **iPhone and iPad.** `viewport-fit=cover` with `env(safe-area-inset-*)` padding,

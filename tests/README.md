@@ -45,6 +45,7 @@ without pytest, not an additional required pass.
 | Weather tile animation | `test_weather_effects.py`, `test_weather.py` | `test_weather_tile.py` (mocked conditions, sizes, reduced motion and error/retry states) |
 | Typography | `test_typography.py`, `test_service.py` | `test_typography.py` (three positions, preview/cancel/save, shared scope, font fallback and responsive layouts) |
 | Speaker controls | `test_speaker_ui.py`, `test_adapters.py` | `test_speaker_ui.py`, `test_fake_devices.py` (opaque panels, touch/mouse volume safety, metadata IDs and state reconciliation) |
+| Shared device panels | `test_device_controls.py` | `test_device_controls.py`, `test_ui.py` (all device types, themes/font sizes, focus, grouped controls, canceled gestures and explicit unavailable/error states) |
 | Test-inclusion rule | `test_ci_policy.py` | CI enforces the rule on the PR diff |
 
 Read the relevant test file rather than loading the whole suite for each change.

@@ -30,6 +30,7 @@ web/
     ├── tiles.js    device tiles: tap = on/off, long-press or "…" = controls (+ haptics)
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
     ├── sky.js      weather from the server → html[data-sky] / [data-period] for the Sky background
+    ├── weather-effects.js shared weather scenes and tile-only animation visibility
     ├── sheet.js    bottom sheet: light controls and the TV remote
     ├── voice.js    the mic: speech to text in the browser (or a typed box), reply, choices, confirm
     ├── remote.js   TV and speaker remote: D-pad / touchpad / number pad, rockers, apps, pointer
@@ -49,6 +50,12 @@ web/
   slow drifting clouds, rain, snow or stars. Weather is opt-in (Settings → Location and
   presence) and comes from the panel's own server; without it the sky follows the clock.
   Motion is transform-only and stops for "reduce motion".
+- **Weather tile.** Sun rays or a moon/stars, clouds, rain, snow, fog and a gentle
+  storm glow fill the tile behind high-contrast captions, independently of the
+  chosen page background. Effects clip to the rounded tile at every size and
+  never intercept touches. They pause offscreen, in background tabs and during
+  editing; reduced motion uses a still scene. Unconfigured, loading and unavailable
+  weather have explicit messages and no invented scene; unavailable weather has Retry.
 - **Glass over a scene.** Or a static background (`.backdrop` in `index.html`:
   gradients plus soft SVG shapes; Ocean, Aurora or Night via `html[data-bg]`) sits
   behind frosted-glass tiles, sheets and buttons. Settings → Display has the

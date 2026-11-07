@@ -17,7 +17,8 @@ import { $, esc, icon, toast } from "./util.js";
 import { openSettings } from "./settings.js";
 import { svg, roomIcon } from "./icons.js";
 import { haptic } from "./tiles.js";
-import { currentWeather } from "./sky.js";
+import { currentWeather, weatherStatus, refreshWeather } from "./sky.js";
+import { weatherBackdrop, watchWeatherEffects } from "./weather-effects.js";
 import { weatherIcon } from "./clockfaces.js";
 import { SIZES, SIZE_NAMES, columnsFor, arrange, remember, place, fits, placementStyle, gridStyle, bindGridEditor, watchGridWidth } from "./grid.js";
 
@@ -78,6 +79,7 @@ const clone = (o) => JSON.parse(JSON.stringify(o));
 const columns = () => columnsFor($("#home").clientWidth);
 const placed = (w) => ({ ...w, ...arrange(layout().widgets, columns()).get(w.id) });
 let cancelGesture = () => {};
+let syncWeatherEffects = () => {};
 
 // ---------- widgets ----------
 const isOn = (d) => !!d.state?.on && d.state?.online !== false;
@@ -108,15 +110,21 @@ function zoneWidget(w, now) {
 
 function weatherWidget() {
   const wx = currentWeather();
-  if (!wx) {
-    return `<div class="w-fill w-weather off">
+  const state = weatherStatus();
+  if (state !== "ready" || !wx) {
+    const message = state === "loading" ? "Loading weather..." : state === "unavailable"
+      ? "Weather is unavailable. Check the connection and try again."
+      : "Show the weather here and let the background follow the sky.";
+    return `<div class="w-fill w-weather off" data-weather-status="${state}">
         <span class="w-label">Weather</span>
-        <p>Show the weather here and let the background follow the sky.</p>
-        <button class="btn small" data-setup-weather>Turn on weather</button>
+        <p role="status">${message}</p>
+        ${state === "loading" ? "" : state === "unavailable"
+          ? `<button class="btn small" data-retry-weather>Retry weather</button>`
+          : `<button class="btn small" data-setup-weather>${store.settings.weather_enabled ? "Set location" : "Turn on weather"}</button>`}
       </div>`;
   }
   const place = store.settings.place_name || "";
-  return `<div class="w-fill w-weather">
+  return `<div class="w-fill w-weather" data-weather-status="ready">${weatherBackdrop(wx)}
       <span class="w-label">${esc(place || "Weather")}</span>
       <span class="w-wx">${weatherIcon(wx.condition, wx.is_day)}<b>${esc(wx.temperature)}°</b></span>
       <span class="w-sub">${esc(wx.label)}${wx.high != null ? ` · H ${esc(wx.high)}° L ${esc(wx.low)}°` : ""}</span>
@@ -188,6 +196,7 @@ export function renderHome({ enter = false } = {}) {
     setMarkup(box, roomsWidget() + (isEditing() ? chrome(w) : ""));
   }
   updateCounts(el);
+  syncWeatherEffects();
   if (enter && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     el.querySelectorAll(".widget").forEach((w, i) => w.animate(
       [{ opacity: 0, transform: "translateY(10px) scale(.98)" }, { opacity: 1, transform: "none" }],
@@ -228,6 +237,7 @@ export function refreshHomeParts(types = ["rooms", "weather", "scenes"]) {
       if (w.type === "rooms") updateCounts(box);
     }
   }
+  syncWeatherEffects();
 }
 
 // ---------- edit mode ----------
@@ -349,6 +359,7 @@ function addWidget(w) {
 // ---------- events ----------
 export function setupHome({ goRoom, showAmbient }) {
   const el = $("#home");
+  syncWeatherEffects = watchWeatherEffects(el);
   cancelGesture = bindGridEditor(el, { enabled: isEditing, items: () => draft.widgets,
     render: renderHome, error: (message) => toast(message, true) });
   watchGridWidth(el, () => { cancelGesture(); renderHome(); });
@@ -368,6 +379,7 @@ export function setupHome({ goRoom, showAmbient }) {
     if (t.closest("[data-edit-home]")) return startEditing();
     if (t.closest("[data-ambient]")) return showAmbient();
     if (t.closest("[data-setup-weather]")) return openSettings("location", "weather");
+    if (t.closest("[data-retry-weather]")) return refreshWeather(true);
     if (t.closest("[data-new-scene]")) return openSettings("scene-new");
     const room = t.closest("[data-go-room]");
     if (room) return goRoom(room.dataset.goRoom);

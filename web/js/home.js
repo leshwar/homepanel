@@ -19,11 +19,13 @@ import { svg, roomIcon } from "./icons.js";
 import { haptic } from "./tiles.js";
 import { currentWeather, weatherStatus, refreshWeather } from "./sky.js";
 import { weatherBackdrop, watchWeatherEffects } from "./weather-effects.js";
+import { photoTile, watchPhotoTiles } from "./photo-tile.js";
 import { weatherIcon } from "./clockfaces.js";
 import { SIZES, SIZE_NAMES, columnsFor, arrange, remember, place, fits, placementStyle, gridStyle, bindGridEditor, watchGridWidth } from "./grid.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
-const TYPE_NAMES = { clock: "Clock", zone: "Clock", weather: "Weather", scenes: "Scenes", rooms: "Rooms" };
+const TYPE_NAMES = { clock: "Clock", zone: "Clock", weather: "Weather", scenes: "Scenes", rooms: "Rooms", photos: "Photos" };
+let syncPhotoTiles = () => {};
 
 // ---------- time zones ----------
 export const US_ZONES = [
@@ -155,6 +157,7 @@ function widgetBody(w, now) {
     case "weather": return weatherWidget();
     case "scenes": return scenesWidget();
     case "rooms": return roomsWidget();
+    case "photos": return photoTile();
     default: return null;                     // e.g. an old "device" widget: devices are on the Rooms pages now
   }
 }
@@ -186,6 +189,7 @@ export function renderHome({ enter = false } = {}) {
   if (renderedLayout === key && el.querySelector(".home-grid")) {
     tickHome();
     refreshHomeParts();
+    syncPhotoTiles();
     return;
   }
   renderedLayout = key;
@@ -204,6 +208,7 @@ export function renderHome({ enter = false } = {}) {
   }
   updateCounts(el);
   syncWeatherEffects();
+  syncPhotoTiles();
   if (enter && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     el.querySelectorAll(".widget").forEach((w, i) => w.animate(
       [{ opacity: 0, transform: "translateY(10px) scale(.98)" }, { opacity: 1, transform: "none" }],
@@ -231,7 +236,7 @@ export function tickHome(now = new Date()) {
 }
 
 // Something about rooms or weather changed: redraw those widgets only.
-export function refreshHomeParts(types = ["rooms", "weather", "scenes"]) {
+export function refreshHomeParts(types = ["rooms", "weather", "scenes", "photos"]) {
   const el = $("#home");
   if (!el || el.hidden || isEditing()) return;
   const now = new Date();
@@ -245,6 +250,7 @@ export function refreshHomeParts(types = ["rooms", "weather", "scenes"]) {
     }
   }
   syncWeatherEffects();
+  syncPhotoTiles();
 }
 
 // ---------- edit mode ----------
@@ -344,6 +350,8 @@ function addMenu() {
       `<button class="chip" data-unhide="${esc(w.id)}">${icon("plus")}${esc(widgetName(w))}</button>`).join("")}</div>` : ""}
     <p class="group-label">Clock for another place</p>
     <div class="wmenu-list"><button class="chip" data-add-zone>${icon("plus")}Clock</button></div>
+    ${!draft.widgets.some(w => w.type === "photos") ? `<p class="group-label">Photo library</p>
+      <div class="wmenu-list"><button class="chip" data-add-photos>${icon("plus")}Photos</button></div>` : ""}
     <button class="btn small primary" data-menu-close>Close</button>`, "Add to Home");
 }
 
@@ -367,6 +375,7 @@ function addWidget(w) {
 export function setupHome({ goRoom, showAmbient }) {
   const el = $("#home");
   syncWeatherEffects = watchWeatherEffects(el);
+  syncPhotoTiles = watchPhotoTiles(el, isEditing);
   cancelGesture = bindGridEditor(el, { enabled: isEditing, items: () => draft.widgets,
     render: renderHome, error: (message) => toast(message, true) });
   watchGridWidth(el, () => { cancelGesture(); renderHome(); });
@@ -386,6 +395,7 @@ export function setupHome({ goRoom, showAmbient }) {
     if (t.closest("[data-edit-home]")) return startEditing();
     if (t.closest("[data-ambient]")) return showAmbient();
     if (t.closest("[data-setup-weather]")) return openSettings("location", "weather");
+    if (t.closest("[data-photo-settings]")) return openSettings("photo-library");
     if (t.closest("[data-retry-weather]")) return refreshWeather(true);
     if (t.closest("[data-new-scene]")) return openSettings("scene-new");
     const room = t.closest("[data-go-room]");
@@ -418,6 +428,9 @@ export function setupHome({ goRoom, showAmbient }) {
     if (t.closest("[data-add-zone]")) {
       return addWidget({ id: `zone-${Date.now().toString(36)}`, type: "zone", size: "1x1", hidden: false,
                          options: { tz: null, label: "US" } });
+    }
+    if (t.closest("[data-add-photos]")) {
+      return addWidget({ id: `photos-${Date.now().toString(36)}`, type: "photos", size: "2x2", hidden: false, options: {} });
     }
   });
   document.addEventListener("change", (e) => {

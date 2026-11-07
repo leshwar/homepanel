@@ -20,7 +20,7 @@ VERSION = 3
 SIZES = ("1x1", "2x1", "2x2")
 COLUMNS = ("2", "4", "6")
 MAX_ROWS = 200
-WIDGET_TYPES = ("clock", "zone", "weather", "scenes", "rooms")
+WIDGET_TYPES = ("clock", "zone", "weather", "scenes", "rooms", "photos")
 RETIRED_TYPES = ("device",)      # from version 1; dropped quietly
 MAX_WIDGETS = 40
 

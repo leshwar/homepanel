@@ -19,6 +19,7 @@ const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
 let brandState = {};          // per-visit state of the "brand" screen
 let searchAll = {};           // per-visit state of "Search all brands" on the "add" screen
+let photoSettingsEpoch = 0;
 
 export const isSettingsOpen = () => !$("#settings").hidden;
 
@@ -104,6 +105,7 @@ const VIEWS = {
               store.settings.latitude != null ? `${store.presence.length} ${store.presence.length === 1 ? "person" : "people"} watched` : "Set your location for sunrise and sunset")}
         ${row("data-go=photos", "image", "Photo frame", store.settings.idle_screen === "photos"
               ? "Shows when the panel is idle" : "Slideshow of your photos")}
+        ${row('data-go="photo-library"', "image", "Photo library", "Connect an album for the Home Photos tile")}
         ${row("data-go=display", "sun", "Display and clock")}
         ${row("data-go=profiles", "users", "Profiles", profilesSummary())}
         ${row("data-go=diagnostics", "pulse", "Diagnostics and logs")}
@@ -445,6 +447,83 @@ const VIEWS = {
       const fmt = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
       if (sun.sunrise && $("#sun-today")) $("#sun-today").textContent = `Today: sunrise ${fmt(sun.sunrise)}, sunset ${fmt(sun.sunset)}.`;
     } catch { /* location not set */ }
+  },
+
+  async "photo-library"() {
+    const epoch = ++photoSettingsEpoch;
+    page("Photo library", '<div class="card"><p role="status">Loading connection settings...</p></div>');
+    let config, albums = [], error = "";
+    try {
+      config = await api.photoLibrary();
+      if (config.key_set) {
+        try { albums = (await api.photoAlbums()).albums; }
+        catch (e) { error = e.message; }
+      }
+    } catch (e) {
+      if (stack.at(-1)?.view === "photo-library" && epoch === photoSettingsEpoch) {
+        page("Photo library", `<div class="card"><p class="note warn">${esc(e.message)}</p>
+          <button class="btn" data-go="photo-library">Try again</button></div>`);
+      }
+      return;
+    }
+    if (stack.at(-1)?.view !== "photo-library" || epoch !== photoSettingsEpoch) return;
+    page("Photo library", `<form class="card" data-photo-connect>
+      <h3>${esc(config.name)}</h3>
+      <p>Use a read-only API key, not your account password. Required permissions:
+        <b>${config.permissions.map(esc).join(", ")}</b>. Supports server versions 2.x and 3.x.</p>
+      <label class="field"><span>Server URL</span><input name="url" type="url" required
+        placeholder="http://laptop.local:2283" value="${esc(config.url)}" autocomplete="off"></label>
+      <label class="field"><span>Read-only API key</span><input name="key" type="password" autocomplete="new-password"
+        ${config.key_set ? 'placeholder="Saved; leave blank to keep"' : "required"}></label>
+      <p class="group-label">${config.key_set ? "A key is saved on the panel." : "Not connected."}
+        Use a trusted private network or HTTPS. The key is never sent to photo tiles.</p>
+      <p class="note warn" data-photo-error hidden role="alert"></p>
+      <div class="btn-row"><button type="submit" class="btn primary">Connect and verify</button>
+        ${config.key_set ? '<button type="button" class="btn danger" data-photo-disconnect>Disconnect</button>' : ""}</div>
+    </form>
+    ${config.key_set ? `<form class="card" data-photo-source><h3>Display source</h3>
+      <p>Only selected albums will be used. Photos will be visible to the permitted panel profiles below.</p>
+      ${error ? `<p class="note warn" role="alert">${esc(error)}</p>` : ""}
+      <fieldset><legend>Albums</legend>${albums.length ? albums.map(album => `<label class="check">
+        <input type="checkbox" name="album" value="${esc(album.id)}" ${config.albums.includes(album.id) ? "checked" : ""}>
+        <span>${esc(album.name)}</span></label>`).join("") : "<p>No albums available. Create an album on the server, then verify the connection again.</p>"}</fieldset>
+      <fieldset><legend>Permitted profiles</legend>${store.profiles.map(profile => `<label class="check">
+        <input type="checkbox" name="profile" value="${esc(profile.id)}" ${config.profiles.includes(profile.id) ? "checked" : ""}>
+        <span>${esc(profile.name)}</span></label>`).join("")}</fieldset>
+      <label class="field"><span>Seconds between photos</span><input type="number" name="seconds" min="30" max="300" step="1" value="${config.seconds}" required></label>
+      <p class="note warn" data-photo-error hidden role="alert"></p>
+      <button class="btn primary" type="submit" ${!albums.length ? "disabled" : ""}>Save photo source</button>
+      <p class="group-label">Then open Home, choose Edit, Add, Photos. Existing uploaded photo-frame pictures are unchanged.</p>
+    </form>` : ""}`);
+    const bind = (selector, action) => {
+      const form = $(selector);
+      if (!form) return;
+      form.addEventListener("submit", async e => {
+        e.preventDefault(); e.stopPropagation();
+        const values = new FormData(form), controls = [...form.querySelectorAll("button,input")];
+        controls.forEach(control => { control.disabled = true; });
+        const error = form.querySelector("[data-photo-error]"); error.hidden = true;
+        try {
+          await action(values); await reload();
+          if (stack.at(-1)?.view === "photo-library" && epoch === photoSettingsEpoch) VIEWS["photo-library"]();
+        } catch (e) {
+          error.textContent = e.message; error.hidden = false;
+          controls.forEach(control => { control.disabled = false; });
+        }
+      });
+    };
+    bind("[data-photo-connect]", values => api.connectPhotoLibrary({ url: String(values.get("url")).trim(), key: values.get("key") }));
+    bind("[data-photo-source]", values => api.selectPhotoAlbums({
+      albums: values.getAll("album"), profiles: values.getAll("profile"), seconds: Number(values.get("seconds")),
+    }));
+    $("[data-photo-disconnect]")?.addEventListener("click", async e => {
+      e.stopPropagation();
+      e.currentTarget.disabled = true;
+      try {
+        await api.disconnectPhotoLibrary(); await reload();
+        if (stack.at(-1)?.view === "photo-library") VIEWS["photo-library"]();
+      } catch (error) { toast(error.message, true); e.target.disabled = false; }
+    });
   },
 
   async photos() {

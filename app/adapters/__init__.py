@@ -8,6 +8,17 @@ imported inside methods, so a missing library only disables that one adapter.
 import importlib
 import logging
 
+
+def photo_source(url: str, key: str):
+    from .immich_photos import PhotoSource
+    return PhotoSource(url, key)
+
+
+def photo_source_info():
+    from .immich_photos import NAME, PERMISSIONS
+    return {"name": NAME, "permissions": PERMISSIONS}
+
+
 MODULES = [
     "demo",
     "tuya",        # Globe Electric, Feit, Gosund, Treatlife, any "Smart Life" device

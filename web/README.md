@@ -42,6 +42,7 @@ web/
     ├── effects.js  light effects in the light sheet: searchable scenes (Scenes / DIY / Snapshots),
     │               music mode + sensitivity, strip parts (tap parts, then a color), toggles
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
+    ├── photo-tile.js private album tile: decoded crossfade, visibility lifecycle and object-URL cleanup
     ├── clockfaces.js  resting clock faces (digital, analog, words, date, night) + burn-in drift
     ├── locate.js   "Use my location": device location, else approximate from the server
     └── settings.js settings pages: add devices, edit, rooms, scenes, display, diagnostics
@@ -174,6 +175,13 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   shared panel setting for all profiles/screens, and leaving without saving restores
   the saved size. Shared `--text-scale` and bounded `--readout-scale` tokens scale
   existing typography without zooming the UI or reducing touch targets.
+- **Photos tile.** Add Photos from the Home editor after an admin configures
+  Settings → Photo library. Only explicitly selected albums and profiles are used.
+  One bounded stream supplies decoded images to the screen's tiles, without
+  replacing the current image while the next loads or fading to the same image.
+  Requests/timers pause offscreen, behind panels/idle screens, and during editing.
+  Profile/source changes, removal and errors clear private images/object URLs;
+  reduced motion disables crossfade. Existing local photo-frame uploads are untouched.
 
 Manrope is by The Manrope Project Authors, licensed under SIL OFL 1.1.
 The [source font and license](https://github.com/google/fonts/tree/b31870aff700ab7a1d74fa0c6887d95beb9e0037/ofl/manrope)

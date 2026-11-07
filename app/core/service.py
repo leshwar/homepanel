@@ -34,6 +34,7 @@ from .history import History
 from .layout import LayoutError, clean_layout, clean_room_layout, default_layout, migrate_layout
 from .net import normalize_mac, parse_color
 from .photos import DevicePictures, PhotoLibrary
+from .remote_photos import RemotePhotos
 from .presence import Presence
 from .profiles import ADMIN, MEMBER, Profiles, Sessions, Viewer, current_viewer, hash_secret, sees
 from .geolocate import Geolocator
@@ -263,6 +264,7 @@ class HomeService:
         self.history = History(os.path.join(data_dir, "demo-history.db" if demo else "history.db"))
         self.automations = Automations(self)
         self.photos = PhotoLibrary(os.path.join(data_dir, "demo-photos" if demo else "photos"))
+        self.photo_library = RemotePhotos(self.store, self._publish_layout)
         self.wallpapers = PhotoLibrary(os.path.join(data_dir, "demo-wallpapers" if demo else "wallpapers"))
         self.device_pictures = DevicePictures(os.path.join(data_dir, "demo-device-pictures" if demo else "device-pictures"))
         self.weather = Weather(lambda: self.store.settings)
@@ -466,6 +468,7 @@ class HomeService:
             s.pop("presence", None)          # phones' addresses: admins only
         s["home_layout"] = self.layout_for(viewer)
         s["room_layouts"] = self.room_layouts_for(viewer)
+        s["photo_library"] = self.photo_library.status()
         return s
 
     def layout_for(self, viewer: Viewer | None) -> dict:

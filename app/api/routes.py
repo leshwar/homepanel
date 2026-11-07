@@ -334,6 +334,38 @@ async def photo_image(request):
 
 # --- wallpapers and device pictures --------------------------------------------------
 
+@handle_errors
+async def photo_library_config(request):
+    source = _svc(request).photo_library
+    if request.method == "PUT":
+        return await source.connect(await _body(request))
+    if request.method == "DELETE":
+        return source.disconnect()
+    return source.management()
+
+
+@handle_errors
+async def photo_library_albums(request):
+    return {"albums": await _svc(request).photo_library.albums()}
+
+
+@handle_errors
+async def photo_library_source(request):
+    return await _svc(request).photo_library.select(await _body(request))
+
+
+@handle_errors
+async def photo_library_next(request):
+    svc = _svc(request)
+    image, token, generation = await svc.photo_library.next()
+    cookie = read_cookie(request.scope)
+    if cookie and not svc.profiles.viewer_for(cookie):
+        return JSONResponse({"error": "Sign in again to view photos.", "signin": True}, status_code=401)
+    return Response(image, media_type="image/jpeg", headers={
+        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+        "X-Photo-Token": token, "X-Photo-Generation": generation,
+    })
+
 async def _image_body(request) -> bytes:
     if int(request.headers.get("content-length") or 0) > MAX_UPLOAD_BYTES:
         raise PhotoError("That picture is too large.")
@@ -585,6 +617,10 @@ routes = [
     Route("/api/v1/weather", get_weather),
     Route("/api/v1/location/lookup", lookup_location, methods=["POST"]),
     Route("/api/v1/photos", list_photos, methods=["GET"]),
+    Route("/api/v1/photo-library", photo_library_config, methods=["GET", "PUT", "DELETE"]),
+    Route("/api/v1/photo-library/albums", photo_library_albums, methods=["GET"]),
+    Route("/api/v1/photo-library/source", photo_library_source, methods=["PUT"]),
+    Route("/api/v1/photo-library/next", photo_library_next, methods=["GET"]),
     Route("/api/v1/photos", upload_photo, methods=["POST"]),
     Route("/api/v1/photos/{id}", delete_photo, methods=["DELETE"]),
     Route("/api/v1/photos/{id}/image", photo_image, methods=["GET"]),

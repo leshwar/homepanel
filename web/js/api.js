@@ -90,6 +90,26 @@ export const api = {
   lookupLocation: (coords = {}) => call("POST", "/location/lookup", coords),
 
   photos: () => call("GET", "/photos"),
+  photoLibrary: () => call("GET", "/photo-library"),
+  connectPhotoLibrary: (values) => call("PUT", "/photo-library", values),
+  disconnectPhotoLibrary: () => call("DELETE", "/photo-library"),
+  photoAlbums: () => call("GET", "/photo-library/albums"),
+  selectPhotoAlbums: (values) => call("PUT", "/photo-library/source", values),
+  nextLibraryPhoto: async (signal) => {
+    let response;
+    try { response = await fetch(`${BASE}/photo-library/next`, { credentials: "same-origin", signal, cache: "no-store" }); }
+    catch (error) {
+      if (error.name === "AbortError") throw error;
+      throw new ApiError("Cannot reach the panel's photo service.");
+    }
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      if (response.status === 401) signinNeeded(data);
+      throw new ApiError(data?.error || "Photo previews are unavailable.", response.status);
+    }
+    return { blob: await response.blob(), token: response.headers.get("X-Photo-Token"),
+      generation: response.headers.get("X-Photo-Generation") };
+  },
   deletePhoto: (id) => call("DELETE", `/photos/${encodeURIComponent(id)}`),
   uploadPhoto: (file) => sendFile("POST", `/photos?name=${encodeURIComponent(file.name || "photo")}`, file),
 

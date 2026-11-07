@@ -5,6 +5,30 @@ Base URL: `http://<panel>:8080/api/v1`. JSON in, JSON out. Errors return a
 
 The API is brand-agnostic: callers never need to know which adapter a device uses.
 
+## Private photo library
+
+These are separate from uploaded `/photos` and never return the server API key.
+Connection/source management is admin-only. Image access also requires an explicit
+profile grant; an unpermitted profile receives 404.
+
+| Method | Path | Body / result |
+|---|---|---|
+| GET | `/photo-library` | Safe connection metadata, URL, `key_set`, selected album/profile IDs, cadence and supported key permissions |
+| PUT | `/photo-library` | `{url,key}`; verify server/album access, store privately. An empty key keeps the existing key only for the unchanged URL |
+| GET | `/photo-library/albums` | Available album IDs/names; admin-only |
+| PUT | `/photo-library/source` | `{albums:[id],profiles:[id],seconds:30..300}`; one to eight explicit albums, no whole-library fallback |
+| DELETE | `/photo-library` | Disconnect and invalidate private caches |
+| GET | `/photo-library/next` | Authorized, metadata-free JPEG preview with `X-Photo-Token` and `X-Photo-Generation`; `private, no-store` |
+
+`next` accepts no source URL or asset ID: it is not an arbitrary image proxy.
+The backend requests only timeline images, excludes trash/offline/archive/hidden/
+locked content, independently verifies album membership and rechecks privacy
+before fetching a bounded preview. Redirects and environment HTTP proxies are
+disabled; keys are never forwarded to another origin. Network responses, image
+dimensions, cache size (8 MiB / eight entries / five minutes), request budget
+and cadence are bounded. Source changes invalidate in-flight results.
+Only non-secret readiness/generation/cadence is included in ordinary snapshots.
+
 ## Sign-in and profiles
 
 Every route needs a signed-in session except `/auth/session`, `/auth/sign-in`,

@@ -14,6 +14,33 @@ the list says which ones, and tapping one takes you to its setup.
 
 Typing keys is easiest from a phone or laptop: open `http://homepanel.local:8080`.
 
+## Immich photo library
+
+This is a Home **Photos tile**, separate from the uploaded full-screen photo frame.
+In **Settings → Photo library**, enter the existing server's base URL and a
+read-only API key with **`album.read`, `asset.read`, `asset.view`**. Do not enter
+an Immich account password. Use a direct URL on a trusted LAN/private network or
+HTTPS; redirects are deliberately refused. No network exposure is configured.
+
+Connect and verify checks server/version and album access. Choose the albums
+intended for the wall display and the profiles allowed to see them, then save.
+Image permission is checked when the tile requests a preview. Photos are visible
+to those permitted panel viewers; never select a private album unintentionally.
+An unprotected one-tap profile is not a security boundary: use optional profile
+passwords and trusted-network access when the selected photos are private.
+Add the tile with **Home → Edit → Add → Photos**, and move/resize it normally.
+Only timeline images from the selected albums are eligible; no entire-library
+shuffle, original downloads, EXIF display or face metadata is requested.
+
+The adapter verifies the Immich 2.x/3.x contract and rejects incompatible versions/
+privacy responses rather than retrying a broad search. It uses the official
+[random search](https://api.immich.app/endpoints/search/searchRandom),
+[album membership](https://api.immich.app/endpoints/albums/getAllAlbums) and
+[preview](https://api.immich.app/endpoints/assets/viewAsset) APIs; no AGPL server
+implementation or additional SDK is copied. The 2.0.0 DTO contract was checked
+alongside current API documentation. The user's own server is not connected
+until its address and scoped key are entered here.
+
 ---
 
 ## Globe Electric and other Tuya / Smart Life devices

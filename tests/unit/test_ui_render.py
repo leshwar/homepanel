@@ -148,6 +148,20 @@ const saveRooms = () => {}, moveRoom = () => {}, invalidateMarkup = () => {};
             assert.equal(el.innerHTML, 'saved order');
         """)
 
+    def test_control_drafts_survive_cache_hits_and_can_be_explicitly_reset(self):
+        self.run_js("""
+            let value, writes=0;
+            const el = {set innerHTML(html) {value=html; writes++;}};
+            setMarkup(el, 'reported value');
+            value='unsaved gesture';
+            assert.equal(setMarkup(el, 'reported value'), false);
+            assert.equal(value, 'unsaved gesture');
+            invalidateMarkup(el);
+            assert.equal(setMarkup(el, 'reported value'), true);
+            assert.equal(value, 'reported value');
+            assert.equal(writes, 2);
+        """)
+
     def test_badges_update_in_place_including_zero_without_rewriting_same_text(self):
         self.run_js("""
             let text = '', label = '', textWrites = 0, labelWrites = 0;

@@ -224,6 +224,7 @@ html[data-view="home"] #clock[hidden] { display: none; }
   clip-path: polygon(50% 0, 12% 55%, 45% 55%, 28% 100%, 90% 37%, 56% 37%, 78% 0);
   animation: weather-glimmer 9s ease-in-out infinite alternate; }
 .home[hidden] .w-weather-fx > span, .home.editing .w-weather-fx > span { animation-play-state: paused !important; }
+body:has(#sheet:not([hidden]), #settings:not([hidden])) .w-weather-fx > span { animation-play-state: paused !important; }
 @media (prefers-reduced-motion: reduce) { .w-weather-fx > span { animation: none !important; } }
 
 /* scenes and rooms */
@@ -248,6 +249,10 @@ html[data-view="home"] #clock[hidden] { display: none; }
 .home.editing .layout-grid, .tiles.editing { background-image: radial-gradient(circle, rgb(180 190 210 / .45) 1px, transparent 1px);
   background-size: calc((100% + var(--g)) / var(--cols)) calc(var(--cell) + var(--g)); padding-bottom: 88px; }
 .layout-item.invalid-drop { outline: 3px solid #e77c6f; }
+.layout-grid { position: relative; }
+.grid-drop-target { position: absolute; pointer-events: none; z-index: 4; border: 2px dashed var(--indigo);
+  border-radius: var(--r-tile); background: rgb(150 166 255 / .12); }
+.grid-drop-target.invalid { border-color: var(--ember); background: rgb(231 124 111 / .12); }
 .layout-item:focus-visible { outline: 3px solid var(--paper); }
 @keyframes wiggle { from { transform: rotate(-.6deg); } to { transform: rotate(.6deg); } }
 .widget.dragging { animation: none !important; z-index: 10; pointer-events: none; cursor: grabbing;
@@ -315,7 +320,7 @@ html[data-view="home"] #clock[hidden] { display: none; }
 .room-tile.s-1x1 .tile-tv-ctl { display: none; }
 
 /* ---------- sheet: slide away when closing ---------- */
-.sheet.closing { animation: sink .2s var(--ease) forwards; }
+.sheet.closing { animation: sink var(--motion-ui) var(--ease) forwards; }
 .scrim.closing { animation: fade-out .2s forwards; }
 @keyframes sink { to { transform: translateY(60px); opacity: 0; } }
 @keyframes fade-out { to { opacity: 0; } }

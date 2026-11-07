@@ -73,6 +73,7 @@ export function greeting(now = new Date()) {
 
 // ---------- layout ----------
 let draft = null;          // a copy being edited; null when not editing
+let renderedLayout = null;
 export const isEditing = () => !!draft;
 const layout = () => draft || store.settings.home_layout || { version: 3, widgets: [] };
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -181,6 +182,13 @@ function widgetHtml(w, i, now) {
 export function renderHome({ enter = false } = {}) {
   const el = $("#home");
   if (!el) return;
+  const key = JSON.stringify([store.me?.id, layout(), columns(), isEditing()]);
+  if (renderedLayout === key && el.querySelector(".home-grid")) {
+    tickHome();
+    refreshHomeParts();
+    return;
+  }
+  renderedLayout = key;
   const now = new Date();
   const positions = arrange(layout().widgets, columns());
   const visible = layout().widgets.filter((w) => !w.hidden).map((w) => ({ ...w, ...positions.get(w.id) }));
@@ -189,18 +197,17 @@ export function renderHome({ enter = false } = {}) {
     !visible.length ? `<div class="empty"><h2>Your Home page is empty</h2><p>Add the clock, weather, scenes or your rooms.</p>
       <button class="btn primary" data-edit-home>${svg("pencil")}Edit Home page</button></div>` : ""}${
     isEditing() ? editBar() : ""}`;
-  // Seed the owned region before its first live count update, so even that
-  // update keeps the room buttons (and their focus/scroll position) intact.
-  for (const w of visible.filter((w) => w.type === "rooms")) {
+  // Seed each owned region so an unchanged snapshot keeps its animation/focus.
+  for (const w of visible) {
     const box = el.querySelector(`.widget[data-wid="${CSS.escape(w.id)}"]`);
-    setMarkup(box, roomsWidget() + (isEditing() ? chrome(w) : ""));
+    if (box) setMarkup(box, widgetBody(w, now) + (isEditing() ? chrome(w) : ""));
   }
   updateCounts(el);
   syncWeatherEffects();
   if (enter && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
     el.querySelectorAll(".widget").forEach((w, i) => w.animate(
       [{ opacity: 0, transform: "translateY(10px) scale(.98)" }, { opacity: 1, transform: "none" }],
-      { duration: 240, delay: Math.min(i, 10) * 25, easing: "cubic-bezier(.2,.8,.2,1)", fill: "backwards" }));
+      { duration: 200, delay: Math.min(i, 6) * 20, easing: "cubic-bezier(.2,.8,.2,1)", fill: "backwards" }));
   }
 }
 

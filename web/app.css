@@ -31,6 +31,8 @@
   --text-scale: 1;
   --readout-scale: 1;
   --ease: cubic-bezier(.2, .8, .2, 1);
+  --motion-ui: 200ms;
+  --motion-press: 120ms;
   color-scheme: dark;
 }
 html[data-font-size="small"] { --text-scale: .9; --readout-scale: .95; }
@@ -68,7 +70,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* ---------- scenes (Home page widget) ---------- */
 .rooms::-webkit-scrollbar { display: none; }
 .scene { flex: none; display: flex; align-items: center; gap: 10px; height: 56px; padding: 0 20px 0 14px;
-         border-radius: var(--r-ctl); background: var(--dusk); font-weight: 500; transition: transform .15s var(--ease); }
+         border-radius: var(--r-ctl); background: var(--dusk); font-weight: 500; transition: transform var(--motion-press) var(--ease); }
 .scene .i { color: var(--lamp); }
 .scene:active { transform: scale(.96); background: var(--slate); }
 .scene.running { background: var(--slate); }

@@ -29,7 +29,7 @@
   --night: #111927; --dusk: #1e2c3d;
   --key: #29394e; --key-edge: #526379; --line: #526379; --ember: #ffb4a5;
   background: var(--control-surface); color: var(--paper); backdrop-filter: none; -webkit-backdrop-filter: none;
-  isolation: isolate; animation: speaker-rise .18s ease-out;
+  isolation: isolate; animation: speaker-rise var(--motion-ui) var(--ease);
 }
 .sheet.sheet-speaker { max-width: 640px; }
 html[data-tiles="light"] .sheet {

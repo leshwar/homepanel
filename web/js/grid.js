@@ -90,23 +90,28 @@ export function bindGridEditor(root, { enabled, items, render, error }) {
     clearTimeout(gesture.timer);
     gesture.box.classList.remove("dragging", "invalid-drop");
     gesture.box.style.transform = "";
+    gesture.marker?.remove();
+    delete root.dataset.gridGesture;
     gesture = null;
   };
   root.addEventListener("pointerdown", (e) => {
     if (!enabled() || gesture || e.button > 0) return;
     const box = e.target.closest(".layout-item");
     if (!box || e.target.closest("button:not([data-resize]), select, input")) return;
-    const p = arrange(items(), cols()).get(box.dataset.wid);
+    const positions = arrange(items(), cols()), p = positions.get(box.dataset.wid);
     const grid = box.parentElement, cs = getComputedStyle(grid), rect = box.getBoundingClientRect();
     const resizing = !!e.target.closest("[data-resize]");
     gesture = { box, id: box.dataset.wid, pointer: e.pointerId, resizing, start: p, next: p,
       x: e.clientX, y: e.clientY, grabX: e.clientX - rect.left, grabY: e.clientY - rect.top,
       stepX: parseFloat(cs.gridTemplateColumns) + parseFloat(cs.columnGap),
-      stepY: parseFloat(cs.gridAutoRows) + parseFloat(cs.rowGap), grid, cols: cols(), moved: false, active: resizing };
+      stepY: parseFloat(cs.gridAutoRows) + parseFloat(cs.rowGap), gapX: parseFloat(cs.columnGap), gapY: parseFloat(cs.rowGap),
+      others: [...positions].filter(([id]) => id !== box.dataset.wid).map(([, p]) => p),
+      grid, cols: cols(), moved: false, active: resizing };
+    root.dataset.gridGesture = "pending";
     root.setPointerCapture(e.pointerId);  // stable root: tile content may be refreshed by live state
     if (resizing) e.preventDefault();
     else gesture.timer = setTimeout(() => {
-      if (gesture) { gesture.active = true; box.classList.add("dragging"); }
+      if (gesture) { gesture.active = true; root.dataset.gridGesture = "active"; box.classList.add("dragging"); }
     }, 220);
   });
   root.addEventListener("pointermove", (e) => {
@@ -127,8 +132,19 @@ export function bindGridEditor(root, { enabled, items, render, error }) {
         y: Math.round((e.clientY - rect.top - g.grabY) / g.stepY) };
       g.box.style.transform = `translate(${e.clientX - g.x}px, ${e.clientY - g.y}px)`;
     }
-    const others = [...arrange(items(), g.cols)].filter(([id]) => id !== g.id).map(([, p]) => p);
-    g.box.classList.toggle("invalid-drop", !fits(g.next, others, g.cols));
+    const valid = fits(g.next, g.others, g.cols);
+    g.box.classList.toggle("invalid-drop", !valid);
+    if (!g.marker) {
+      g.marker = document.createElement("div");
+      g.marker.className = "grid-drop-target";
+      g.marker.setAttribute("aria-hidden", "true");
+      g.grid.append(g.marker);
+    }
+    const [w, h] = dimensions(g.next);
+    g.marker.hidden = !fits(g.next, [], g.cols);
+    g.marker.classList.toggle("invalid", !valid);
+    Object.assign(g.marker.style, { left: `${g.next.x * g.stepX}px`, top: `${g.next.y * g.stepY}px`,
+      width: `${w * g.stepX - g.gapX}px`, height: `${h * g.stepY - g.gapY}px` });
     if (e.clientY > window.innerHeight - 70) window.scrollBy(0, 16);
     else if (e.clientY < 70) window.scrollBy(0, -16);
   });
@@ -142,6 +158,11 @@ export function bindGridEditor(root, { enabled, items, render, error }) {
     suppressClick = true;
     if (!place(items(), g.cols, g.id, g.next)) error("That space is occupied or outside the grid. Move the tile or choose a smaller size.");
     render();
+    const settled = root.querySelector(`[data-wid="${CSS.escape(g.id)}"]`);
+    if (settled && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      settled.animate([{ opacity: .75, transform: "scale(.98)" }, { opacity: 1, transform: "none" }],
+        { duration: 200, easing: "cubic-bezier(.2,.8,.2,1)" });
+    }
     setTimeout(() => { suppressClick = false; }, 0);
   });
   root.addEventListener("pointercancel", cancel);

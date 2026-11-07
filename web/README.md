@@ -141,6 +141,11 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   tapping a slider track, canceling a drag or closing the panel does not send a
   command. Color-wheel taps and named presets remain explicit choices. Offline
   or unpaired panels show recovery actions instead of unusable device controls.
+  Unchanged snapshots retain Home widgets and device-panel nodes rather than
+  restarting their animations. Gesture cancellation explicitly restores reported
+  values. Weather effects pause behind open settings/control panels; saved glass
+  and backdrop choices remain unchanged. Grid editing shows a bounded drop target,
+  rejects occupied space and settles with a short reduced-motion-aware transition.
 - **Icons.** Each device gets an icon from its name ("Floor lamp", "Kettle plug") or
   kind, or one picked in Settings → device → Icon.
 - **iPhone and iPad.** `viewport-fit=cover` with `env(safe-area-inset-*)` padding,

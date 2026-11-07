@@ -241,6 +241,27 @@ class WeatherTileTests(unittest.TestCase):
         self.assertEqual(self.page.locator(".w-weather-fx").evaluate("e => e.getAnimations({subtree:true}).length"), 0)
         self.assert_scene_text_is_readable_without_backdrops()
 
+    def test_snapshots_preserve_weather_nodes_and_obscured_effects_pause_then_resume(self):
+        self.response = self.weather("cloudy", False)
+        self.enable()
+        self.page.wait_for_selector('.w-weather-fx[data-active="true"]')
+        result = self.page.evaluate("""async () => {
+          const cloud=document.querySelector('.w-fx-clouds'), animation=cloud.getAnimations()[0];
+          for(let i=0;i<8;i++) await (await import('/js/store.js')).reload();
+          return {node:cloud===document.querySelector('.w-fx-clouds'),
+            animation:animation===document.querySelector('.w-fx-clouds').getAnimations()[0]};
+        }""")
+        self.assertEqual(result, {"node": True, "animation": True})
+        self.page.evaluate("async () => (await import('/js/sheet.js')).openDevice('lr-soundbar')")
+        self.assertEqual(self.page.locator(".w-fx-clouds").evaluate("e => getComputedStyle(e).animationPlayState"), "paused")
+        self.page.click(".speaker-head [data-close]")
+        self.page.wait_for_selector("#sheet", state="hidden")
+        self.assertEqual(self.page.locator(".w-fx-clouds").evaluate("e => getComputedStyle(e).animationPlayState"), "running")
+        self.page.click("#open-settings")
+        self.assertEqual(self.page.locator(".w-fx-clouds").evaluate("e => getComputedStyle(e).animationPlayState"), "paused")
+        self.page.click("#settings [data-back]")
+        self.assertEqual(self.page.locator(".w-fx-clouds").evaluate("e => getComputedStyle(e).animationPlayState"), "running")
+
     def test_missing_loading_error_retry_and_disabled_request_never_fake_weather(self):
         self.assertEqual(self.page.locator(".w-weather-fx").count(), 0)
         self.page.wait_for_selector('[data-weather-status="off"] [data-setup-weather]')

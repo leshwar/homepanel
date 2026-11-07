@@ -8,6 +8,7 @@ import { $, esc, icon, glowVar, isMedia, kelvinToRgb, toast } from "./util.js";
 import { openSettings } from "./settings.js";
 import { remoteBody, attachRemote, remoteClick, remoteBusy, startRepeat, stopTilt, cancelRemoteInteraction, onRemoteChange } from "./remote.js";
 import { deviceHeading, powerControls, controlGestureBusy, clearControlGestures } from "./device-controls.js";
+import { setMarkup, invalidateMarkup } from "./render.js";
 
 import { vacuumBody, picked } from "./vacuum.js";
 import { effectsBody, effectsClick, attachEffects, effectsBusy, keepEffects } from "./effects.js";
@@ -36,7 +37,7 @@ export function openDevice(id) {
   clearTimeout(closing);
   $("#sheet").classList.remove("closing"); $("#scrim").classList.remove("closing");
   currentId = id;
-  render();
+  render(true);
   $("#scrim").hidden = false;
   $("#sheet").hidden = false;
   $("#sheet").focus?.();
@@ -54,20 +55,20 @@ export function closeSheet() {
     sheet.hidden = true; scrim.hidden = true;
     sheet.classList.remove("closing"); scrim.classList.remove("closing");
     if (returnFocus?.isConnected) returnFocus.focus?.({ preventScroll: true });
-  }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 190);
+  }, matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 220);
 }
 
 // Closing: forget what was shown and stop aiming by tilt (watched, so closeSheet stays simple).
 new MutationObserver(() => { if ($("#sheet").hidden) { sheetState.shownId = null; stopTilt(); } })
   .observe($("#sheet"), { attributes: true, attributeFilter: ["hidden"] });
 
-export function refreshSheet(id) {
+export function refreshSheet(id, force = false) {
   if (!currentId) return;
   if (id && id !== currentId) return;
   if (dragging || controlGestureBusy() || remoteBusy.active || effectsBusy() || speakerBusy()) { sheetState.missed = true; return; }
   sheetState.missed = false;
   if (!store.devices.has(currentId)) return closeSheet();
-  render();
+  render(force);
 }
 onRemoteChange(() => refreshSheet(), () => { if (sheetState.missed) refreshSheet(); });
 
@@ -76,7 +77,7 @@ const rgbOf = (c) => ({ r: parseInt(c.slice(1, 3), 16), g: parseInt(c.slice(3, 5
 const has = (d, c) => d.caps.includes(c);
 const isLight = (d) => d.kind === "light" || has(d, "brightness") || has(d, "color") || has(d, "color_temp");
 
-function render() {
+function render(force = false) {
   const d = store.devices.get(currentId);
   if (!d) return;
   const s = d.state || {};
@@ -92,7 +93,7 @@ function render() {
       <button class="btn primary" data-pair>${icon("link")}Pair now</button>`;
   } else if (s.online === false) {
     notes += `<div class="note warn">${esc(s.error || "This device isn't responding.")}
-      Check that it has power and is on the same Wi-Fi as the panel.</div>
+      Check its power and connection. For account-connected devices, check the device's app and account sign-in.</div>
       <button class="btn" data-refresh>${icon("search")}Try again</button>`;
   }
   const blocked = !!s.needs_pairing || s.online === false;
@@ -133,12 +134,14 @@ function render() {
   sheet.dataset.deviceId = d.id;
   sheet.setAttribute("aria-label", `${d.name} controls`);
   keepEffects(sheet, same);
-  sheet.innerHTML = `
+  const markup = `
     <div class="grab" aria-hidden="true"></div>
     ${head}
     <div class="sheet-body">${body}</div>
     <div class="meta-line"><span>${esc(d.room || "No room")}. ${esc(d.adapter_name)}${d.meta?.model ? `, ${esc(d.meta.model)}` : ""}</span>
       <button class="link" data-edit>Edit device</button></div>`;
+  if (!same || force) invalidateMarkup(sheet);
+  if (!setMarkup(sheet, markup)) return;
   sheet.scrollTop = keep.top;
   const pages = $("#sheet [data-keep-scroll]");
   if (pages) pages.scrollLeft = keep.pages;
@@ -160,12 +163,12 @@ function render() {
     mapImg.addEventListener("load", () => finishMap(true));
     if (mapImg.complete) finishMap(mapImg.naturalWidth > 0);
   }
-  if (speaker && !blocked) attachSpeaker(sheet, d, () => refreshSheet(d.id));
+  if (speaker && !blocked) attachSpeaker(sheet, d, () => refreshSheet(d.id, true));
   else if (tv) attachRemote(sheet, d);
   if (focusKey) sheet.querySelector(focusKey)?.focus({ preventScroll: true });
   if (!blocked && isLight(d)) {
     attachLight(d);
-    attachEffects(sheet, d, () => { if (sheetState.missed) refreshSheet(); });
+    attachEffects(sheet, d, () => refreshSheet(d.id, true));
   }
 }
 
@@ -274,7 +277,7 @@ function drag(el, { move, tap }) {
       if (tap && !s.moved) await tap(e.clientX, e.clientY, s);
       else if (s.moved) await move(e.clientX, e.clientY, s, true);
     }
-    if (dragging === s) { dragging = null; refreshSheet(); }
+    if (dragging === s) { dragging = null; refreshSheet(undefined, true); }
   };
   el.addEventListener("pointerup", end);
   el.addEventListener("pointercancel", end);

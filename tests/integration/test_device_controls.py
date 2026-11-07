@@ -140,6 +140,28 @@ class DevicePanelTests(unittest.TestCase):
         self.assertTrue(close.evaluate("e => e === document.activeElement"))
         self.assertEqual(self.commands, [])
 
+    def test_unchanged_snapshots_keep_panel_nodes_and_rapid_reopen_cancels_close(self):
+        page = self.page
+        self.open("lr-tv")
+        result = page.evaluate("""async () => {
+          const sheet=document.querySelector('#sheet'), button=sheet.querySelector('[data-key="OK"]');
+          button.focus(); let replaced=0;
+          const observer=new MutationObserver(records=>{replaced+=records.length;});
+          observer.observe(sheet,{childList:true});
+          for(let i=0;i<8;i++) await (await import('/js/store.js')).reload();
+          observer.disconnect();
+          return {replaced, same:button===sheet.querySelector('[data-key="OK"]'), focused:document.activeElement===button};
+        }""")
+        self.assertEqual(result, {"replaced": 0, "same": True, "focused": True})
+        page.evaluate("""async () => {
+          const sheet=await import('/js/sheet.js');
+          sheet.closeSheet(); sheet.openDevice('lr-lamp');
+        }""")
+        page.wait_for_timeout(300)
+        self.assertTrue(page.locator("#sheet").is_visible())
+        self.assertEqual(page.locator("#sheet").get_attribute("data-device-id"), "lr-lamp")
+        self.assertEqual(self.commands, [])
+
     def test_offline_pairing_and_unknown_values_do_not_offer_unsafe_actions(self):
         page = self.page
         self.open("lr-lamp")
@@ -154,6 +176,7 @@ class DevicePanelTests(unittest.TestCase):
                 self.assertIn(expected, page.locator("#sheet").inner_text())
                 if state.get("online") is False or state.get("needs_pairing"):
                     self.assertEqual(page.locator("#sheet [data-power], #bri, #wheel").count(), 0)
+                    self.assertNotIn("same Wi-Fi", page.locator("#sheet").inner_text())
                 else:
                     self.assertTrue(page.locator("#sheet [data-power]").is_disabled())
                     self.assertEqual(page.locator("#bri").get_attribute("aria-disabled"), "true")

@@ -1193,9 +1193,15 @@ class UITests(unittest.TestCase):
         page.wait_for_timeout(250)
         page.mouse.move(metrics["x"] + x * metrics["stepX"] + 55,
                         metrics["y"] + y * metrics["stepY"] + 55, steps=6)
+        self.assertEqual(page.locator(".grid-drop-target").count(), 1)
+        self.assertTrue(box.evaluate("""async el => {
+            await (await import('/js/store.js')).reload();
+            return el.isConnected && !!el.closest('[data-grid-gesture]');
+        }"""))
         if cancel:
             box.evaluate("el => el.parentElement.dispatchEvent(new PointerEvent('pointercancel', {bubbles:true, pointerId:1}))")
         page.mouse.up()
+        self.assertEqual(page.locator(".grid-drop-target").count(), 0)
 
     def placements(self, page, selector=".home-grid > .widget"):
         return page.eval_on_selector_all(selector, """els => Object.fromEntries(els.map(el =>

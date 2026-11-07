@@ -231,12 +231,13 @@ function openSorting() {
 // ---------- tiles ----------
 function renderGrid() {
   const grid = $("#grid");
+  if (grid.dataset.gridGesture) return;
   if (!store.devices.size && (store.room === "all" || store.me?.role !== "admin")) {
-    grid.innerHTML = store.me && store.me.role !== "admin"
+    setMarkup(grid, store.me && store.me.role !== "admin"
       ? `<div class="empty"><h2>No devices yet</h2><p>Ask an admin to share some devices with your profile.</p></div>`
       : `<div class="empty"><h2>Add your first device</h2>
       <p>Plugs, lights and TVs on your Wi-Fi show up here.</p>
-      <button class="btn primary" data-add-device>${icon("plus")}Add a device</button></div>`;
+      <button class="btn primary" data-add-device>${icon("plus")}Add a device</button></div>`);
     return;
   }
   const room = store.room;
@@ -245,7 +246,7 @@ function renderGrid() {
       <h2>No devices in this room yet</h2><p>Add a device or choose this room in a device's settings.</p>
       <button class="btn primary" data-add-device>${icon("plus")}Add a device</button></div>`}</section>`;
   const html = room === "all" ? roomGroups().map((r) => section(r, true)).join("") : section(room, false);
-  grid.innerHTML = html;
+  setMarkup(grid, html);
 }
 
 // The backdrop behind the glass takes on the color of the lights that are on,

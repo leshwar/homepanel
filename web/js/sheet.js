@@ -9,6 +9,7 @@ import { openSettings } from "./settings.js";
 import { remoteBody, attachRemote, remoteClick, remoteBusy, startRepeat, stopTilt, cancelRemoteInteraction, onRemoteChange } from "./remote.js";
 import { deviceHeading, powerControls, controlGestureBusy, clearControlGestures } from "./device-controls.js";
 import { setMarkup, invalidateMarkup } from "./render.js";
+import { purifierBody } from "./purifier.js";
 
 import { vacuumBody, picked } from "./vacuum.js";
 import { effectsBody, effectsClick, attachEffects, effectsBusy, keepEffects } from "./effects.js";
@@ -103,6 +104,7 @@ function render(force = false) {
     if (!speaker) body += powerControls(d);
     if (tv) body += speaker ? speakerBody(d) : remoteBody(d);
     else if (vac) body += vacuumBody(d);
+    else if (d.kind === "purifier") body += purifierBody(d);
     else if (isLight(d)) body += lightBody(d);
     else if (!has(d, "power")) body += '<p class="control-help">No controls are reported for this device.</p>';
     if (!speaker && ((has(d, "power") && typeof s.on !== "boolean")
@@ -130,6 +132,7 @@ function render(force = false) {
   sheet.classList.toggle("sheet-speaker", speaker);
   sheet.classList.toggle("sheet-vac", !tv && vac);
   sheet.classList.toggle("sheet-light", !tv && !vac && isLight(d));
+  sheet.classList.toggle("sheet-purifier", d.kind === "purifier");
   sheet.style.setProperty("--glow", glowVar(d));
   sheet.dataset.deviceId = d.id;
   sheet.setAttribute("aria-label", `${d.name} controls`);
@@ -467,6 +470,14 @@ $("#sheet").addEventListener("click", async (e) => {
   if (t("[data-energy-refresh]")) { energy.at = 0; return loadEnergy(d.id); }
   if (t("[data-power]")) { const on = !d.state?.on; return command(d.id, "power", on, { on }); }
   if (t("[data-mute]")) { const m = !d.state?.muted; return command(d.id, "mute", m, { muted: m }); }
+  if (t("[data-fan-mode]")) {
+    const value = t("[data-fan-mode]").dataset.fanMode;
+    return command(d.id, "set_fan_mode", value, { on: true, fan_mode: value });
+  }
+  if (t("[data-fan-speed]")) {
+    const value = t("[data-fan-speed]").dataset.fanSpeed;
+    return command(d.id, "set_fan_speed", value, { on: true, fan_mode: "manual", fan_speed: value });
+  }
   if (t("[data-app]")) { const a = t("[data-app]").dataset.app; return command(d.id, "launch_app", a, { app: a, input: null }); }
   if (t("[data-input]")) { const i = t("[data-input]").dataset.input; return command(d.id, "set_input", i, { input: i, app: null }); }
   if (t("[data-sound-mode]")) { const m = t("[data-sound-mode]").dataset.soundMode; return command(d.id, "set_sound_mode", m, { sound_mode: m }); }

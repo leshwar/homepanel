@@ -40,7 +40,7 @@ Every device is described the same way, whatever the brand:
 
 | Concept | Values | Defined in |
 |---|---|---|
-| **Kind** — what it is | `light`, `plug`, `switch`, `tv`, `fan`, `speaker`, `other` | `Kind` |
+| **Kind** — what it is | `light`, `plug`, `switch`, `tv`, `fan`, `purifier`, `vacuum`, `speaker`, `other` | `Kind` |
 | **Capabilities** — what it can do | `power`, `brightness`, `color`, `color_temp`, `volume`, `volume_level`, `mute`, `channel`, `remote`, `media`, `apps`, `inputs`, `sound_mode`, `effects`, `music`, `segments`, `toggles` | `Cap` |
 | **Actions** — commands you can send | `power`, `toggle`, `brightness`, `color`, `color_temp`, `volume`, `volume_up/down`, `mute`, `channel_up/down`, `key`, `launch_app`, `set_input`, `set_sound_mode`, `set_effect`, `update_effects`, `set_music`, `set_segments`, `set_toggle` | `Action` |
 | **Keys** — remote buttons | `UP DOWN LEFT RIGHT OK BACK HOME MENU SOURCE PLAY PAUSE STOP REWIND FORWARD` | `Key` |
@@ -49,6 +49,17 @@ Every device is described the same way, whatever the brand:
 The UI draws controls purely from capabilities: a device with `brightness`
 gets a slider; one with `remote` gets a D-pad. A new brand gets the full UI
 for free by declaring its capabilities.
+
+Purifiers add `fan_speed`/`fan_mode` capabilities and corresponding `set_fan_speed`
+/`set_fan_mode` actions with metadata-validated options. `air_quality` and
+`filter_life` are read-only capabilities. VeSync is an adapter, not a special API
+or UI path. Its requested provider cooldowns are enforced by service middleware
+and shared discovery/polling guards rather than adapter retry loops.
+
+The private photo library follows the same boundary: generic API/UI and
+`core/remote_photos.py` own profile grants, cache limits and private previews;
+`adapters/immich_photos.py` owns the remote protocol. Connection secrets live in
+accounts, never generic settings. No source is selected automatically.
 
 ## A command, end to end
 

@@ -46,6 +46,7 @@ and screenshots; there is no separate user-facing demo application.
 | LG | Sound bars with Wi-Fi (2018+) | Local | None, [guide](docs/DEVICE_SETUP.md#lg-sound-bars) |
 | Home Assistant | Anything it controls: lights, switches, fans, TVs, speakers | Local (Home Assistant REST API) | Long-lived access token |
 | Ecovacs Deebot | Robot vacuums | Ecovacs cloud | Ecovacs Home app login; needs Python 3.14, [guide](docs/DEVICE_SETUP.md#ecovacs-deebot-robot-vacuums) |
+| VeSync / Levoit | Core300S air purifier family | VeSync cloud | VeSync account; [setup](docs/DEVICE_SETUP.md#levoit-core300s--vesync) |
 
 Want another brand? It's usually one file — see [app/adapters/README.md](app/adapters/README.md).
 

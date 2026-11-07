@@ -37,6 +37,7 @@ web/
     ├── voice.js    the mic: speech to text in the browser (or a typed box), reply, choices, confirm
     ├── remote.js   TV and speaker remote: D-pad / touchpad / number pad, rockers, apps, pointer
     ├── speaker.js  opaque simple-speaker controls: labeled power/mute, relative volume and compact selectors
+    ├── purifier.js generic purifier modes/speeds and reported air/filter readings
     ├── device-controls.js shared headings/power states and safe release-to-apply range gestures
     ├── vacuum.js   robot vacuum: map, status, main button, rooms, Options, Maintenance
     ├── effects.js  light effects in the light sheet: searchable scenes (Scenes / DIY / Snapshots),

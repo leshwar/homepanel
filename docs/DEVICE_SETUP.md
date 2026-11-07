@@ -1,10 +1,11 @@
 # Setting up each brand
 
-General rule: set each device up in its **own app first** (so it's on your
-Wi-Fi), then add it in HomePanel → Settings → Add a device → pick the brand →
-**Search my Wi-Fi**. The panel and the devices must be on the same network
+General rule: set each device up in its **own app first**, then add it in
+HomePanel → Settings → Add a device → pick the brand → **Search**.
+Local adapters need the panel and devices on the same network
 (many routers put "guest" networks or 5 GHz/2.4 GHz bands on separate subnets —
-that's a common reason devices aren't found).
+that's a common reason local devices aren't found). Cloud-backed accounts such
+as Ecovacs and VeSync need internet/account access, not LAN proximity to the panel.
 
 To look for everything at once, tap **Search all brands** at the top of
 Add a device. It searches every brand in one go and lists what it found with
@@ -42,6 +43,33 @@ alongside current API documentation. The user's own server is not connected
 until its address and scoped key are entered here.
 
 ---
+
+## Levoit Core300S / VeSync
+
+Set up the Core300S in the VeSync app first. In **Settings → Add a device →
+VeSync / Levoit**, save the VeSync email, password and account country. Use the
+password field in the app, never chat. **Verify connection** only signs in and
+lists supported devices; it does not operate them. Then Search and add the
+purifier to a room. No Home Assistant installation is required.
+
+The adapter uses pinned [pyvesync 3.5.0](https://github.com/webdjoe/pyvesync/tree/3.5.0)
+(MIT, Python 3.11+, asynchronous API), with upstream redaction enabled and verbose
+logging disabled. Its verified Core300S model map includes Core300S and
+LAP-C301S-WJP / LAP-C302S-WUSB / LAP-C301S-WAAA / LAP-C302S-WGC. Other models are
+not offered by this focused adapter.
+
+Controls are power, the reported manual speeds, and Manual/Automatic/Sleep modes.
+Selecting a speed enters Manual mode; speed/mode commands turn the purifier on.
+Filter life, PM2.5 and air-quality labels are shown only when supported/reported.
+Unknown readings stay unknown; no extra sensors or filter-reset commands are
+invented. Cloud status polls once a minute. Provider failures receive a
+service-managed cooldown; authentication/rate-limit failures wait five minutes.
+Changing credentials clears the cooldown, but re-saving identical credentials
+does not bypass it.
+
+The account is stored in the panel's private data file, masked in the API and
+absent from public snapshots. Signing in to an actual account remains necessary;
+fake SDK/cloud tests do not establish a connection to a household purifier.
 
 ## Globe Electric and other Tuya / Smart Life devices
 

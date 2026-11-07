@@ -19,6 +19,7 @@ adapter declares.
 | `lg_soundbar.py` | LG sound bars with Wi-Fi | local TCP 9741 (AES-encrypted JSON) | cryptography |
 | `home_assistant.py` | Anything an existing Home Assistant controls | Home Assistant REST API | — |
 | `ecovacs.py` | Ecovacs Deebot robot vacuums | Ecovacs cloud (REST + MQTT) | deebot-client (Python 3.14 only) |
+| `vesync.py` | Levoit Core300S family | VeSync cloud | pyvesync 3.5.0 (async, MIT) |
 
 `shelly.py` is the simplest complete example — copy it.
 
@@ -87,6 +88,13 @@ class MyBrandAdapter(DeviceAdapter):
 | `forget(device)` | optional | Clean up tokens/connections when removed. |
 
 ### State keys the UI understands
+
+Purifiers use `Kind.PURIFIER`, `Cap.FAN_SPEED` / `Cap.FAN_MODE` and metadata
+`fan_speeds` / `fan_modes` (`[{id,name}]`). Generic `set_fan_speed` and `set_fan_mode`
+commands are validated in the service before adapters run. Read-only
+`Cap.AIR_QUALITY` and `Cap.FILTER_LIFE` expose `pm25`, `air_quality`, `filter_life`
+only when reported. Provider cooldowns are requested with `AdapterBackoff`;
+the service owns enforcement across commands, polling, setup and discovery.
 
 `on`, `brightness` (1–100), `color` `{r,g,b}`, `color_temp` (Kelvin),
 `color_mode` (`"color"` or `"temp"`; `"effect"`, `"music"` or `"segments"` for light effects), `volume` (0–100), `muted`, `app`,

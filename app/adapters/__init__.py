@@ -32,6 +32,7 @@ MODULES = [
     "lg_soundbar",  # LG sound bars with Wi-Fi
     "home_assistant",  # anything an existing Home Assistant controls
     "ecovacs",     # Ecovacs Deebot robot vacuums (cloud)
+    "vesync",      # Levoit Core300S air purifiers (cloud)
 ]
 
 for _name in MODULES:

@@ -47,6 +47,14 @@ html[data-tiles="light"] .sheet {
 :is(.speaker-head, .device-head) .icon-btn { flex: none; background: var(--key); color: var(--paper); }
 .sheet .grab::before { background: var(--line); }
 .device-power { margin-bottom: 20px; }
+.sheet-purifier { max-width: 640px; }
+.purifier-controls { display: grid; gap: 20px; }
+.purifier-controls h3 { margin: 0 0 10px; font-size: calc(18px * var(--text-scale)); }
+.purifier-options .chip { flex: 1 1 120px; min-height: 52px; }
+.purifier-readings { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+.purifier-readings > div { background: var(--dusk); padding: 14px; border-radius: 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.purifier-readings span, .purifier-readings small { color: var(--haze); }
+.purifier-readings b { font-size: calc(24px * var(--readout-scale)); overflow-wrap: anywhere; }
 .control-section { width: 100%; min-width: 0; border-top: 1px solid var(--line); margin-top: 12px; }
 .control-section > summary { min-height: 56px; padding: 14px 4px; cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
 .control-section > summary:focus-visible { outline-offset: -2px; }

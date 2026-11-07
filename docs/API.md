@@ -134,6 +134,8 @@ A device looks like:
 | `station` | id from `meta.station_actions` (e.g. `empty_dustbin`) | station |
 | `locate` | — (plays a sound) | locate |
 | `set_sound_mode` | sound mode id from `meta.sound_modes` (other ids are rejected) | sound_mode |
+| `set_fan_speed` | id from `meta.fan_speeds` | fan_speed |
+| `set_fan_mode` | id from `meta.fan_modes` | fan_mode |
 | `pointer` | `{"dx": 12, "dy": -4}` to move, `{"click": true}` to click, `{"scroll": 40}` to scroll (positive = down). Moves are clamped to ±400 per message. | pointer |
 | `set_effect` | id from `meta.effects` (a scene, DIY scene or snapshot) | effects |
 | `update_effects` | — (read the device's scene lists again; they're cached) | effects |

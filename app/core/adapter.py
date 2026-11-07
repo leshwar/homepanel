@@ -36,11 +36,12 @@ class Kind:
     SWITCH = "switch"
     TV = "tv"
     FAN = "fan"
+    PURIFIER = "purifier"
     VACUUM = "vacuum"
     SPEAKER = "speaker"        # sound bars and speakers: volume, inputs, sound modes
     OTHER = "other"
 
-    ALL = (LIGHT, PLUG, SWITCH, TV, FAN, VACUUM, SPEAKER, OTHER)
+    ALL = (LIGHT, PLUG, SWITCH, TV, FAN, PURIFIER, VACUUM, SPEAKER, OTHER)
 
 
 class Cap:
@@ -67,6 +68,10 @@ class Cap:
     MAP = "map"                # a picture of the floor plan: GET /devices/{id}/map
     POINTER = "pointer"        # an on-screen pointer the panel can move, click and scroll (touchpad)
     SOUND_MODE = "sound_mode"  # set_sound_mode (meta["sound_modes"])
+    FAN_SPEED = "fan_speed"    # meta["fan_speeds"]
+    FAN_MODE = "fan_mode"      # meta["fan_modes"]
+    AIR_QUALITY = "air_quality"  # read-only device-reported PM2.5 / quality
+    FILTER_LIFE = "filter_life"  # read-only remaining filter percentage
     # Light effects. The device lists what it has in meta; the UI draws one section per cap.
     EFFECTS = "effects"        # set_effect: meta["effects"] = [{"id","name","group"}] (group: Effect.GROUPS)
     MUSIC = "music"            # set_music: meta["music_modes"] = [{"id","name"}]; light follows sound
@@ -98,6 +103,8 @@ class Action:
     STATION = "station"                # value: id from meta["station_actions"]
     LOCATE = "locate"                  # no value
     SET_SOUND_MODE = "set_sound_mode"  # value: id from meta["sound_modes"]
+    SET_FAN_SPEED = "set_fan_speed"
+    SET_FAN_MODE = "set_fan_mode"
     SET_EFFECT = "set_effect"          # value: id from meta["effects"]
     SET_MUSIC = "set_music"            # value: {"mode": id from meta["music_modes"], "sensitivity": 0-100}
     # value: {"segments": [0-based indexes < meta["segments"]], "color": rgb, and/or "brightness": 0-100}
@@ -111,7 +118,7 @@ class Action:
     ALL = (POWER, TOGGLE, BRIGHTNESS, COLOR, COLOR_TEMP, VOLUME, VOLUME_UP,
            VOLUME_DOWN, MUTE, CHANNEL_UP, CHANNEL_DOWN, KEY, LAUNCH_APP, SET_INPUT,
            CLEAN, DOCK, CLEAN_ROOMS, SET_SUCTION, SET_CLEAN_MODE, STATION, LOCATE, SET_SOUND_MODE,
-           POINTER, SET_EFFECT, SET_MUSIC, SET_SEGMENTS, SET_TOGGLE, UPDATE_EFFECTS)
+           POINTER, SET_EFFECT, SET_MUSIC, SET_SEGMENTS, SET_TOGGLE, UPDATE_EFFECTS, SET_FAN_SPEED, SET_FAN_MODE)
 
     # Fire-and-forget actions that don't change the device's state: the service doesn't
     # broadcast or re-read the device after them, and logs them only in debug mode.
@@ -128,6 +135,7 @@ class Action:
         STATION: Cap.STATION, LOCATE: Cap.LOCATE, SET_SOUND_MODE: Cap.SOUND_MODE, POINTER: Cap.POINTER,
         SET_EFFECT: Cap.EFFECTS, SET_MUSIC: Cap.MUSIC, SET_SEGMENTS: Cap.SEGMENTS, SET_TOGGLE: Cap.TOGGLES,
         UPDATE_EFFECTS: Cap.EFFECTS,
+        SET_FAN_SPEED: Cap.FAN_SPEED, SET_FAN_MODE: Cap.FAN_MODE,
     }
 
     # What each action is, for "<device> can't …" messages.
@@ -136,7 +144,8 @@ class Action:
 
     # Actions whose value must be one of the ids the device lists in device.meta[...].
     OPTIONS = {SET_SUCTION: "suction_levels", SET_CLEAN_MODE: "clean_modes", STATION: "station_actions",
-               SET_SOUND_MODE: "sound_modes", SET_EFFECT: "effects"}
+               SET_SOUND_MODE: "sound_modes", SET_EFFECT: "effects",
+               SET_FAN_SPEED: "fan_speeds", SET_FAN_MODE: "fan_modes"}
 
 
 class Key:
@@ -252,6 +261,13 @@ class PairingRequired(AdapterError):
     """The device needs the user to approve this panel (e.g. 'Allow' prompt on a TV)."""
 
 
+class AdapterBackoff(AdapterError):
+    """A safe provider error requesting a service-managed cooldown."""
+    def __init__(self, message: str, seconds: int = 60):
+        super().__init__(message)
+        self.seconds = max(1, min(900, seconds))
+
+
 # ---------------------------------------------------------------------------
 # The interface
 # ---------------------------------------------------------------------------
@@ -277,6 +293,7 @@ class DeviceAdapter(abc.ABC):
     can_discover: ClassVar[bool] = True
     # Seconds between state refreshes. Cloud APIs should poll slowly.
     poll_interval: ClassVar[float] = 15.0
+    failure_backoff: ClassVar[int] = 0  # optional service-managed cooldown after provider failures
     # Hidden from the Add screen (used by the demo adapter).
     hidden: ClassVar[bool] = False
 

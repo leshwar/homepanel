@@ -116,10 +116,10 @@ SYN_OF = {w: g for g in SYNONYMS for w in g}
 # Words that name a kind of device: "the lights" means every light.
 KIND_WORDS = {
     Kind.LIGHT: SYNONYMS[0], Kind.TV: SYNONYMS[1], Kind.VACUUM: SYNONYMS[2], Kind.PLUG: SYNONYMS[3],
-    Kind.SPEAKER: SYNONYMS[4], Kind.FAN: {"fan"}, Kind.SWITCH: {"switch"},
+    Kind.SPEAKER: SYNONYMS[4], Kind.FAN: {"fan"}, Kind.PURIFIER: {"purifier"}, Kind.SWITCH: {"switch"},
 }
 KIND_LABEL = {Kind.TV: "TV", Kind.LIGHT: "light", Kind.PLUG: "plug", Kind.SPEAKER: "speaker",
-              Kind.VACUUM: "vacuum", Kind.FAN: "fan", Kind.SWITCH: "switch"}
+              Kind.VACUUM: "vacuum", Kind.FAN: "fan", Kind.PURIFIER: "air purifier", Kind.SWITCH: "switch"}
 
 ROOM_ALIASES = {"lounge": "living room", "family room": "living room", "sitting room": "living room",
                 "front room": "living room", "master bedroom": "bedroom"}

@@ -27,7 +27,7 @@ from collections import Counter
 from dataclasses import asdict
 from typing import Any, Awaitable, Callable
 
-from .adapter import (ADAPTERS, Action, AdapterError, Cap, Clean, Device, DeviceAdapter, Found,
+from .adapter import (ADAPTERS, Action, AdapterBackoff, AdapterError, Cap, Clean, Device, DeviceAdapter, Found,
                       Key, PairingRequired, Pointer, missing_requirements, unsupported_reason)
 from .automations import Automations
 from .history import History
@@ -232,7 +232,7 @@ async def mw_timeout_retry(ctx: CommandContext, call_next):
             last = e
             await asyncio.sleep(0.4)
     if isinstance(last, asyncio.TimeoutError):
-        raise AdapterError(f"{ctx.device.name} didn't respond. Is it powered and on Wi-Fi?")
+        raise AdapterError(f"{ctx.device.name} didn't respond. Check its power and connection.")
     raise AdapterError(f"Couldn't reach {ctx.device.name}: {last}")
 
 
@@ -254,9 +254,10 @@ class HomeService:
         self._pollers: dict[str, asyncio.Task] = {}
         self._soon: dict[str, asyncio.TimerHandle] = {}   # pushed changes waiting to refresh
         self._failures: dict[str, int] = {}
+        self._adapter_backoff: dict[str, tuple[float, str]] = {}
         self._found: dict[tuple[str, str], Found] = {}
         self._found_ips: dict[str, Counter] = {}     # per brand: how many results the last search found at each address
-        self._middleware: list[Middleware] = [mw_access, mw_validate, mw_normalize, mw_log, self._mw_in_order,
+        self._middleware: list[Middleware] = [mw_access, mw_validate, mw_normalize, mw_log, self._mw_adapter_backoff, self._mw_in_order,
                                               mw_timeout_retry]
         self._queues: dict[str, asyncio.Lock] = {}      # per device: commands run one at a time
         self._commands_done: dict[str, int] = {}        # per device: commands finished (to spot stale reads)
@@ -277,6 +278,23 @@ class HomeService:
     def use(self, middleware: Middleware, index: int | None = None) -> None:
         """Insert custom middleware. Default: just before the adapter call."""
         self._middleware.insert(len(self._middleware) if index is None else index, middleware)
+
+    async def _with_adapter_backoff(self, adapter_id, call, timeout=None):
+        until, message = self._adapter_backoff.get(adapter_id, (0, ""))
+        remaining = until - time.monotonic()
+        if remaining > 0:
+            raise AdapterError(f"{message} Retry in {int(remaining) + 1} seconds.")
+        try:
+            return await call() if timeout is None else await asyncio.wait_for(call(), timeout)
+        except (AdapterError, asyncio.TimeoutError) as error:
+            seconds = error.seconds if isinstance(error, AdapterBackoff) else getattr(ADAPTERS.get(adapter_id), "failure_backoff", 0)
+            if seconds:
+                message = str(error) if isinstance(error, AdapterError) else "The provider did not respond. Check its connection."
+                self._adapter_backoff[adapter_id] = (time.monotonic() + seconds, message)
+            raise
+
+    async def _mw_adapter_backoff(self, ctx, call_next):
+        return await self._with_adapter_backoff(ctx.device.adapter, lambda: call_next(ctx))
 
     async def _mw_in_order(self, ctx: CommandContext, call_next):
         """Commands for one device run one at a time, in the order they arrived, so the last one
@@ -636,7 +654,7 @@ class HomeService:
         # for its own fresh read), so its result stays.
         overtaken = lambda: self._commands_done.get(d.id, 0) != done   # noqa: E731
         try:
-            state = await asyncio.wait_for(adapter.refresh(d), REFRESH_TIMEOUT)
+            state = await self._with_adapter_backoff(d.adapter, lambda: adapter.refresh(d), REFRESH_TIMEOUT)
             self._failures[d.id] = 0
             if not overtaken():
                 d.state = {"online": True, **(state or {})}
@@ -673,7 +691,7 @@ class HomeService:
         a = self.adapters.get(adapter_id)
         if not a:
             raise AdapterError("This brand isn't available.")
-        found = await asyncio.wait_for(a.discover(), 25)
+        found = await self._with_adapter_backoff(adapter_id, a.discover, 25)
         self._found_ips[adapter_id] = Counter(f.config.get("ip") for f in found if f.config.get("ip"))
         out = []
         for f in found:
@@ -785,7 +803,7 @@ class HomeService:
 
     async def _setup(self, d: Device, a: DeviceAdapter) -> None:
         try:
-            await asyncio.wait_for(a.setup(d), 45)
+            await self._with_adapter_backoff(d.adapter, lambda: a.setup(d), 45)
             d.state.pop("needs_pairing", None)
             d.state["online"] = True
         except PairingRequired as e:
@@ -892,7 +910,10 @@ class HomeService:
                 if f.type == "password" and v in ("", None) and current.get(f.key):
                     continue  # blank password field = keep the saved one
                 current[f.key] = v
+        changed = current != self.store.accounts.get(adapter_id, {})
         self.store.accounts[adapter_id] = current
+        if changed:
+            self._adapter_backoff.pop(adapter_id, None)
         self.store.save()
         if adapter_id in self.adapters:
             self.adapters[adapter_id].account_changed(current)
@@ -908,7 +929,8 @@ class HomeService:
         a = self.adapters.get(adapter_id)
         if not a:
             raise AdapterError("This brand isn't available.")
-        result = await a.run_account_action(action) or {}
+        timeout = 25 if a.failure_backoff else None
+        result = await self._with_adapter_backoff(adapter_id, lambda: a.run_account_action(action), timeout) or {}
         updates = result.get("account") or {}
         if updates:
             self.store.accounts[adapter_id] = {**self.store.accounts.get(adapter_id, {}), **updates}
@@ -979,6 +1001,10 @@ class HomeService:
                     actions.append({"device_id": did, "action": Action.COLOR, "value": d.state["color"]})
                 elif d.state.get("color_mode") == "temp" and d.state.get("color_temp"):
                     actions.append({"device_id": did, "action": Action.COLOR_TEMP, "value": d.state["color_temp"]})
+                if Cap.FAN_MODE in d.caps and d.state.get("fan_mode"):
+                    actions.append({"device_id": did, "action": Action.SET_FAN_MODE, "value": d.state["fan_mode"]})
+                if Cap.FAN_SPEED in d.caps and d.state.get("fan_mode") == "manual" and d.state.get("fan_speed"):
+                    actions.append({"device_id": did, "action": Action.SET_FAN_SPEED, "value": d.state["fan_speed"]})
         sid = scene.get("id") or uuid.uuid4().hex[:8]
         item = {"id": sid, "name": scene.get("name", "Scene").strip() or "Scene",
                 "icon": scene.get("icon", "sparkle"), "actions": actions}

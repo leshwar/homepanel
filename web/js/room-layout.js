@@ -10,7 +10,7 @@ let draft = null, editingRoom = null, redraw = () => {}, cancelGesture = () => {
 export const isRoomEditing = () => draft !== null;
 const columns = () => columnsFor($("#grid").clientWidth);
 const label = (r) => r || "Other";
-const KIND_ORDER = { tv: 0, speaker: 1, light: 2, switch: 3, fan: 4, plug: 5, vacuum: 6, other: 7 };
+const KIND_ORDER = { tv: 0, speaker: 1, light: 2, switch: 3, fan: 4, purifier: 5, plug: 6, vacuum: 7, other: 8 };
 
 function roomWidgets(room) {
   const devices = devicesIn(room).sort((a, b) => (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9) || a.name.localeCompare(b.name));

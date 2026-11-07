@@ -47,6 +47,7 @@ without pytest, not an additional required pass.
 | Speaker controls | `test_speaker_ui.py`, `test_adapters.py` | `test_speaker_ui.py`, `test_fake_devices.py` (opaque panels, touch/mouse volume safety, metadata IDs and state reconciliation) |
 | Shared device panels | `test_device_controls.py` | `test_device_controls.py`, `test_ui.py` (all device types, themes/font sizes, focus, grouped controls, canceled gestures and explicit unavailable/error states) |
 | Private photo source | `test_remote_photos.py` | `test_remote_photos.py` (fake Immich HTTP, profile grants, privacy/membership filters, redirect rejection, masked setup and tile lifecycle) |
+| Purifier controls | `test_vesync.py` | `test_vesync.py` (fake async SDK, protected accounts, command validation, scenes, cloud cooldowns and responsive panel) |
 | Test-inclusion rule | `test_ci_policy.py` | CI enforces the rule on the PR diff |
 
 Read the relevant test file rather than loading the whole suite for each change.

@@ -110,6 +110,7 @@ class SpeakerControlTests(unittest.TestCase):
 
     def test_labeled_toggles_selectors_and_advanced_modes_reconcile(self):
         page = self.page
+        page.click('[data-control-section="speaker-options"] > summary')
         self.assertIn("Power: On", page.inner_text("#sheet [data-power]"))
         self.assertIn("Turn off", page.inner_text("#sheet [data-power]"))
         self.assertIn("Mute: Off", page.inner_text("#sheet [data-mute]"))
@@ -167,6 +168,7 @@ class SpeakerControlTests(unittest.TestCase):
     def test_panel_is_opaque_and_readable_at_all_sizes_and_glass_settings(self):
         from tests.integration.test_readability import ReadabilityTests
         page = self.page
+        page.click('[data-control-section="speaker-options"] > summary')
         for style in ("light", "dark"):
             for size, width, height, transparency in (("small", 393, 852, 100), ("medium", 720, 1280, 0), ("large", 1280, 720, 100)):
                 with self.subTest(style=style, size=size):

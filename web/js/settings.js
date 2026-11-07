@@ -62,10 +62,10 @@ export const row = (attrs, iconName, title, sub = "", extra = "") =>
   `<button class="row" ${attrs}>${iconName?.startsWith?.("<") ? iconName : iconName ? icon(iconName, "dim") : ""}<span class="grow">
     <span class="title">${esc(title)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}</span>${extra}${icon("right", "dim")}</button>`;
 
-export const roomAddForm = (className = "card") => `<form class="${className}" data-room-add>
-  <label class="field"><span>New room</span><input name="room" maxlength="24" placeholder="Office" required></label>
+export const roomAddForm = (className = "card", value = "") => `<form class="${className}" data-room-add>
+  <label class="field"><span>New room</span><input name="room" maxlength="24" placeholder="Office" value="${esc(value)}" required></label>
   <button class="btn primary" type="submit">Add room</button>
-  ${className === "rail-add-room" ? '<button class="btn" type="button" data-room-add-cancel>Cancel</button>' : ""}
+  <button class="btn" type="button" data-room-add-cancel>Cancel</button>
 </form>`;
 
 function searchAllResults(r) {
@@ -808,6 +808,10 @@ async function useMyLocation(btn) {
 
 root.addEventListener("click", async (e) => {
   const t = (sel) => e.target.closest(sel);
+  if (t("[data-room-add-cancel]")) {
+    const form = t("[data-room-add]"); form.reset(); syncRoomSorters(); form.querySelector("input").focus(); return;
+  }
+  if (t("[data-room-add]")) return;
   if (t("[data-edit-rooms]")) {
     if (await toggleRoomEditing("#settings")) $("#settings [data-edit-rooms]")?.focus();
     return;
@@ -977,7 +981,7 @@ root.addEventListener("submit", async (e) => {
       toast(`Watching ${v.name.trim()}'s phone`); await reload(); return render();
     }
     if (form.matches("[data-room-add]")) {
-      if (!canLeaveRoomNames()) return;
+      if (!canLeaveRoomNames(true)) return;
       const room = await addRoom(formValues(form).room);
       toast(`${room} added`); return render();
     }

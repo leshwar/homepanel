@@ -242,7 +242,11 @@ function lightBody(d) {
         aria-pressed="${!!(colorOn && cur === c.c)}"></button>`).join("")}</div>` : "";
 
   const more = strip + presets;
-  return `<div class="light ${strip ? "wide" : ""}"><div class="light-ctl">${pill}${side}</div>${more ? `<div class="light-more">${more}</div>` : ""}</div>`
+  const color = side || more ? `<details class="control-section" data-control-section="light-color">
+    <summary>${has(d, "color") ? has(d, "color_temp") ? "Color and white" : "Color" : "White tone"}</summary>
+    <div class="light-color-controls">${side}${more ? `<div class="light-more">${more}</div>` : ""}</div>
+  </details>` : "";
+  return `<div class="light"><div class="light-ctl">${pill}</div>${color}</div>`
     + effectsBody(d);
 }
 
@@ -291,7 +295,7 @@ function drag(el, { move, tap }) {
       if (tap && !s.moved) await tap(e.clientX, e.clientY, s);
       else if (s.moved) await move(e.clientX, e.clientY, s, true);
     }
-    if (dragging === s) { dragging = null; refreshSheet(undefined, true); }
+    if (dragging === s) { dragging = null; refreshSheet(undefined, s.moved || !!tap); }
   };
   el.addEventListener("pointerup", end);
   el.addEventListener("pointercancel", end);

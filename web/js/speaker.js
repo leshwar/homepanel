@@ -77,7 +77,9 @@ export function speakerBody(d) {
   return `<div class="speaker-controls"><div class="speaker-toggles">${power}${mute}</div>${volume}
     ${(!powerKnown && has(d, "power")) || (level == null && has(d, "volume_level"))
       ? '<button class="btn small" data-refresh>Refresh status</button>' : ""}
-    <fieldset class="speaker-options" ${enabled ? "" : "disabled"}>${input}${sound}${extra}</fieldset>
+    ${input || sound || extra ? `<details class="control-section" data-control-section="speaker-options">
+      <summary>${input && sound ? "Input and sound" : input ? "Input" : "Sound mode"}</summary><fieldset class="speaker-options" ${enabled ? "" : "disabled"}>${input}${sound}${extra}</fieldset>
+    </details>` : ""}
     ${d.meta?.playback_help ? `<p class="speaker-playback">${esc(d.meta.playback_help)}</p>` : ""}
   </div>`;
 }

@@ -368,7 +368,9 @@ function addWidget(w) {
   remember(draft.widgets, columns());
   closeMenu();
   renderHome();
-  $(`#home .widget[data-wid="${CSS.escape(w.id)}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  $(`#home .widget[data-wid="${CSS.escape(w.id)}"]`)?.scrollIntoView({
+    block: "nearest", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+  });
 }
 
 // ---------- events ----------

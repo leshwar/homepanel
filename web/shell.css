@@ -70,6 +70,14 @@ html[data-view="home"] .topbar { min-height: 48px; }
 .rail-add-room .btn { width: 100%; margin-top: 6px; }
 .room-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .room-tools > span { align-self: center; margin-right: auto; }
+.room-picker-label { flex: 1; min-width: 0; }
+.room-picker-label select { width: 100%; min-height: 52px; border-radius: 14px; padding: 8px 12px;
+  background: var(--dusk); color: var(--paper); border: 1px solid var(--line); font: inherit; }
+.nav-add-room { flex-basis: 100%; padding: 12px 0; }
+.rooms.editing-rooms { display: block; position: static; overflow: visible; white-space: normal; }
+.rooms.editing-rooms .room-sort-tabs { flex-direction: column; align-items: stretch; margin-block: 8px; }
+.rooms.editing-rooms .room-tab { width: 100%; grid-template-columns: minmax(0, 1fr) 48px; }
+.rooms .room[aria-current="page"] { background: var(--paper); color: var(--night); }
 .room-settings-tools { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 .room-empty { padding: 28px 12px; }
 .room-settings-row { flex-wrap: wrap; }
@@ -104,6 +112,7 @@ html[data-view="home"] .topbar { min-height: 48px; }
 .dock-bar, .dock-add { background-color: rgb(14 20 46 / max(.62, var(--glass-alpha)));
   -webkit-backdrop-filter: blur(24px) saturate(160%); backdrop-filter: blur(24px) saturate(160%);
   border: 1px solid rgb(255 255 255 / .12); box-shadow: inset 0 1px 0 rgb(255 255 255 / .14), 0 16px 40px rgb(0 4 30 / .35); }
+html:not(.glass) :is(.dock-bar, .dock-add, .editbar, .wmenu) { backdrop-filter: none; -webkit-backdrop-filter: none; }
 .dock-bar { display: flex; flex: 0 1 auto; min-width: 0; gap: 2px; padding: 5px; border-radius: 34px; }
 .dock-bar button { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
                    flex: 1 1 80px; min-width: 48px; width: 80px; height: 58px; border-radius: 29px; font-size: max(11px, calc(12px * var(--text-scale))); font-weight: 600; color: var(--haze);
@@ -225,6 +234,9 @@ html[data-view="home"] #clock[hidden] { display: none; }
   animation: weather-glimmer 9s ease-in-out infinite alternate; }
 .home[hidden] .w-weather-fx > span, .home.editing .w-weather-fx > span { animation-play-state: paused !important; }
 body:has(#sheet:not([hidden]), #settings:not([hidden])) .w-weather-fx > span { animation-play-state: paused !important; }
+body:has(#sheet:not([hidden]), #settings:not([hidden]), #ambient:not([hidden]), #frame:not([hidden])) .tile .art-spin {
+  animation-play-state: paused !important;
+}
 @media (prefers-reduced-motion: reduce) { .w-weather-fx > span { animation: none !important; } }
 
 /* scenes and rooms */
@@ -311,7 +323,7 @@ body:has(#sheet:not([hidden]), #settings:not([hidden])) .w-weather-fx > span { a
 .wmenu-list .chip { display: inline-flex; align-items: center; gap: 6px; height: 48px; }
 
 /* ---------- tiles: Apple Home–like ---------- */
-.tile { border-radius: 26px; padding: 16px; min-height: 140px; }
+.tile { border-radius: 26px; padding: 16px; min-height: 140px; cursor: pointer; }
 .tile-icon { width: 46px; height: 46px; transition: background .3s, color .3s, box-shadow .3s, transform .2s var(--ease); }
 .tile-icon .i { width: 26px; height: 26px; }
 .tile-name { font-weight: 600; font-size: calc(17px * var(--text-scale)); margin-top: 12px; }
@@ -319,6 +331,17 @@ body:has(#sheet:not([hidden]), #settings:not([hidden])) .w-weather-fx > span { a
 .tile-text { min-width: 0; }
 .tile-more { top: 4px; right: 4px; color: var(--haze); }
 .tile-more .i { width: 22px; height: 22px; }
+.tile-quick { position: absolute; top: 4px; right: 4px; width: 48px; height: 48px; border-radius: 50%;
+  display: grid; place-items: center; color: inherit; background: rgb(255 255 255 / .08); }
+.tile-quick:active { background: rgb(150 166 255 / .2); }
+.tile-open { flex: 1; min-width: 0; min-height: 48px; padding: 0; background: none; border: 0;
+  text-align: left; color: inherit; font: inherit; }
+.tile-open .tile-status { display: block; }
+.tile-open:focus-visible { outline-offset: 4px; }
+.tile:has(.tile-quick:active, .tile-tv-ctl button:active) { transform: none; }
+.tile[data-editing="true"] .tile-open { pointer-events: none; }
+.tile[data-editing="true"] :is(.tile-quick, .tile-tv-ctl) { display: none; }
+html[data-tiles="light"] .tile-quick { background: rgb(20 26 39 / .08); }
 .tile:active { transform: scale(.96); }
 .tile.pop .tile-icon { animation: pop .34s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes pop { 45% { transform: scale(1.18); } }

@@ -390,7 +390,8 @@ class SignInUITests(unittest.TestCase):
         ids = sorted(page.eval_on_selector_all("#grid .tile[data-id]", "els => [...new Set(els.map(e => e.dataset.id))]"))
         self.assertEqual(ids, SAM_SEES)
         self.assertFalse(page.locator(".dock-add").is_visible())          # members don't add devices
-        self.assertEqual(page.locator("#rail [data-add-room], [data-room-grip], #room-tools:visible").count(), 0)
+        self.assertEqual(page.locator("#rail [data-add-room], [data-room-grip], [data-edit-rooms]").count(), 0)
+        self.assertTrue(page.locator("#room-tools [data-room-picker]").is_visible())
 
         page.click("#profile-btn")                                        # switch to Owner
         page.click('[data-pm="switch"]')

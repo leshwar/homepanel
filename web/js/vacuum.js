@@ -37,13 +37,16 @@ export function vacuumBody(d) {
 
   // The one big button: pause while cleaning, resume when paused, otherwise start
   // (or clean just the rooms the user picked).
-  const main = running ? `<button class="btn primary vac-main" data-clean="pause" data-activity="paused">${icon("pause")}Pause</button>`
+  const main = !ACTIVITY[a] ? `<button class="btn primary vac-main" data-refresh>Refresh status</button>`
+    : running ? `<button class="btn primary vac-main" data-clean="pause" data-activity="paused">${icon("pause")}Pause</button>`
     : a === "paused" ? `<button class="btn primary vac-main" data-clean="resume" data-activity="cleaning">${icon("play")}Keep cleaning</button>`
     : chosen.size ? `<button class="btn primary vac-main" data-clean-rooms>${icon("play")}Clean ${chosen.size === 1 ? "1 room" : `${chosen.size} rooms`}</button>`
     : `<button class="btn primary vac-main" data-clean="start" data-activity="cleaning">${icon("play")}Start cleaning</button>`;
   const side = [
-    has(d, "dock") && a !== "docked" && a !== "returning" && `<button class="vac-act" data-dock>${icon("home")}<span>Dock</span></button>`,
     (running || a === "paused") && `<button class="vac-act" data-clean="stop" data-activity="idle">${icon("stop")}<span>Stop</span></button>`,
+  ].filter(Boolean).join("");
+  const secondary = [
+    ACTIVITY[a] && has(d, "dock") && a !== "docked" && a !== "returning" && `<button class="vac-act" data-dock>${icon("home")}<span>Dock</span></button>`,
     has(d, "locate") && `<button class="vac-act" data-locate>${icon("target")}<span>Find</span></button>`,
   ].filter(Boolean).join("");
 
@@ -77,6 +80,7 @@ export function vacuumBody(d) {
       ${lastText ? `<p class="vac-last">${esc(lastText)}</p>` : ""}
       ${s.problem ? `<div class="note warn">${esc(s.problem)}</div>` : ""}
       <div class="vac-actions">${main}${side}</div>
+      ${secondary ? `<div class="vac-secondary" role="group" aria-label="Dock and locate">${secondary}</div>` : ""}
       ${has(d, "map") ? `<div class="vac-map loading" aria-busy="true"><img src="${api.mapUrl(d.id, s.map_rev || 0)}" alt="Map of your home">
         <span role="status">Loading map...</span></div>` : ""}
     </div>

@@ -61,6 +61,7 @@ const inFlight = new Map();   // device id -> commands sent and not answered yet
 export async function command(id, action, value, optimistic = {}) {
   const d = store.devices.get(id);
   if (!d) return;
+  const profile = store.me?.id;
   const before = { ...d.state };
   d.state = { ...d.state, ...optimistic };
   inFlight.set(id, (inFlight.get(id) || 0) + 1);
@@ -71,10 +72,11 @@ export async function command(id, action, value, optimistic = {}) {
   try {
     const updated = await api.command(id, action, value);
     settle();
-    upsertDevice(updated);
+    if (store.me?.id === profile && store.devices.has(id)) upsertDevice(updated);
     return true;
   } catch (e) {
     settle();
+    if (store.me?.id !== profile || !store.devices.has(id)) return false;
     d.state = before;
     emit("device", id);
     toast(e.message, true);

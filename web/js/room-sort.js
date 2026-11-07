@@ -11,15 +11,20 @@ reducedMotion.addEventListener("change", () => syncRoomSorters());
 let dragging = false, saving = false, editingProfile = null;
 const nameDrafts = new Map();
 let refreshingNames = false;
+const hasRoomEntryDraft = () => [...document.querySelectorAll("[data-room-add] input")].some(input => input.value.trim());
+const addingRoom = () => !!document.querySelector("#rail [data-room-add], #room-tools [data-room-add]") || hasRoomEntryDraft();
 export const isSortingRooms = () => dragging || saving;
 export const isEditingRooms = () => store.me?.role === "admin" && editingProfile === store.me.id;
 export const isEditingRoomName = () => !refreshingNames && isEditingRooms()
-  && (nameDrafts.size > 0 || document.activeElement?.matches("[data-room-name]"));
+  && (nameDrafts.size > 0 || hasRoomEntryDraft() || document.activeElement?.matches("[data-room-name], [data-room-add] input"));
 // Keep a removed room's unsaved field visible until it is explicitly canceled.
 export const editableRoomNames = (rooms) => [...new Set([...rooms, ...nameDrafts.keys()])];
 
 export async function toggleRoomEditing(scope) {
   if (store.me?.role !== "admin" || isSortingRooms()) return false;
+  if (isEditingRooms() && hasRoomEntryDraft()) {
+    toast("Add or cancel the new room first.", true); return false;
+  }
   if (isEditingRooms() && !await commitNames(scope)) return false;
   editingProfile = isEditingRooms() ? null : store.me.id;
   emit("all");
@@ -40,10 +45,15 @@ export const roomNameHelp = () => `<div class="room-name-help">
   <p>Enter or Done saves names. Escape cancels a name. Save names before dragging.</p>
   <button class="btn small" type="button" data-cancel-room-names ${nameDrafts.size ? "" : "hidden"}>Cancel name edits</button></div>`;
 
-export function canLeaveRoomNames() {
-  if (!isEditingRooms() || !nameDrafts.size) return true;
-  toast("Save room names with Enter or Done, or cancel the name edits.", true);
-  return false;
+export function canLeaveRoomNames(allowEntry = false) {
+  if (!isEditingRooms()) return true;
+  if (nameDrafts.size) {
+    toast("Save room names with Enter or Done, or cancel the name edits.", true); return false;
+  }
+  if (!allowEntry && hasRoomEntryDraft()) {
+    toast("Add or cancel the new room first.", true); return false;
+  }
+  return true;
 }
 
 function refreshNames(scope, room) {
@@ -100,6 +110,7 @@ async function commitNames(scope, onlyRoom) {
 }
 
 document.addEventListener("input", (e) => {
+  if (e.target.matches("[data-room-add] input")) { syncRoomSorters(); return; }
   const input = e.target.closest("[data-room-name]");
   if (!input || !isEditingRooms() || saving) return;
   const room = input.dataset.roomName;
@@ -177,6 +188,7 @@ function keyMove(e) {
   e.preventDefault();
   e.stopPropagation();
   if (isSortingRooms() || !isEditingRooms() || !canLeaveRoomNames()) return;
+  if (addingRoom()) return toast("Add or cancel the new room before reordering.", true);
   const room = grip.dataset.roomGrip, i = store.rooms.indexOf(room);
   if (i + step < 0 || i + step >= store.rooms.length) return announce(`${room} is already ${step < 0 ? "first" : "last"}.`);
   commitOrder(() => moveRoom(room, step), room, scopeOf(grip));
@@ -193,8 +205,8 @@ export function syncRoomSorters() {
       list.removeEventListener("keydown", keyMove);
       sorters.delete(list);
     } else {
-      sorter.option("disabled", saving || !isEditingRooms() || nameDrafts.size > 0);
-      sorter.option("animation", reducedMotion.matches ? 0 : 150);
+      sorter.option("disabled", saving || !isEditingRooms() || nameDrafts.size > 0 || addingRoom());
+      sorter.option("animation", reducedMotion.matches ? 0 : 200);
     }
   }
   if (store.me?.role !== "admin") return;
@@ -207,7 +219,7 @@ export function syncRoomSorters() {
       dataIdAttr: "data-sort-room",
       group: { name: "room-order", pull: false, put: false },
       direction: list.dataset.roomSort,
-      animation: reducedMotion.matches ? 0 : 150,
+      animation: reducedMotion.matches ? 0 : 200,
       forceFallback: true,
       fallbackOnBody: true,
       fallbackTolerance: 3,
@@ -217,7 +229,7 @@ export function syncRoomSorters() {
       ghostClass: "room-sort-ghost",
       chosenClass: "room-sort-chosen",
       fallbackClass: "room-sort-drag",
-      disabled: saving || !isEditingRooms() || nameDrafts.size > 0,
+      disabled: saving || !isEditingRooms() || nameDrafts.size > 0 || addingRoom(),
       onStart() {
         dragging = true;
         expected = [...store.rooms];

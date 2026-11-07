@@ -18,6 +18,13 @@ function roomWidgets(room) {
   return devices.map((d) => saved.find((w) => w.id === d.id) || { id: d.id, size: isMedia(d) ? "2x1" : "1x1" });
 }
 
+export function roomLayoutKey(room) {
+  const editing = isRoomEditing() && room === editingRoom;
+  const items = editing ? draft.widgets : roomWidgets(room);
+  return [room, columns(), editing, saving, items,
+    items.map(w => { const d = store.devices.get(w.id); return [w.id, d?.name, d?.kind]; })];
+}
+
 export function roomTiles(room) {
   const editing = isRoomEditing() && room === editingRoom;
   const items = editing ? draft.widgets : roomWidgets(room);
@@ -28,7 +35,7 @@ export function roomTiles(room) {
       if (!d) return "";
       return `<div class="room-tile layout-item s-${p.size}" data-wid="${esc(w.id)}"
         ${editing ? `tabindex="0" aria-label="Move ${esc(d.name)} with arrow keys"` : ""}
-        style="${placementStyle(p)}">${tileHtml(d, { size: p.size })}
+        style="${placementStyle(p)}">${tileHtml(d, { size: p.size, editing })}
         ${editing ? `<button class="w-badge w-menu" data-room-options="${esc(w.id)}" aria-label="${esc(d.name)} layout options">${svg("dots")}</button>
           <button class="w-resize" data-resize aria-label="Change size of ${esc(d.name)} (now ${SIZE_NAMES[p.size]})">${svg("resize")}</button>` : ""}</div>`;
     }).join("")}</div>${editing ? `<div class="editbar" role="toolbar" aria-label="Edit room tiles">

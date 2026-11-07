@@ -28,7 +28,7 @@ web/
     ├── room-sort.js three-line room grips, touch sorting, keyboard announcements and persistence
     ├── home.js     the Home page: widgets (clock, other places' clocks, weather, scenes, rooms)
     │               and edit mode (hold to move, drag a corner to resize, hide, Done)
-    ├── tiles.js    device tiles: tap = on/off, long-press or "…" = controls (+ haptics)
+    ├── tiles.js    open-first device tiles, explicit quick actions and stable in-place updates
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
     ├── sky.js      weather from the server → html[data-sky] / [data-period] for the Sky background
     ├── weather-effects.js shared weather scenes and tile-only animation visibility
@@ -102,7 +102,9 @@ web/
 - **Navigation.** iPad and the landscape panel (≥ 768 px): a rail down the left with
   Home, All rooms, then each room in the order set in Settings → Rooms (vertical tabs),
   and "Other" only when a device has no room. Phones and the portrait panel: a floating
-  dock (Home, Rooms, Settings, +); Rooms shows the same list as tabs over the tiles.
+  dock (Home, Rooms, Settings, +); Rooms uses a native room picker. The same
+  selected room and profile remain active across orientation changes; no duplicate
+  tab strip is shown alongside the picker.
   Only rooms with devices the signed-in profile can see are listed. The chosen room is
   remembered on each screen. Home has no repeated visible brand/page headings:
   its heading remains available to screen readers, with the status count and
@@ -114,7 +116,10 @@ web/
   one name; Cancel name edits discards all unsaved names. Save or cancel names before
   dragging or navigating away. Live updates preserve text and selection while typing.
   The same mode works in portrait
-  room tabs and Settings → Rooms; focus a grip and use arrow keys for keyboard ordering.
+  mobile room list and Settings → Rooms; focus a grip and use arrow keys for keyboard ordering.
+  Add room stays inline on both navigation layouts. Names, new-room drafts and
+  caret/selection survive snapshots and viewport changes; finish or cancel an
+  unfinished entry before leaving. Normal navigation never enables dragging.
   Handles are at least 48 px and leave normal scrolling/navigation outside them alone. Order is shared
   across profiles and all room navigation; Home/All rooms/Other are not reorderable.
   Empty rooms remain visible to admins with an Add device action. Members receive
@@ -128,9 +133,12 @@ served locally from `vendor/sortablejs/Sortable.min.js` (45,478 bytes; no CDN,
 framework or build step). Its unmodified MIT license and copyright notice are
 included in `vendor/sortablejs/LICENSE`. The app retains its own room permissions,
 keyboard behavior and guarded persistence; the library only handles dragging.
-- **Tap = do the obvious thing** (toggle). Long-press or "…" = full controls (with a
-  short vibration where the browser supports it). TVs, and devices with no on/off like
-  a robot vacuum, open their controls on tap so they're never switched by accident.
+- **Every tile opens controls.** Mouse/touch activation of the body or name, and
+  Enter/Space on its native Open controls button, never issue a device command.
+  The distinct power/cleaning button and supported volume buttons are explicit
+  quick actions; they do not also open the panel. Unknown/offline actions are
+  disabled, pending commands are visible, and failures show the standard error.
+  Long-press still opens controls; layout Edit hides/disables quick actions.
 - **Device controls.** Opaque, theme-aware panels have a named status header, a
   reachable Close button and labeled Power/Mute actions where supported. TV
   navigation/volume stay primary; apps, inputs and extra keys are grouped.
@@ -158,9 +166,9 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   scroll without shrinking their touch targets.
 - **Animations** are short (150–300 ms) and only move or fade: tile press and "pop" when
   something turns on, tab and page switches, and the sheet sliding in and out.
-- **Room tabs.** A sticky bar with "All", one tab per room and "Other" (devices
-  without a room); the number on a tab is how many things are on. Swipe the grid
-  sideways to change tab; the chosen tab is remembered. Each room has a heading with
+- **Room selection.** The sidebar and mobile picker use "All rooms", named rooms
+  and "Other" (devices without a room). Swipe the grid sideways to change room;
+  the chosen room is remembered. Each room has a heading with
   what's on and a **Turn off** button for that room (the header's **All off** is
   always everything). "Other" nudges you to give its devices a room.
 - **Portrait first** (Touch Display 2 is 720×1280): Home and room tiles use 2, 4 or
@@ -197,40 +205,46 @@ colors, `--ember` warnings.
 
 `store.js` holds state and calls `emit()` on changes; `app.js` listens and
 re-renders only what changed (a single tile for device updates). User actions go
-through `store.command()`, which updates the tile instantly, calls the API, and
-reverts with an error toast if it fails. Live updates from other screens and
+through `store.command()`, with pending feedback, API reconciliation and an error
+toast if it fails. Late command results cannot restore a previous profile's hidden
+device. Live updates from other screens and
 phones arrive over Server-Sent Events. Navigation and Home room lists keep their
 DOM nodes when their structure is unchanged; count badges update in place, preserving
-focus and scroll. Updates to devices in another room don't rebuild the visible grid.
+focus and scroll. Device tiles patch attributes/text and retain action nodes;
+stable per-device SVG IDs avoid defeating markup caches. Unchanged room structures
+retain their tiles even through full snapshots. Active presses keep their intended
+action until click delivery completes.
 
 ## Device sheets
 
-Tap a tile's arrow (or long-press) for full controls. A sheet shows only what the
+Tap any tile's body/name (or long-press) for controls. A sheet shows only what the
 device can do (its `caps`):
 
-- *Lights*: a tall brightness pill (tap = on/off, drag = dim, relative like Apple Home),
-  a color wheel (the rim snaps to pure colors), a warm-to-cool slider and a few presets.
-  Dragging previews live, at most one command every 300 ms, and the final value always wins.
+- *Lights*: explicit power and a relative brightness pill are primary.
+  Color/white controls and presets expand separately, only when supported.
+  Dragging previews locally and applies on release; track taps/canceled gestures
+  send nothing. A no-op gesture does not rebuild the panel.
   Lights that list effects add Scenes (search box, grouped Scenes / DIY / Snapshots, the
   playing one highlighted, Update list), Music (mode chips and a sensitivity slider), Strip
   parts (tap parts, then a color) and Options toggles (`effects.js`).
-- *TV remote*: power, the TV's name with a "connected" dot, mute; a round D-pad with Menu,
-  Input, Exit and List around it; a switch between D-pad, touchpad (TVs with `pointer`)
+- *TV remote*: labeled power/mute, device name/status and navigation; a switch
+  between buttons, touchpad (TVs with `pointer`)
   and number pad; volume and channel rockers (hold to repeat), Home, Play/Pause, Back; and
-  swipeable pages of apps then inputs. Fits a 393×852 phone without scrolling; two columns
-  on big landscape screens. The touchpad sends pointer moves batched (one request in
+  expandable apps/inputs and extra keys. Secondary controls scroll on short screens;
+  the close control remains reachable. The touchpad sends pointer moves batched (one request in
   flight, ~30 ms apart): drag to move, tap to click, two fingers to scroll. On phones,
   **Aim** moves the pointer by tilting the phone (iOS asks for motion access first).
 - *Simple speakers and sound bars* have an opaque, theme-appropriate control panel
   independent of dashboard glass transparency. The header has status and Close;
   Power/Mute show both state and action. The volume slider uses relative drag
   and applies on release (a track tap or canceled gesture sends no command),
-  with keyboard support and native step buttons. Input and Sound mode use compact
-  selected-value controls; undocumented or format-dependent modes stay under
+  with keyboard support and native step buttons. Input and Sound mode expand
+  separately as compact selected-value controls; undocumented or format-dependent modes stay under
   Device-reported modes. Device updates do not replace a control during interaction.
   Richer speakers and TVs keep their existing transport/app controls.
-- *Robot vacuum*: map, status and battery, one main button (start, pause, keep cleaning,
-  or clean the picked rooms), rooms as chips, Options (suction, mode, station jobs) and
+- *Robot vacuum*: status and battery, one main button (start, pause, keep cleaning,
+  or clean the picked rooms), with docking/location secondary. Unknown status requests
+  a refresh instead of guessing an action. Rooms, Options (suction, mode, station jobs) and
   parts wear folded behind Maintenance.
 
 ## Adding a control for a new capability

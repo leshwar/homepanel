@@ -44,7 +44,7 @@ class RenderTests(unittest.TestCase):
         result = subprocess.run(
             [NODE, "--input-type=module", "-e",
              'import assert from "node:assert/strict";\n'
-             'const {setMarkup, updateRoomCounts, invalidateMarkup} = await import(process.argv[1]);\n' + script, module],
+             'const {setMarkup, updateRoomCounts, invalidateMarkup, syncAttributes} = await import(process.argv[1]);\n' + script, module],
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -93,7 +93,7 @@ const saveRooms = () => {}, moveRoom = () => {}, invalidateMarkup = () => {};
             assert.equal(mod.isEditingRooms(), false);
             await mod.toggleRoomEditing('#rail');
             assert.equal(mod.isEditingRooms(), true);
-            const field = room => ({dataset:{roomName:room}, closest() {return this;}});
+            const field = room => ({dataset:{roomName:room}, closest() {return this;}, matches() {return false;}});
             const input = field('Bedroom');
             const type = value => {input.value = value; handlers.input({target:input});};
             type('Kitchen');
@@ -162,6 +162,21 @@ const saveRooms = () => {}, moveRoom = () => {}, invalidateMarkup = () => {};
             assert.equal(writes, 2);
             assert.equal(setMarkup(el, 'reported value'), false);
             assert.equal(writes, 2); // a subsequent release/click flush must be a cache hit
+        """)
+
+    def test_attributes_patch_without_replacing_child_nodes(self):
+        self.run_js("""
+            const element = values => ({values, child:{},
+              get attributes(){return Object.entries(this.values).map(([name,value])=>({name,value}));},
+              hasAttribute(name){return name in this.values;},
+              getAttribute(name){return this.values[name]??null;},
+              setAttribute(name,value){this.values[name]=value;},
+              removeAttribute(name){delete this.values[name];}});
+            const current=element({class:'tile',disabled:'',title:'Old'});
+            const child=current.child;
+            syncAttributes(current,element({class:'tile on',title:'Open controls'}));
+            assert.deepEqual(current.values,{class:'tile on',title:'Open controls'});
+            assert.equal(current.child,child);
         """)
 
     def test_badges_update_in_place_including_zero_without_rewriting_same_text(self):

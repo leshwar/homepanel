@@ -46,6 +46,7 @@ without pytest, not an additional required pass.
 | Typography | `test_typography.py`, `test_service.py` | `test_typography.py` (three positions, preview/cancel/save, shared scope, font fallback and responsive layouts) |
 | Speaker controls | `test_speaker_ui.py`, `test_adapters.py` | `test_speaker_ui.py`, `test_fake_devices.py` (opaque panels, touch/mouse volume safety, metadata IDs and state reconciliation) |
 | Shared device panels | `test_device_controls.py` | `test_device_controls.py`, `test_ui.py` (all device types, themes/font sizes, focus, grouped controls, canceled gestures and explicit unavailable/error states) |
+| Unified tile/navigation interaction | `test_tile_interactions.py`, `test_ui_render.py` | `test_interactions.py`, `test_ui.py` (open-first activation, explicit quick actions, retained nodes, responsive picker/edit drafts and permissions) |
 | Private photo source | `test_remote_photos.py` | `test_remote_photos.py` (fake Immich HTTP, profile grants, privacy/membership filters, redirect rejection, masked setup and tile lifecycle) |
 | Purifier controls | `test_vesync.py` | `test_vesync.py` (fake async SDK, protected accounts, command validation, scenes, cloud cooldowns and responsive panel) |
 | Test-inclusion rule | `test_ci_policy.py` | CI enforces the rule on the PR diff |

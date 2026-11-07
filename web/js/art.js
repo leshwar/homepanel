@@ -125,19 +125,19 @@ export function artName(d) {
 // Each drawing gets its own gradient ids: many tiles are on screen at once, and a
 // light's gradient uses that tile's own --glow color.
 let seq = 0;
-export function artSvg(name, cls = "") {
+export function artSvg(name, cls = "", scope = "") {
   if (!ART[name]) return "";
-  const n = ++seq;
+  const n = scope ? `s-${[...scope].map(c => c.codePointAt(0).toString(16)).join("-")}` : ++seq;
   const body = ART[name].replace(/(id="|url\(#)(a-[\w-]+)/g, `$1$2-${n}`);
   return `<svg class="art ${cls}" viewBox="0 0 64 64" aria-hidden="true">${body}</svg>`;
 }
 
 // What goes in a tile's picture spot: {html, kind: "photo"|"art"} or null for the line icon.
-export function devicePicture(d) {
+export function devicePicture(d, scope = "") {
   if (d.picture_url) {
     const png = /\.png(\?|$)/i.test(d.picture_url.split("v=")[1] || "");
     return { kind: "photo", html: `<img class="dev-photo ${png ? "cutout" : ""}" src="${esc(d.picture_url)}" alt="" loading="lazy" draggable="false">` };
   }
   const name = artName(d);
-  return name ? { kind: "art", html: artSvg(name) } : null;
+  return name ? { kind: "art", html: artSvg(name, "", scope) } : null;
 }

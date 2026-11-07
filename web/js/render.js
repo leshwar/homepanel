@@ -3,6 +3,11 @@
 const markupByElement = new WeakMap();
 export const invalidateMarkup = (el) => markupByElement.delete(el);
 
+export function syncAttributes(current, next) {
+  for (const attr of [...current.attributes]) if (!next.hasAttribute(attr.name)) current.removeAttribute(attr.name);
+  for (const attr of next.attributes) if (current.getAttribute(attr.name) !== attr.value) current.setAttribute(attr.name, attr.value);
+}
+
 export function setMarkup(el, markup) {
   if (markupByElement.get(el) === markup) return false;
   el.innerHTML = markup;

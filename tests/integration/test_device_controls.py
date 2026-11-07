@@ -90,12 +90,16 @@ class DevicePanelTests(unittest.TestCase):
         self.open("lr-ceiling")
         page.wait_for_selector("#bri")
         before = page.inner_text("#bri-val")
+        page.locator("#bri").evaluate("e=>{window.noopBrightness=e;}")
         page.click("#bri")
         self.assertEqual(page.inner_text("#bri-val"), before)
+        page.click('[data-control-section="light-color"] > summary')
         page.click("#ct")
         self.assertEqual(self.commands, [])
+        self.assertTrue(page.locator("#bri").evaluate("e=>e===window.noopBrightness"))
         for close in (False, True):
             slider = page.locator("#bri")
+            slider.scroll_into_view_if_needed()
             box = slider.bounding_box()
             x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
             page.mouse.move(x, y); page.mouse.down()

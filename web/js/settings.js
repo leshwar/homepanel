@@ -13,6 +13,7 @@ import { DEVICE_ICONS, deviceIconName, svg } from "./icons.js";
 import { invalidateWallpapers, previewWallpaper } from "./wallpaper.js";
 import { previewTiles } from "./tone.js";
 import { devicePicture } from "./art.js";
+import { FONT_SIZES, FONT_SIZE_NAMES, previewTypography } from "./typography.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
@@ -30,7 +31,7 @@ export function openSettings(view = "home", arg = null) {
 
 function close() { $("#settings").hidden = true; stack = []; dropPreview(); }
 // Leaving Display settings without saving: back to the saved look.
-function dropPreview() { previewWallpaper(null); previewTiles(null); }
+function dropPreview() { previewWallpaper(null); previewTiles(null); previewTypography(null); }
 export const closeSettings = close;
 export function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; if (view === "add") searchAll = {}; render(); $("#settings").scrollTop = 0; }
 export function back() { if (stack.at(-1)?.view === "display") dropPreview(); stack.pop(); stack.length ? render() : close(); }
@@ -479,6 +480,14 @@ const VIEWS = {
     const opts = [[0, "Never"], [30, "30 seconds"], [60, "1 minute"], [90, "90 seconds"], [180, "3 minutes"], [600, "10 minutes"]];
     page("Display and clock", `
       <form class="card" data-display>
+        <h3>Text</h3>
+        <label class="field"><span>Font size <b id="font-size-value">${FONT_SIZE_NAMES[s.font_size || "medium"]}</b></span>
+          <input class="glass-range font-size-range" type="range" name="font_size" min="0" max="2" step="1"
+            value="${Math.max(0, FONT_SIZES.indexOf(s.font_size || "medium"))}" aria-valuetext="${FONT_SIZE_NAMES[s.font_size || "medium"]}"
+            aria-describedby="font-size-help">
+        </label>
+        <div class="font-size-labels" aria-hidden="true"><span>Small</span><span>Medium</span><span>Large</span></div>
+        <p id="font-size-help">Manrope is stored on the panel and works offline. Preview the size here, then Save to apply it to all profiles and screens.</p>
         <label class="field"><span>Show the resting clock after</span><select name="dim_after_seconds">
           ${opts.map(([v, l]) => `<option value="${v}" ${Number(s.dim_after_seconds) === v ? "selected" : ""}>${l}</option>`).join("")}
         </select><small>The screen goes dark with a dim clock so it doesn't light up the room. Touch to wake.</small></label>
@@ -888,6 +897,7 @@ root.addEventListener("submit", async (e) => {
     if (form.matches("[data-display]")) {
       const v = formValues(form);
       await api.saveSettings({ dim_after_seconds: Number(v.dim_after_seconds), clock_24h: !!v.clock_24h,
+                               font_size: FONT_SIZES[Number(v.font_size)],
                                glass_effect: !!v.glass_effect, background: v.background, clock_face: v.clock_face,
                                glass_transparency: Number(v.glass_transparency),
                                ...(v.wallpaper ? { wallpaper: v.wallpaper } : {}),
@@ -904,6 +914,12 @@ root.addEventListener("submit", async (e) => {
 root.addEventListener("input", (e) => {
   const el = e.target;
   if (!el.closest("[data-display]")) return;
+  if (el.name === "font_size") {
+    const size = FONT_SIZES[Number(el.value)];
+    previewTypography(size);
+    el.setAttribute("aria-valuetext", FONT_SIZE_NAMES[size]);
+    $("#font-size-value").textContent = FONT_SIZE_NAMES[size];
+  }
   if (el.name === "glass_transparency") {
     applyTransparency(el.value);
     const label = $("#glass-val");

@@ -21,6 +21,7 @@ import { startAuth } from "./auth.js";
 import "./profiles.js";      // Settings → Profiles
 import { roomTiles, setupRoomEditor, startRoomEditing, stopRoomEditing, isRoomEditing } from "./room-layout.js";
 import { roomGrip, syncRoomSorters, isSortingRooms } from "./room-sort.js";
+import { applyTypography } from "./typography.js";
 import { setupVoice, closeVoice, isVoiceOpen } from "./voice.js";
 
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -243,6 +244,7 @@ function renderGrid() {
 // so the whole screen gets warmer as the room does.
 function renderAmbience() {
   const root = document.documentElement;
+  applyTypography(store.settings.font_size);
   root.classList.toggle("glass", store.settings.glass_effect !== false);
   root.dataset.bg = store.settings.background || "sky";
   applyTransparency(store.settings.glass_transparency ?? 45);

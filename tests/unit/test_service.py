@@ -169,6 +169,23 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             current_viewer.reset(token)
         self.assertEqual(self.svc.snapshot()["rooms"], ["Office", "Kitchen", "Living room", "Bedroom"])
 
+    async def test_font_size_is_validated_persisted_and_shared_without_resetting_settings(self):
+        self.assertEqual(self.svc.settings()["font_size"], "medium")
+        original_profiles = copy.deepcopy(self.svc.store.profiles)
+        original_layout = copy.deepcopy(self.svc.settings()["home_layout"])
+        for size in ("small", "medium", "large"):
+            self.svc.update_settings({"font_size": size})
+            again = HomeService(self.dir, demo=True)
+            self.assertEqual(again.settings()["font_size"], size)
+            self.assertEqual(again.display_settings()["font_size"], size)
+        before = copy.deepcopy(self.svc.store.settings)
+        for invalid in ("huge", 0, None, [], {}):
+            with self.assertRaisesRegex(AdapterError, "Font size"):
+                self.svc.update_settings({"font_size": invalid, "home_name": "Should not change"})
+            self.assertEqual(self.svc.store.settings, before)
+        self.assertEqual(self.svc.store.profiles, original_profiles)
+        self.assertEqual(self.svc.settings()["home_layout"], original_layout)
+
     async def test_custom_middleware(self):
         seen = []
 

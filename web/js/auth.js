@@ -9,6 +9,7 @@ import { $, esc, icon, toast } from "./util.js";
 import { store, onChange } from "./store.js";
 import { applyTransparency } from "./glass.js";
 import { openSettings } from "./settings.js";
+import { applyTypography } from "./typography.js";
 
 let session = null;          // the last answer from /auth/session
 let hooks = {};
@@ -51,6 +52,7 @@ async function refresh(first = false) {
 // The look of the panel before anyone signs in (background, glass).
 function applyDisplay(d = {}) {
   const r = document.documentElement;
+  applyTypography(d.font_size);
   r.classList.toggle("glass", d.glass_effect !== false);
   if (d.background) r.dataset.bg = d.background;
   applyTransparency(d.glass_transparency ?? 45);

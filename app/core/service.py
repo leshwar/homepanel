@@ -47,6 +47,7 @@ COMMAND_TIMEOUT = 10.0
 BACKGROUNDS = ("sky", "ocean", "aurora", "night", "wallpaper")   # sky: follows the weather and time of day
 WALLPAPER_EVERY = (0, 15, 60, 240, 1440)             # shuffle: minutes per wallpaper
 TILE_STYLES = ("auto", "light", "dark")              # auto: contrast with the background
+FONT_SIZES = ("small", "medium", "large")
 IDLE_SCREENS = ("clock", "photos")
 CLOCK_FACES = ("digital", "analog", "words", "date", "night")
 REFRESH_TIMEOUT = 8.0
@@ -1012,6 +1013,8 @@ class HomeService:
             changes["wallpaper_every"] = every
         if "tile_style" in changes and changes["tile_style"] not in TILE_STYLES:
             raise AdapterError("Tiles should be auto, light or dark.")
+        if "font_size" in changes and changes["font_size"] not in FONT_SIZES:
+            raise AdapterError("Font size should be small, medium or large.")
         if "wallpaper_dim" in changes:
             try:
                 changes["wallpaper_dim"] = max(0, min(80, int(float(changes["wallpaper_dim"]))))
@@ -1099,7 +1102,7 @@ class HomeService:
         """The sign-in screen's look. No people, layout, or location unless signed in."""
         keys = ("home_name", "background", "glass_effect", "glass_transparency", "clock_24h", "clock_face",
                 "dim_after_seconds", "idle_screen", "frame_seconds", "frame_shuffle", "frame_clock",
-                "frame_night_clock", "temperature_unit", "tile_style")
+                "frame_night_clock", "temperature_unit", "tile_style", "font_size")
         out = {k: self.store.settings.get(k) for k in keys}
         if with_location:
             out.update({k: self.store.settings.get(k) for k in ("latitude", "longitude", "place_name", "weather_enabled")})

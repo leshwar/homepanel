@@ -11,10 +11,10 @@ html[data-role="member"] :is([data-add-device], [data-setup-weather], [data-new-
 /* ---------- avatars ---------- */
 .avatar { --av: #f2b35b; width: 36px; height: 36px; border-radius: 50%; flex: none; display: inline-grid; place-items: center;
           background: radial-gradient(circle at 32% 28%, rgb(255 255 255 / .35), transparent 60%), var(--av);
-          color: #161a22; font-weight: 700; font-size: 17px; line-height: 1;
+          color: #161a22; font-weight: 700; font-size: calc(17px * var(--text-scale)); line-height: 1;
           box-shadow: inset 0 1px 0 rgb(255 255 255 / .35), 0 6px 16px rgb(0 4 30 / .25); }
-.avatar.lg { width: 64px; height: 64px; font-size: 28px; }
-.avatar.xl { width: 96px; height: 96px; font-size: 42px; }
+.avatar.lg { width: 64px; height: 64px; font-size: calc(28px * var(--text-scale)); }
+.avatar.xl { width: 96px; height: 96px; font-size: calc(42px * var(--text-scale)); }
 .row .avatar { width: 40px; height: 40px; }
 
 .avatar-btn { padding: 0; }
@@ -27,14 +27,14 @@ html[data-role="member"] :is([data-add-device], [data-setup-weather], [data-new-
                 -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%); backdrop-filter: blur(var(--glass-blur)) saturate(150%);
                 border: 1px solid rgb(255 255 255 / .1); box-shadow: 0 20px 50px rgb(0 4 30 / .45); animation: fade .15s; }
 .profile-menu button { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 0 14px;
-                       border-radius: 14px; text-align: left; font-size: 17px; }
+                       border-radius: 14px; text-align: left; font-size: calc(17px * var(--text-scale)); }
 .profile-menu button:active, .profile-menu button:focus-visible { background: rgb(255 255 255 / .1); outline: none; }
 .profile-menu .i { color: var(--haze); }
 .pm-head { display: flex; align-items: center; gap: 14px; padding: 10px 12px 14px; border-bottom: 1px solid rgb(255 255 255 / .08);
            margin-bottom: 6px; }
-.pm-head b { display: block; font-size: 19px; font-weight: 600; }
-.pm-head span { color: var(--haze); font-size: 14px; }
-.pm-head .avatar.lg { width: 52px; height: 52px; font-size: 23px; }
+.pm-head b { display: block; font-size: calc(19px * var(--text-scale)); font-weight: 600; }
+.pm-head span { color: var(--haze); font-size: calc(14px * var(--text-scale)); }
+.pm-head .avatar.lg { width: 52px; height: 52px; font-size: calc(23px * var(--text-scale)); }
 
 /* ---------- the sign-in screen ---------- */
 .signin { position: fixed; inset: 0; z-index: 35; overflow-y: auto; animation: fade .2s;
@@ -50,18 +50,18 @@ html[data-auth="switch"] .signin { background: rgb(6 10 28 / .55);
                border: 1px solid rgb(255 255 255 / .1);
                box-shadow: inset 0 1px 0 rgb(255 255 255 / .12), 0 30px 70px rgb(0 4 30 / .4); }
 .signin-card .field, .signin-card .check, .signin-card .segmented { text-align: left; }
-.signin-head h1 { margin: 0; font-size: 34px; font-weight: 700; letter-spacing: -0.02em; }
-.signin-head p { margin: 8px auto 0; max-width: 42ch; color: var(--haze); font-size: 17px; line-height: 1.45; }
-.signin-card h2 { margin: 14px 0 4px; font-size: 26px; font-weight: 600; }
-.signin-sub { margin: 0; color: var(--haze); font-size: 17px; }
-.signin-note { display: inline-flex; align-items: center; gap: 8px; margin: 16px 0 0; color: var(--haze); font-size: 15px; }
+.signin-head h1 { margin: 0; font-size: calc(34px * var(--text-scale)); font-weight: 700; letter-spacing: -0.02em; }
+.signin-head p { margin: 8px auto 0; max-width: 42ch; color: var(--haze); font-size: calc(17px * var(--text-scale)); line-height: 1.45; }
+.signin-card h2 { margin: 14px 0 4px; font-size: calc(26px * var(--text-scale)); font-weight: 600; }
+.signin-sub { margin: 0; color: var(--haze); font-size: calc(17px * var(--text-scale)); }
+.signin-note { display: inline-flex; align-items: center; gap: 8px; margin: 16px 0 0; color: var(--haze); font-size: calc(15px * var(--text-scale)); }
 .signin-note .i { width: 18px; height: 18px; }
-.signin-hint { margin: 18px 0 0; color: var(--haze); font-size: 14px; }
-.signin-error { min-height: 22px; margin: 10px 0 6px; color: var(--ember); font-size: 16px; font-weight: 500; }
+.signin-hint { margin: 18px 0 0; color: var(--haze); font-size: calc(14px * var(--text-scale)); }
+.signin-error { min-height: 22px; margin: 10px 0 6px; color: var(--ember); font-size: calc(16px * var(--text-scale)); font-weight: 500; }
 .signin-back { position: absolute; top: 16px; left: 16px; }
 .signin-foot { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 26px; }
 .btn.wide { width: 100%; margin-top: 4px; }
-.link-btn { min-height: 48px; margin-top: 12px; padding: 0 14px; color: var(--haze); font-size: 16px; text-decoration: underline;
+.link-btn { min-height: 48px; margin-top: 12px; padding: 0 14px; color: var(--haze); font-size: calc(16px * var(--text-scale)); text-decoration: underline;
             text-underline-offset: 3px; }
 
 .avatars { display: flex; flex-wrap: wrap; justify-content: center; gap: 18px 22px; margin-top: 28px; }
@@ -69,7 +69,7 @@ html[data-auth="switch"] .signin { background: rgb(6 10 28 / .55);
                  border-radius: 22px; transition: transform .15s var(--ease), background-color .2s; }
 .avatar-choice:active { transform: scale(.95); background: rgb(255 255 255 / .06); }
 .avatar-choice:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
-.avatar-name { font-size: 17px; font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar-name { font-size: calc(17px * var(--text-scale)); font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Settings → Profiles */
 .profile-preview { display: flex; justify-content: center; margin-bottom: 14px; }
@@ -84,10 +84,10 @@ html[data-auth="switch"] .signin { background: rgb(6 10 28 / .55);
 
 @media (max-width: 480px) {
   .signin-card { padding: 28px 18px 22px; border-radius: 26px; }
-  .signin-head h1 { font-size: 30px; }
+  .signin-head h1 { font-size: calc(30px * var(--text-scale)); }
   .avatars { gap: 14px 10px; }
   .avatar-choice { width: 96px; }
-  .avatar.xl { width: 80px; height: 80px; font-size: 34px; }
+  .avatar.xl { width: 80px; height: 80px; font-size: calc(34px * var(--text-scale)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .signin, .profile-menu { animation: none; }

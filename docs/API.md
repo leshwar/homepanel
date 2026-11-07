@@ -238,7 +238,12 @@ Response (always 200 unless the body has no `text`):
 | PUT | `/settings` | admin: `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`sky` (default: follows the weather and time of day)/`ocean`/`aurora`/`night`), `home_layout` (the shared default Home page for profiles that haven't made their own, see below; `null` = the built-in default), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`), `place_name` (shown on the clock, max 40 characters), `weather_enabled` (opt-in), `temperature_unit` (`C`/`F`) |
 
 `home_layout` is one object per profile, the same on every screen that profile uses.
-`GET /state` returns the signed-in profile's own one (save it with `PUT
+`font_size` is a shared admin-managed display setting: `"small"`, `"medium"`
+(default), or `"large"`. Other values are rejected without changing settings.
+It is returned in `/state.settings` and `/auth/session.display`, including before
+sign-in, so every screen uses the same saved typography.
+
+For Home, `GET /state` returns the signed-in profile's own layout (save it with `PUT
 /profiles/me/layout`), else the shared default from `PUT /settings`, else the built-in
 default. There are no devices on Home: they're on the Rooms pages (All rooms, then one
 page per room), which only list rooms with devices the profile can see.

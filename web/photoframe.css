@@ -15,11 +15,11 @@
                 background: linear-gradient(to top, rgb(0 0 0 / .55), transparent); }
 .frame-clock { position: absolute; left: 32px; bottom: calc(28px + env(safe-area-inset-bottom)); z-index: 2;
                color: #fff; text-shadow: 0 2px 18px rgb(0 0 0 / .5); }
-.frame-clock .t { font-size: 72px; font-weight: 300; line-height: 1; letter-spacing: -0.02em;
+.frame-clock .t { font-size: calc(72px * var(--readout-scale)); font-weight: 300; line-height: 1; letter-spacing: -0.02em;
                   font-variant-numeric: tabular-nums; }
-.frame-clock .d { font-size: 20px; opacity: .85; margin-top: 8px; }
+.frame-clock .d { font-size: calc(20px * var(--text-scale)); opacity: .85; margin-top: 8px; }
 .frame-hint { position: absolute; top: 24px; left: 50%; transform: translateX(-50%); z-index: 2;
-              background: rgb(0 0 0 / .45); color: #fff; padding: 10px 18px; border-radius: 22px; font-size: 16px;
+              background: rgb(0 0 0 / .45); color: #fff; padding: 10px 18px; border-radius: 22px; font-size: calc(16px * var(--text-scale));
               opacity: 0; transition: opacity .5s; -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
 .frame-hint.show { opacity: 1; }
 .frame-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 40px;

@@ -10,7 +10,7 @@
 
 /* what you said and what the panel answered, like a short chat */
 .voice-talk { display: flex; flex-direction: column; gap: 10px; min-height: 52px; }
-.voice-bubble { margin: 0; padding: 12px 16px; border-radius: 20px; max-width: 88%; font-size: 18px; line-height: 1.35;
+.voice-bubble { margin: 0; padding: 12px 16px; border-radius: 20px; max-width: 88%; font-size: calc(18px * var(--text-scale)); line-height: 1.35;
                 overflow-wrap: anywhere; }
 .voice-bubble.you { align-self: flex-end; background: var(--paper); color: var(--night); border-bottom-right-radius: 6px; }
 .voice-bubble.you.hint { background: rgb(255 255 255 / .1); color: var(--haze); }
@@ -25,9 +25,9 @@
 .voice-choices { display: flex; flex-wrap: wrap; gap: 10px; }
 .voice-choices .chip { display: inline-flex; flex-direction: column; justify-content: center; align-items: flex-start;
                        min-height: 52px; height: auto; padding: 8px 18px; text-align: left; }
-.voice-choices .chip small { color: var(--haze); font-size: 13px; font-weight: 400; }
+.voice-choices .chip small { color: var(--haze); font-size: max(11px, calc(13px * var(--text-scale))); font-weight: 400; }
 .voice-choices .btn { display: inline-flex; align-items: center; gap: 8px; }
-.voice-try p { margin: 0 0 8px; color: var(--haze); font-size: 15px; }
+.voice-try p { margin: 0 0 8px; color: var(--haze); font-size: calc(15px * var(--text-scale)); }
 
 /* the big mic: a ring around it grows with your voice (--level 0-1) */
 .voice-controls { margin-top: auto; padding-top: 26px; display: flex; flex-direction: column; align-items: center; gap: 26px; }
@@ -42,7 +42,7 @@
 
 .voice-form { margin-top: auto; display: flex; gap: 10px; }
 .voice-form input { flex: 1; min-width: 0; height: 56px; border-radius: var(--r-ctl); border: 1px solid rgb(255 255 255 / .14);
-                    background: rgb(0 0 20 / .35); color: var(--paper); font: inherit; font-size: 18px; padding: 0 16px; }
+                    background: rgb(0 0 20 / .35); color: var(--paper); font: inherit; font-size: calc(18px * var(--text-scale)); padding: 0 16px; }
 .voice-form input:focus { outline: none; border-color: var(--indigo); }
 .voice-form .btn { height: 56px; min-width: 72px; }
 .voice-switch { align-self: center; display: inline-flex; align-items: center; gap: 8px; height: 48px; }
@@ -53,7 +53,7 @@
 .voice-sheet .btn-row { margin-top: auto; }
 .voice-sheet .btn-row .btn { display: inline-flex; align-items: center; gap: 8px; }
 
-.voice-speak { display: flex; align-items: center; gap: 10px; min-height: 48px; color: var(--haze); font-size: 15px; align-self: center; }
+.voice-speak { display: flex; align-items: center; gap: 10px; min-height: 48px; color: var(--haze); font-size: calc(15px * var(--text-scale)); align-self: center; }
 .voice-speak input { width: 22px; height: 22px; accent-color: var(--paper); }
 
 /* wide screens: a card in the middle rather than a sheet from the bottom */

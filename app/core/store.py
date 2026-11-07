@@ -21,6 +21,7 @@ DEFAULT_SETTINGS = {
     "wallpaper_every": 60,        # shuffle: minutes per wallpaper (0 = a new one only when the page opens)
     "wallpaper_dim": 25,          # darken the wallpaper this much (0–80 %) so text stays readable
     "tile_style": "auto",         # tiles: auto (light on a dark background, dark on a light one) | light | dark
+    "font_size": "medium",        # shared display typography: small | medium | large
     "idle_screen": "clock",       # what to show when idle: "clock" (resting clock) or "photos"
     "clock_face": "digital",      # resting clock face: digital | analog | words | date | night
     "frame_seconds": 15,          # photo frame: seconds per photo

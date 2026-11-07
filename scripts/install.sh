@@ -32,7 +32,6 @@ PKGS="python3 python3-venv python3-pip avahi-daemon"
 if [ "$KIOSK" = 1 ]; then
   # Chromium package name differs between releases
   if apt-cache show chromium >/dev/null 2>&1; then PKGS="$PKGS chromium"; else PKGS="$PKGS chromium-browser"; fi
-  PKGS="$PKGS fonts-ibm-plex"
 fi
 # shellcheck disable=SC2086
 sudo apt-get install -y $PKGS

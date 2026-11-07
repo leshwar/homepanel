@@ -32,6 +32,7 @@ web/
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
     ├── sky.js      weather from the server → html[data-sky] / [data-period] for the Sky background
     ├── weather-effects.js shared weather scenes and tile-only animation visibility
+    ├── typography.js shared Small/Medium/Large display preference and cancelable preview
     ├── sheet.js    bottom sheet: light controls and the TV remote
     ├── voice.js    the mic: speech to text in the browser (or a typed box), reply, choices, confirm
     ├── remote.js   TV and speaker remote: D-pad / touchpad / number pad, rockers, apps, pointer
@@ -134,7 +135,19 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   sidebar and padding). `positions` keeps separate coordinates and sizes per
   column count. Unsaved sizes derive a non-overlapping layout without rewriting
   saved positions. Room cells are at least 160 px tall for readable device labels.
-- Font: IBM Plex Sans (installed on the Pi by install.sh), falling back to Inter / system fonts.
+- **Typography.** Manrope is bundled locally (one unmodified variable font,
+  weight 200–800, 164,700 bytes) with Noto Sans/system fallbacks for other scripts
+  and missing-font recovery. No font CDN or system-wide font installation is
+  required. Display and clock has a three-position **Small / Medium / Large**
+  slider; Medium is the default. Changes preview immediately, Save persists the
+  shared panel setting for all profiles/screens, and leaving without saving restores
+  the saved size. Shared `--text-scale` and bounded `--readout-scale` tokens scale
+  existing typography without zooming the UI or reducing touch targets.
+
+Manrope is by The Manrope Project Authors, licensed under SIL OFL 1.1.
+The [source font and license](https://github.com/google/fonts/tree/b31870aff700ab7a1d74fa0c6887d95beb9e0037/ofl/manrope)
+are pinned to that revision; the license is included in `fonts/OFL.txt`.
+The font file SHA-256 is `3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6`.
 
 Color tokens (`app.css`): `--night` page, `--dusk` surfaces, `--slate` controls,
 `--paper` text, `--haze` secondary text, `--lamp` / `--jade` / `--indigo` "on"

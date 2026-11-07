@@ -29,7 +29,7 @@ once — controlled directly over your Wi-Fi.
 - **Photo frame.** A full-screen slideshow of family photos, added from any phone's browser. It can start by itself when the panel is idle, switches to a dim clock at night, and one touch goes back to the controls.
 - **Energy history.** Plugs that measure power show watts now, kWh today and a 7-day chart.
 - **Works with Home Assistant.** Already run Home Assistant? Add its lights, switches and TVs here, rooms included.
-- **Profiles and sign-in.** Everyone gets a profile with their own avatar, their own devices and their own Home page. Sign in with a quick 4–6 digit PIN on the wall panel, or an email and password on a phone. Admins add devices and change settings; members use the devices they're given. The wall panel stays signed in and goes back to the profile picker when nobody is using it.
+- **Profiles.** Everyone gets an avatar, their own devices and their own Home/room layouts. Choose a profile with one tap; optional passwords are still supported. Admins manage settings and devices; members use the devices they're given. The wall panel stays signed in without idle locking.
 - **Works from phones too.** Open `http://homepanel.local:8080` in any browser on your Wi-Fi.
 - **Built to extend.** A stable API on top, one small file per brand underneath. See [Adding a device brand](app/adapters/README.md).
 
@@ -87,7 +87,8 @@ python -m app.main --demo --debug
 ```
 
 The demo opens straight to the panel. To try sign-in and profiles too, start it
-with `python -m app.main --demo --sign-in`: Owner's PIN is 1234, Sam's is 2468
+with `python -m app.main --demo --sign-in`: choose Sam with one tap, or choose
+Owner and enter the demo password `homepanel`
 (Sam only sees the bedroom and the kitchen pendant).
 
 To control **your real devices** from your laptop (same Wi-Fi), run `make run`
@@ -95,35 +96,33 @@ To control **your real devices** from your laptop (same Wi-Fi), run `make run`
 
 ## Sign-in and profiles
 
-| Profile picker (wall panel) | PIN pad (phone) | Settings → Profiles |
-|---|---|---|
-| <img src="docs/screenshots/signin-picker.png" width="300" alt="Who's using the panel? Avatars for Owner and Sam"> | <img src="docs/screenshots/signin-pin.png" width="160" alt="Sam's avatar over a round-key PIN pad"> | <img src="docs/screenshots/profiles-settings.png" width="220" alt="List of profiles with their role, devices and sign-in, plus This screen settings"> |
+Profiles without a password open with **one tap**, with no PIN or idle lock.
+Existing profiles, devices, preferences and layouts survive upgrading; old profile
+PIN hashes are removed. Existing passwords and integration credentials are kept.
+Profiles help personalize the panel, but an unprotected admin profile is **not
+access control**: anyone who can reach the page can choose it. Keep the service on a
+trusted LAN or private Tailscale network; never expose it directly to the internet.
 
-The panel asks everyone to sign in, so a guest on your Wi-Fi, or anyone who finds
-the address, can't switch your lights or see your devices. That also makes it
-**safer to reach the panel when you're away from home** (for example over
-Tailscale or another VPN): without a session the API answers nothing but "sign in".
-It isn't a substitute for a VPN: don't expose the panel's port to the internet.
-
-- **First open after upgrading:** your devices, rooms and Home page now belong to an
-  **Owner** profile, and the panel asks you to choose a PIN or a password for it. Do
-  this on the wall panel (tick "This screen is the wall panel") or from your phone.
-- **Add people** in Settings → Profiles and sign-in: a name and colour, a PIN and/or an
-  email and password, **Admin** or **Member**, and for members "all devices" or a list.
+- **First open:** choose the **Owner** profile. Add an optional email/password in
+  Settings → Your profile if that profile needs password sign-in.
+- **Add people** in Settings → Profiles: a name and colour, optional email/password,
+  **Admin** or **Member**, and for members "all devices" or a list.
   Devices a member can't see never reach their screen: the server leaves them out.
-- **Each profile has its own Home page.** Long-press Home to arrange yours; nobody
-  else's changes. New profiles start from a shared default ("Use my Home page for new
-  profiles").
-- **The wall panel** stays signed in across restarts and goes back to the profile
-  picker after 10 minutes without a touch (change it in Settings → Profiles and sign-in;
-  the resting clock and photo frame keep running while it's locked). Tap your avatar,
-  then your PIN.
+- **Each profile has its own Home and room layouts.** Long-press Home or use its
+  pencil; in a room or Settings → Rooms, choose **Edit tiles**. Hold a tile and drop
+  it into free grid space, use its corner or options to resize, or use arrow keys
+  on a focused tile. Other tiles stay put, including empty space. Done saves and
+  Cancel restores. Layouts adapt to 2, 4 or 6 columns; each width keeps its own
+  positions and sizes. New profiles start Home from a shared default.
+- **The wall panel** stays signed in across restarts. Idle screens show the clock
+  or photos without locking; switch profiles from the avatar menu.
 - **Phones and laptops** stay signed in for 30 days after they're last used. The avatar
   at the top right switches profile or signs out.
-- PINs and passwords are stored only as scrypt hashes in `data/homepanel.json`, and sign-in
-  is limited to 8 wrong tries per 15 minutes. Forgot the only admin PIN? Stop the panel,
-  remove `"pin_hash"`/`"password_hash"` from that profile in `data/homepanel.json` (or the
-  whole `"profiles"` list) and start it again: it asks to set one up.
+- Optional passwords are stored only as scrypt hashes in `data/homepanel.json`;
+  password attempts remain rate-limited. To recover a forgotten admin password,
+  stop the panel, back up its data, remove only that profile's `password_hash` from
+  `data/homepanel.json`, then restart and choose the profile. Do not delete the
+  profile list or device data.
 
 ## Install on the Raspberry Pi
 
@@ -180,7 +179,7 @@ it: open the panel's address in Safari or Chrome. The address is shown in
 `http://192.168.1.20:8080`. (In Docker on a Mac, use your Mac's address from
 System Settings → Wi-Fi → Details, with the port you opened, e.g. `:8081`.)
 
-Sign in with your profile's PIN or email and password. Members only see the
+Choose your profile (enter its password only if one is set). Members only see the
 devices shared with them; admins manage devices and settings. Use a VPN such as
 Tailscale for access away from home—don't expose the panel's port to the internet.
 Native phone apps are planned for later (see [ROADMAP](docs/ROADMAP.md)).

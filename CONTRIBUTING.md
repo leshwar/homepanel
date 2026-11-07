@@ -9,7 +9,6 @@ git clone https://github.com/leshwar/homepanel.git
 cd homepanel
 make setup
 make dev        # http://localhost:8080 with pretend devices
-make test
 ```
 
 Using Claude Code? It picks up [CLAUDE.md](CLAUDE.md) automatically, which
@@ -37,9 +36,11 @@ request, and CI must pass. Pull requests from anyone other than the owner also
 need the owner's approval. Details: [docs/CI_AND_BRANCH_RULES.md](docs/CI_AND_BRANCH_RULES.md).
 
 1. Open an issue first for bigger changes so we can agree on the approach.
-2. Create a branch: `git checkout -b add-mybrand-adapter`.
+2. Use a feature worktree (or the app-provided worktree); keep the main clone on `main`.
 3. Write the change **with tests in both folders** (below). Update docs alongside code.
-4. Run `make lint`, `make test-unit`, `make test-integration` and `make check-tests`.
+4. Use focused tests while developing. On the final revision, run `make lint`,
+   `REQUIRE_UI_TESTS=1 make test` and `make check-tests` once. Do not also run the
+   individual full suites. Fix failures and rerun affected checks after later edits.
 5. Push and open a pull request using the template; include screenshots for UI
    changes and the device models you tested for adapter changes.
 6. CI runs lint, unit tests, integration tests and a Docker build. When it's green

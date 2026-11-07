@@ -24,6 +24,9 @@ git clone https://github.com/leshwar/homepanel.git ~/Documents/homepanel
 
 ## Start a change
 
+If the coding app already supplied an isolated worktree and feature branch, use
+that worktree; do not create a second worktree or modify the main clone.
+
 ```bash
 cd ~/Documents/homepanel
 ./scripts/dev/wt.sh new <type>/<short-name>      # e.g. feature/roku-adapter, fix/lg-volume, ui/remote-layout
@@ -47,18 +50,20 @@ Docker project name. Without Docker: `cd` into the worktree and `make setup && m
 If `make docker-*` says Docker isn't running, open Docker Desktop (`open -a Docker`)
 and wait for "Engine running".
 
-## Before opening a pull request
+## Final validation before merge
 
-Run inside the worktree:
+Use targeted tests while developing. Once the final revision is ready, run inside
+the worktree once (not after every edit or commit):
 
 ```bash
 make lint
-make test-unit
-make test-integration
+REQUIRE_UI_TESTS=1 make test   # unit + integration, including the browser
 make check-tests      # app/ or web/ changes need a test in tests/unit AND tests/integration
 ```
 
-Then `git push -u origin <branch>` and open a PR to `main`. CI runs lint, unit tests,
+Do not also run the individual full suites: `make test` already includes both.
+Fix failures and rerun affected checks; revalidate behavior changed after this pass.
+When a PR is requested, `git push -u origin <branch>` and open a PR to `main`. CI runs lint, unit tests,
 integration tests, the tests-included rule and a Docker build. Follow `CLAUDE.md` for
 architecture rules.
 

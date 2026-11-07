@@ -33,7 +33,6 @@ DEFAULT_SETTINGS = {
     "weather_enabled": False,     # opt-in: fetch weather for the location (the only non-device internet call)
     "presence": [],               # [{"name": "Asha", "ip": "192.168.1.23"}] phones to watch
     "home_layout": None,          # shared default Home page for new profiles (app/core/layout.py); None = built-in
-    "lock_after_minutes": 10,     # the wall panel goes back to the profile picker after this idle time (0 = never)
 }
 
 DEFAULT_ROOMS = ["Living room", "Bedroom", "Kitchen"]
@@ -48,7 +47,7 @@ class Store:
         self.scenes: list[dict] = []
         self.accounts: dict[str, dict] = {}
         self.automations: list[dict] = []
-        self.profiles: list[dict] = []        # app/core/profiles.py; holds PIN/password hashes
+        self.profiles: list[dict] = []        # app/core/profiles.py; holds optional password hashes
         self.settings: dict = {**DEFAULT_SETTINGS, "presence": []}
         self.load()
 

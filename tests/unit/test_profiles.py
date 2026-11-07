@@ -123,46 +123,51 @@ class ProfileTests(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.dir, ignore_errors=True)
 
-    def test_migration_creates_an_owner_and_asks_for_setup(self):
+    def test_migration_creates_an_owner_ready_to_select(self):
         layout = {"version": 1, "widgets": [{"id": "clock", "type": "clock", "size": "2x2", "hidden": False, "options": {}}]}
         self.assertTrue(self.p.migrate({"home_layout": layout}))
         self.assertFalse(self.p.migrate({}))                       # only once
         (owner,) = self.store.profiles
         self.assertEqual((owner["name"], owner["role"], owner["devices"]), ("Owner", ADMIN, "all"))
         self.assertEqual(owner["home_layout"], layout)              # today's Home page moves into the profile
-        self.assertTrue(self.p.needs_setup)
+        self.assertEqual(self.p.check_credentials({"profile_id": owner["id"]}, "ip")["id"], owner["id"])
         reloaded = Store(self.store.path)                           # saved
         self.assertEqual(reloaded.profiles[0]["id"], owner["id"])
 
-    def test_setup_sets_a_pin_once(self):
+    def test_migration_removes_only_pin_and_idle_lock_settings(self):
         self.p.migrate({})
-        with self.assertRaises(ProfileError):
-            self.p.setup({"pin": "12"})
-        self.p.setup({"pin": "1234", "name": "Asha"})
-        self.assertFalse(self.p.needs_setup)
-        self.assertEqual(self.store.profiles[0]["name"], "Asha")
-        with self.assertRaises(ProfileError):
-            self.p.setup({"pin": "9999"})
+        owner = self.store.profiles[0]
+        self.p.update(owner["id"], {"email": "me@example.com", "password": "correct horse"})
+        owner = self.store.profiles[0]
+        owner["pin_hash"] = hash_secret("1234")
+        owner["home_layout"] = {"widgets": []}
+        before = {k: v for k, v in owner.items() if k != "pin_hash"}
+        self.store.settings["lock_after_minutes"] = 2
+        self.store.accounts = {"example": {"token": "integration-secret"}}
+        self.assertTrue(self.p.migrate(self.store.settings))
+        saved = Store(self.store.path)
+        self.assertEqual(saved.profiles[0], before)
+        self.assertNotIn("lock_after_minutes", saved.settings)
+        self.assertEqual(saved.accounts, self.store.accounts)
+        self.assertFalse(self.p.migrate(self.store.settings))
 
     def test_create_rules(self):
         self.p.migrate({})
-        self.p.setup({"pin": "1234"})
-        with self.assertRaises(ProfileError):
-            self.p.create({"name": "Kid"})                          # needs a PIN or password
         with self.assertRaises(ProfileError):
             self.p.create({"name": "Kid", "pin": "12ab"})
         with self.assertRaises(ProfileError):
             self.p.create({"name": "Kid", "password": "long enough"})   # a password needs an email
         with self.assertRaises(ProfileError):
-            self.p.create({"name": "Owner", "pin": "1111"})         # names are unique
-        kid = self.p.create({"name": "Kid", "pin": "5555", "devices": ["b", "a", "a"]})
+            self.p.create({"name": "Owner"})                       # names are unique
+        kid = self.p.create({"name": "Kid", "devices": ["b", "a", "a"]})
         self.assertEqual((kid["role"], kid["devices"]), (MEMBER, ["a", "b"]))
+        self.assertEqual(self.p.check_credentials({"profile_id": kid["id"]}, "ip")["id"], kid["id"])
         with self.assertRaises(ProfileError):
             self.p.create({"name": "Kid 2", "email": "nope", "password": "long enough"})
 
     def test_public_never_has_hashes(self):
         self.p.migrate({})
-        self.p.setup({"email": "me@example.com", "password": "correct horse"})
+        self.p.update(self.p.owner()["id"], {"email": "me@example.com", "password": "correct horse"})
         for full in (True, False):
             out = json.dumps(self.p.public(self.store.profiles[0], full=full))
             self.assertNotIn("hash", out)
@@ -171,32 +176,43 @@ class ProfileTests(unittest.TestCase):
 
     def test_last_admin_stays(self):
         self.p.migrate({})
-        self.p.setup({"pin": "1234"})
         owner = self.store.profiles[0]
         with self.assertRaises(ProfileError):
             self.p.update(owner["id"], {"role": MEMBER})
         with self.assertRaises(ProfileError):
             self.p.delete(owner["id"])
-        second = self.p.create({"name": "Second", "pin": "4321", "role": ADMIN})
+        second = self.p.create({"name": "Second", "role": ADMIN})
         self.p.update(owner["id"], {"role": MEMBER})                # fine now: another admin exists
         with self.assertRaises(ProfileError):
             self.p.delete(second["id"])
 
-    def test_sign_in_with_pin_email_and_rate_limit(self):
+    def test_optional_password_is_still_required_and_rate_limited(self):
         self.p.migrate({})
-        self.p.setup({"pin": "1234", "email": "Me@Example.com", "password": "correct horse"})
+        self.p.update(self.p.owner()["id"], {"email": "Me@Example.com", "password": "correct horse"})
         pid = self.store.profiles[0]["id"]
-        self.assertEqual(self.p.check_credentials({"profile_id": pid, "pin": "1234"}, "ip1")["id"], pid)
+        self.assertEqual(self.p.check_credentials({"profile_id": pid, "password": "correct horse"}, "ip1")["id"], pid)
         self.assertEqual(self.p.check_credentials({"email": "me@example.com", "password": "correct horse"}, "ip1")["id"], pid)
         with self.assertRaises(AuthError):
             self.p.check_credentials({"email": "other@example.com", "password": "correct horse"}, "ip1")
         with self.assertRaises(AuthError):
             self.p.check_credentials({"profile_id": pid}, "ip1")
+        self.p.limiter.success("profile:" + pid)
         for _ in range(3):
             with self.assertRaises(AuthError):
-                self.p.check_credentials({"profile_id": pid, "pin": "0000"}, "ip2")
+                self.p.check_credentials({"profile_id": pid, "password": "wrong"}, "ip2")
         with self.assertRaises(RateLimited):          # this profile is now locked for a while, from anywhere
-            self.p.check_credentials({"profile_id": pid, "pin": "1234"}, "ip3")
+            self.p.check_credentials({"profile_id": pid, "password": "correct horse"}, "ip3")
+
+    def test_password_can_be_removed_without_removing_profile(self):
+        self.p.migrate({})
+        pid = self.p.owner()["id"]
+        self.p.update(pid, {"email": "me@example.com", "password": "correct horse"})
+        self.p.update(pid, {"password": None})
+        self.assertEqual(self.p.check_credentials({"profile_id": pid}, "ip")["id"], pid)
+        with self.assertRaises(AuthError):
+            self.p.check_credentials({"profile_id": "missing"}, "ip")
+        with self.assertRaises(AuthError):
+            self.p.check_credentials({"profile_id": pid, "pin": "1234"}, "ip")
 
     def test_viewer_sees(self):
         member = Viewer(profile={"id": "m", "role": MEMBER, "devices": ["a"]})
@@ -289,11 +305,6 @@ class AccessFilterTests(unittest.IsolatedAsyncioTestCase):
         await self.svc.remove_device("bd-fan")
         self.assertNotIn("bd-fan", self.svc.profiles.get("sam")["devices"])
 
-    async def test_settings_lock_after(self):
-        current_viewer.set(None)
-        self.assertEqual(self.svc.update_settings({"lock_after_minutes": "999"})["lock_after_minutes"], 240)
-
-
 # ---------------------------------------------------------------------------
 # The auth middleware, called like the server would
 # ---------------------------------------------------------------------------
@@ -303,8 +314,7 @@ class MiddlewareTests(unittest.TestCase):
         self.dir = tempfile.mkdtemp()
         self.store, self.p = make_profiles(self.dir)
         self.p.migrate({})
-        self.p.setup({"pin": "1234"})
-        self.member = self.p.create({"name": "Kid", "pin": "5555", "devices": ["bd-lamp"]})
+        self.member = self.p.create({"name": "Kid", "devices": ["bd-lamp"]})
         self.service = types.SimpleNamespace(profiles=self.p)
         self.seen = []
 
@@ -346,12 +356,13 @@ class MiddlewareTests(unittest.TestCase):
             self.assertEqual(self.call("GET" if "session" in path or "health" in path else "POST", path)[0], 200)
         self.assertEqual(self.call("GET", "/index.html")[0], 200)        # the UI's files are public
 
-    def test_setup_flag_before_anyone_has_a_pin(self):
+    def test_new_panel_asks_only_to_choose_a_profile(self):
         store, p = make_profiles(tempfile.mkdtemp(dir=self.dir))
         p.migrate({})
         self.service = types.SimpleNamespace(profiles=p)
         status, body = self.call("GET", "/api/v1/state")
-        self.assertEqual((status, body["setup"]), (401, True))
+        self.assertEqual((status, body["signin"]), (401, True))
+        self.assertNotIn("setup", body)
 
     def test_member_rules(self):
         token, _ = self.token_for(self.member["id"])
@@ -371,11 +382,17 @@ class MiddlewareTests(unittest.TestCase):
         for method, path in (("PUT", "/api/v1/settings"), ("GET", "/api/v1/profiles"), ("POST", "/api/v1/devices/lr-tv/command")):
             self.assertEqual(self.call(method, path, token)[0], 200)
 
-    def test_locked_panel_keeps_only_the_clock_and_photos(self):
+    def test_old_locked_panel_session_is_usable_after_upgrade(self):
         token, s = self.token_for(self.store.profiles[0]["id"], panel=True)
-        self.p.sessions.update(s, locked=True)
+        with open(self.p.sessions.path) as f:
+            saved = json.load(f)
+        saved["sessions"][0]["locked"] = True
+        with open(self.p.sessions.path, "w") as f:
+            json.dump(saved, f)
+        self.p.sessions = Sessions(self.p.sessions.path)
         status, body = self.call("GET", "/api/v1/state", token)
-        self.assertEqual((status, body["locked"]), (401, True))
+        self.assertEqual(status, 200)
+        self.assertTrue(self.seen[-1].session.panel)
         for path in ("/api/v1/weather", "/api/v1/photos", "/api/v1/photos/abc/image"):
             self.assertEqual(self.call("GET", path, token)[0], 200, path)
 

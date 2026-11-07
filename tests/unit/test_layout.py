@@ -5,7 +5,8 @@ import unittest
 from types import SimpleNamespace as Dev
 
 from app.core.adapter import AdapterError
-from app.core.layout import SIZES, VERSION, WIDGET_TYPES, LayoutError, clean_layout, default_layout, migrate_layout
+from app.core.layout import SIZES, VERSION, WIDGET_TYPES, LayoutError, clean_layout, clean_room_layout, default_layout, migrate_layout
+from app.core.profiles import Viewer, current_viewer
 from app.core.service import BACKGROUNDS, HomeService
 
 
@@ -26,6 +27,25 @@ class DefaultLayoutTests(unittest.TestCase):
 
 
 class CleanLayoutTests(unittest.TestCase):
+    def test_responsive_positions_keep_empty_space_and_sizes(self):
+        positions = {"2": {"x": 0, "y": 8, "size": "2x2"}, "6": {"x": 5, "y": 0, "size": "1x1"}}
+        widget = {"id": "c", "type": "clock", "positions": positions}
+        self.assertEqual(self.ok([widget])[0]["positions"], positions)
+        room = clean_room_layout({"widgets": [{"id": "lamp", "positions": positions}]})
+        self.assertEqual(room["widgets"][0]["positions"], positions)
+
+    def test_rejects_invalid_positions_and_overlaps_for_home_and_rooms(self):
+        for clean, kind in ((clean_layout, {"type": "clock"}), (clean_room_layout, {})):
+            a = {"id": "a", **kind, "positions": {"4": {"x": 0, "y": 0, "size": "2x2"}}}
+            for p in ({"x": 1, "y": 1, "size": "1x1"}, {"x": 3, "y": 0, "size": "2x1"},
+                      {"x": -1, "y": 0, "size": "1x1"}, {"x": 0, "y": 200, "size": "1x1"},
+                      {"x": True, "y": 0, "size": "1x1"}, {"x": 0, "y": 0.5, "size": "1x1"},
+                      {"x": 0, "y": 0, "size": "9x9"}):
+                with self.subTest(clean=clean.__name__, position=p), self.assertRaises(LayoutError):
+                    clean({"widgets": [a, {"id": "b", **kind, "positions": {"4": p}}]})
+            with self.assertRaises(LayoutError):
+                clean({"widgets": [{"id": "a", **kind, "positions": {"3": {"x": 0, "y": 0, "size": "1x1"}}}]})
+
     def ok(self, widgets):
         return clean_layout({"widgets": widgets})["widgets"]
 
@@ -114,6 +134,28 @@ class LayoutSettingsTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AdapterError):
             self.svc.update_settings({"home_layout": {"widgets": [{"id": "x", "type": "rocket"}]}})
         self.assertEqual(self.svc.snapshot()["settings"]["home_layout"], before)
+
+    async def test_room_layout_is_per_profile_and_survives_restart(self):
+        token = current_viewer.set(Viewer(self.svc.profiles.get("sam")))
+        self.addCleanup(current_viewer.reset, token)
+        layout = {"widgets": [{"id": "bd-lamp", "size": "1x1",
+                              "positions": {"4": {"x": 2, "y": 5, "size": "2x2"}}}]}
+        saved = self.svc.save_my_room_layout("Bedroom", layout)["room_layouts"]
+        self.assertEqual(saved["Bedroom"]["widgets"][0]["positions"], layout["widgets"][0]["positions"])
+        again = HomeService(self.dir, demo=True)
+        self.assertEqual(again.profiles.get("sam")["room_layouts"], saved)
+        current_viewer.set(Viewer(self.svc.profiles.get("owner")))
+        self.assertEqual(self.svc.settings()["room_layouts"], {})
+        current_viewer.set(Viewer(self.svc.profiles.get("sam")))
+        for room, did in (("Bedroom", "lr-tv"), ("Bedroom", "kt-pendant"), ("missing", "bd-lamp")):
+            with self.assertRaises(AdapterError):
+                self.svc.save_my_room_layout(room, {"widgets": [{"id": did}]})
+        self.assertEqual(self.svc.settings()["room_layouts"], saved)
+        self.svc.profiles.update("sam", {"devices": ["bd-fan"]})
+        current_viewer.set(Viewer(self.svc.profiles.get("sam")))
+        self.assertEqual(self.svc.settings()["room_layouts"]["Bedroom"]["widgets"], [])
+        self.svc.save_my_room_layout("Bedroom", None)
+        self.assertEqual(self.svc.settings()["room_layouts"], {})
 
 
 if __name__ == "__main__":

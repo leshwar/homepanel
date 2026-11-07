@@ -24,11 +24,33 @@ Cloud devices (Govee plugs, Home Assistant) and devices added by IP address work
 
 Practical routine on a Mac:
 
-1. Find devices once with the native app (`make run` → Settings → Add a device → Search).
-   Note each device's IP address (shown in the search results), or reserve IPs in your router.
-2. Run the Docker version (below) and add the same devices with **Add by IP address**
-   (Govee plugs and Home Assistant: just add the key or token).
-3. Final check on the real Pi.
+1. Prefer one native real-device server (`make run`, port 8080) for daily use and
+   LAN discovery. The Docker demo is optional, not a required backend.
+2. Use `make docker-demo` on 8081 only when testing or comparing a branch. It runs
+   pretend devices with separate temporary data; it is not the 8080 server's UI.
+3. If choosing Docker for production, use the `homepanel` service (not `demo`),
+   preserve the real data volume, and verify device discovery/control before switching.
+   Do not run native and Docker production servers against the same writable data.
+
+## One deployment with private Tailscale access
+
+Native versus Docker does not determine whether private remote access works.
+With Tailscale already installed on the host, **Serve** can proxy either the native
+localhost port or a Docker-published localhost port. For a chosen native 8080
+deployment, the documented command is `tailscale serve --bg 8080`: tailnet-only
+HTTPS, governed by tailnet access rules. A container sidecar is not necessary.
+This is configuration guidance, not something `make run` or the demo enables.
+
+Keep clients restricted to the people/devices that should control the home.
+Password-free profiles are personalization, not an authentication barrier.
+Do not use Funnel (public access), router port forwarding, or expose the service
+to the public internet. Serve does not itself close an existing LAN listener.
+Keep LAN access if the wall panel needs it, or deliberately bind to loopback if
+all clients will use Tailscale; assess that separately before changing networking.
+
+References: [Tailscale Serve](https://tailscale.com/docs/features/tailscale-serve),
+[private Docker access](https://tailscale.com/docs/solutions/host-private-server-docker),
+[Docker host networking](https://docs.docker.com/engine/network/drivers/host/).
 
 ## Install Docker on the Mac
 

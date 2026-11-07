@@ -27,7 +27,7 @@ export function tileHtml(d, { size = "", ctx = "rooms", sub = "" } = {}) {
   const on = isOn(d);
   const offline = s.online === false || s.needs_pairing;
   const level = d.kind === "light" && s.brightness ? Math.max(0.15, s.brightness / 100) : 1;
-  const wide = ctx === "rooms" ? isMedia(d) : size !== "1x1" && size !== "";
+  const wide = size ? size !== "1x1" : ctx === "rooms" && isMedia(d);
   const cls = ["tile", on && "on", offline && "offline", store.busy.has(d.id) && "busy", wide && "wide"]
     .filter(Boolean).join(" ");
   const status = statusText(d);

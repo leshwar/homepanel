@@ -4,7 +4,7 @@
 ## Tests (required for changes to app/ or web/)
 - [ ] Unit test added/updated in `tests/unit/`
 - [ ] Integration test added/updated in `tests/integration/`
-- [ ] `make test-unit` and `make test-integration` pass locally
+- [ ] `REQUIRE_UI_TESTS=1 make test` passes on the final revision (unit + integration, once)
 - [ ] `make lint` passes
 
 ## Checked by hand

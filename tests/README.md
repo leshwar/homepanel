@@ -1,58 +1,59 @@
-# tests/
+# Tests
 
-Two suites, in two folders. CI runs both on every pull request, and a pull
-request that changes product code (`app/`, `web/`) **must add or change a test
-in each folder** or it's rejected (see `scripts/ci/check_tests_included.py`).
+Keep coverage; avoid redundant runs and reading unrelated tests. CI requires a
+change in **both** `tests/unit/` and `tests/integration/` for product changes
+(`app/` or `web/`). The rule lives in `scripts/ci/check_tests_included.py`.
+
+## Development and final validation
+
+During development, run the smallest relevant selection:
 
 ```bash
-make test-unit          # fast, no network or browser
-make test-integration   # real server, simulated devices, real browser
-make test               # both
-python -m unittest discover -s tests -t .   # both, without pytest
+.venv/bin/python -m pytest -q tests/unit/test_layout.py -k positions
+.venv/bin/python -m pytest -q tests/integration/test_ui.py -k edit_home_page
 ```
 
-## tests/unit/ — logic in isolation
+Once the final revision is ready for merge, run one complete pass:
 
-No sockets, servers or browsers. The JavaScript rendering helper tests use Node.js
-with fake elements (no npm packages); install Node to run them locally. CI installs
-Node explicitly. Node is not required to run the panel.
+```bash
+make lint
+REQUIRE_UI_TESTS=1 make test
+make check-tests
+```
 
-| File | Covers |
-|---|---|
-| `test_service.py` | Service layer: middleware (validate, normalize, retry), commands, All off with `keep_on`, scenes, adding devices, persistence and file permissions, events, secret masking. Includes a fake adapter proving a new brand plugs in without other changes. |
-| `test_adapters.py` | Every adapter's metadata contract, TV key mappings, LG sound bar wire format and state parsing, Tuya color maths, Govee capability parsing, color helpers. |
-| `test_geolocate.py` | "Use my location" against faked lookup services: parsing each service, place names, rounding before sending, fallback order, offline and rate-limited errors. |
-| `test_layout.py` | The Home page layout: the default (clocks for India and the US, rooms, no devices), what a saved layout may contain, dropping old device widgets (and migrating saved layouts on start), saving it in settings, the Sky default. |
-| `test_weather.py` | Weather for the resting clock against a fake source: parsing, opt-in, rounded location, caching, back-off and stale readings, place name and unit settings. |
-| `test_wallpapers.py` | Wallpapers and device pictures: TIFF from a Mac converted for browsers (and kept as PNG when transparent), sizes for orientation, wallpaper settings checked, deleting the shown wallpaper, device photos made small and cleaned up with the device, members can look but not change. |
-| `test_automations_energy.py` | Sunrise/sunset maths, energy integration, presence events, schedules (fire once, day/window rules, validation, presence → all off), demo energy history. |
-| `test_profiles.py` | Profiles and sign-in: scrypt hashing, rate limits (with a fake clock), sessions (saved as hashes, expiry, the long-lived wall panel), migration to an Owner profile, profile rules (PIN format, last admin), what a member sees (snapshot, commands, all off, scenes, events, per-profile layouts), and the auth middleware called directly (401 / 403 / hidden device 404 / locked panel / demo without sign-in). |
-| `test_voice.py` | Voice commands: a table of sentences mapped to commands (power, rooms, numbers and percentages, colors, TV, sound bar, vacuum rooms, scenes, questions), synonyms and misspellings, "Which lamp?" choices that resolve, a yes before risky commands, unknown phrases, and the runner going through the service middleware. |
-| `test_light_effects.py` | Light effects: parsing Govee's recorded capability and scene answers (`tests/fixtures/govee`), the control payloads for scenes, DIY scenes, snapshots, music, strip parts and toggles, reading the lists once and caching them (and retrying a failed read only after a while), the cloud rate budget (fake clock) and daily allowance, plain messages for 429 and a missing key, the service validating and normalising each value on the demo strip, saving a re-read list, and voice ("set the backlight to sunset"). |
-| `test_ui_tone.py` | Adaptive tile/heading tones on mixed-brightness wallpapers, dimming, manual choices, canceling a preview, canvas failure, and the transparency endpoints (Node with fake DOM/store). |
-| `test_ui_render.py` | JavaScript markup caching (unchanged writes skipped, cache scoped to each element) and in-place room badges (including zero counts and avoiding redundant text writes). |
-| `test_ci_policy.py` | The "tests included" pull-request rule itself. |
+`make test` runs unit **and** integration tests. Do not also run `make test-unit`
+and `make test-integration`, or repeat full suites after every edit/commit.
+If something fails, fix it and rerun affected checks. Later product edits
+invalidate affected results; rerun the full pass only for broad changes or
+failures that need it. Required CI still checks the final PR revision before
+merge; retain its Python compatibility matrix, browser checks and Docker smoke
+test. CI is independent verification, not a reason to remove useful coverage.
 
-## tests/integration/ — parts working together for real
+`make test-unit`, `make test-integration` and `make test-ui` remain convenient
+subset commands. `python -m unittest discover -s tests -t .` is an alternative
+without pytest, not an additional required pass.
 
-| File | Covers |
-|---|---|
-| `test_api.py` | The real server (demo mode) called over HTTP: state has no secrets, commands and error codes, scenes, automations, energy, settings validation, health, logs, static UI. |
-| `test_auth.py` | Sign-in end to end with `DemoServer(sign_in=True)`: the API refuses without a session, cookie flags, PIN and email sign-in, a member can't control a hidden device or receive its live events, per-profile Home layouts, managing profiles, the wall panel locking, the rate limit, and upgrading an old data folder (first open asks for a PIN). In Chromium: sign in with a PIN, switch profiles, sign out, email sign-in and adding a profile in Settings, and the wall panel lock. |
-| `test_fake_devices.py` | Real adapters over real sockets against simulated devices: the built-in HTTP client, a Shelly Gen2 plug, Home Assistant, an LG sound bar (encrypted TCP), and Govee light effects against a fake Govee cloud answering the real HTTP shapes (find the light, read its scenes, play scenes, music, strip parts, a toggle, wrong key, 429). |
-| `test_voice.py` | The `/voice` API on its own demo server (commands run, "Which lamp?" choices, a yes before everything off, unknown sentences, bad requests), and the voice sheet in Chromium with the browser's speech recogniser faked: the typed box, choices, confirm and cancel, the one-time privacy notice, live words, push-to-talk, falling back to typing when speech fails, and touch target sizes at iPhone, iPad and panel sizes. |
-| `test_readability.py` | Generated bright/dark wallpapers across Auto/Light/Dark tiles, 0/100% transparency, blur on/off, phone/panel sizes; minimum backing and base-surface text contrast for online/offline tiles, Home widgets, nested buttons, clock and rail. Also checks live preview does not save until submitted. No personal pictures or real devices. |
-| `test_ui.py` | The touch UI in headless Chromium (Playwright): tap toggles, TV opens the remote, sound bar sound modes, brightness slider, light effects (search and pick a scene, music, strip parts, a toggle, 48 px targets, no sideways scroll at phone, iPad and panel sizes), rooms, add flow, night clock and each clock face (with weather from a fake source, and without), energy chart, creating a schedule, "Use my location" (mocked device location, approximate fallback, offline), the Home page (clocks, device widgets, rooms), editing it (hide, resize, move, save, cancel), the Sky following the weather, device icons, and the room rail / dock with no sideways scrolling at iPhone, iPad and panel sizes, the sidebar (All rooms, then each room showing only its devices, remembered, "Other" only when needed), and a signed-in member only seeing rooms with devices they can see. Skipped locally if Playwright isn't installed; **required in CI**. |
+## Where to add or find coverage
 
-Shared helpers (free port, running the demo server) live in `tests/helpers.py`.
+| Area | Unit tests | Integration tests |
+|---|---|---|
+| Service, adapters and commands | `test_service.py`, `test_adapters.py`, feature-named files | `test_api.py`, `test_fake_devices.py` |
+| Profiles and access | `test_profiles.py` | `test_auth.py` (HTTP and Chromium) |
+| Tile placement and rendering | `test_grid.py`, `test_layout.py`, `test_ui_render.py` | `test_ui.py`, `test_auth.py` |
+| Voice, weather, photos and other features | Relevant `test_<feature>.py` | `test_voice.py`, `test_ui.py`, `test_api.py` |
+| UI contrast and lifecycle | `test_ui_tone.py`, `test_main.py` | `test_readability.py`, `test_shutdown.py` |
+| Test-inclusion rule | `test_ci_policy.py` | CI enforces the rule on the PR diff |
 
-## Writing tests for a change
+Read the relevant test file rather than loading the whole suite for each change.
+Unit tests use no sockets, servers or browsers. JS unit tests use Node.js with
+small fakes, no npm packages. Node is a development dependency only.
 
-- **New adapter:** unit tests for parsing/maths in `tests/unit/test_adapters.py`;
-  an integration test that runs the adapter against a small fake device server in
-  `tests/integration/test_fake_devices.py` (copy the Shelly or Home Assistant example).
-- **Service / API change:** unit test against `HomeService` directly; integration
-  test through the HTTP API in `test_api.py`.
-- **UI change:** integration test in `test_ui.py` that taps through the flow.
+Integration tests start real HomePanel servers on free loopback ports with
+temporary data and simulated devices. Shared helpers are in `tests/helpers.py`;
+adapter examples are in `tests/integration/test_fake_devices.py`. No test needs
+real devices or internet access. Device fixtures in `tests/fixtures/` are useful
+recorded shapes, not redundant suites.
 
-No test may need real devices or the internet.
+Run `make setup` when dev dependencies are missing. Chromium tests can skip in a
+minimal local environment, but **must not skip for final validation or CI**:
+`REQUIRE_UI_TESTS=1` makes a missing browser/dependency fail explicitly.

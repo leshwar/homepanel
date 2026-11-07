@@ -13,7 +13,7 @@ web/
 ├── clockfaces.css  resting clock faces and the face picker previews
 ├── voice.css       the voice sheet: big mic with a level ring, chat bubbles, typed box
 ├── controls.css    device sheets: light pill and color wheel, TV remote, robot vacuum
-├── auth.css        sign-in screens (picker, PIN pad, email, setup), avatars, the profile menu
+├── auth.css        profile picker, optional password form, avatars, the profile menu
 └── js/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
     ├── store.js    client state, optimistic commands, change notifications
@@ -21,9 +21,10 @@ web/
     ├── util.js     escaping, icons, colors/glow, status text, toasts, storage
     ├── glass.js    glass transparency → CSS variable
     ├── app.js      the shell: room rail / dock / tabs, Rooms view, live updates, idle clock
-    ├── auth.js     sign-in: profile picker, PIN pad, email + password, first-run setup, the
-    │               profile button (switch / sign out) and the wall panel's idle lock
-    ├── profiles.js Settings → Profiles and sign-in (admins) and Settings → Your profile
+    ├── auth.js     one-tap profiles, optional password sign-in, switch / sign out
+    ├── profiles.js Settings → Profiles (admins) and Settings → Your profile
+    ├── grid.js     shared responsive positions, collision checks, drag/resize and arrow keys
+    ├── room-layout.js per-profile room tile layouts and their editor
     ├── home.js     the Home page: widgets (clock, other places' clocks, weather, scenes, rooms)
     │               and edit mode (hold to move, drag a corner to resize, hide, Done)
     ├── tiles.js    device tiles: tap = on/off, long-press or "…" = controls (+ haptics)
@@ -70,11 +71,15 @@ web/
   refuses them anyway). A 401 from any call fires `hp:signin` and the picker comes back.
 - **Two pages.** **Home**: a grid of widgets, each profile's own, the same on every screen
   that profile uses (saved with `PUT /profiles/me/layout`, checked by `app/core/layout.py`). Long-press it (or the
-  pencil) to edit: widgets wiggle; hold and drag to move, drag a corner (or tap it) for
+  pencil) to edit: hold and drag into an empty grid cell, drag a corner (or tap it) for
   Small / Wide / Large, "…" for more (and the time zone of a clock), "−" to hide, **Add**
   to bring widgets back or add a clock; Cancel or Done. No devices on Home: the Rooms
   widget opens each room's page. **Rooms**: device tiles, All rooms (grouped by room) or
   one room at a time, titled with the room's name and with its own **Turn off**.
+  **Edit tiles** in the room heading or Settings → Rooms opens the same placement
+  and sizing controls. Arrow keys or the options menu move a tile one cell.
+  Empty space stays empty; occupied or out-of-bounds placements are rejected.
+  Room layouts save with `PUT /profiles/me/rooms/layout`, independently per profile.
 - **Navigation.** iPad and the landscape panel (≥ 768 px): a rail down the left with
   Home, All rooms, then each room in the order set in Settings → Rooms (vertical tabs),
   and "Other" only when a device has no room. Phones and the portrait panel: a floating
@@ -93,17 +98,17 @@ web/
   The dock keeps a safe edge inset, long room names wrap, and short-screen rails
   scroll without shrinking their touch targets.
 - **Animations** are short (150–300 ms) and only move or fade: tile press and "pop" when
-  something turns on, tab and page switches, the sheet sliding in and out, edit-mode
-  wiggle.
+  something turns on, tab and page switches, and the sheet sliding in and out.
 - **Room tabs.** A sticky bar with "All", one tab per room and "Other" (devices
   without a room); the number on a tab is how many things are on. Swipe the grid
   sideways to change tab; the chosen tab is remembered. Each room has a heading with
   what's on and a **Turn off** button for that room (the header's **All off** is
   always everything). "Other" nudges you to give its devices a room.
-- **Portrait first** (Touch Display 2 is 720×1280): device tiles in 2 columns on a
-  phone, 3 in portrait, 4–5 in landscape (they size to their column, not the window).
-  Home widgets sit on a square grid of 2, 4 or 6 columns, stepping up only when
-  their content area reaches 600 or 960 px (after the sidebar and padding).
+- **Portrait first** (Touch Display 2 is 720×1280): Home and room tiles use 2, 4 or
+  6 columns, stepping up when the content area reaches 600 or 960 px (after the
+  sidebar and padding). `positions` keeps separate coordinates and sizes per
+  column count. Unsaved sizes derive a non-overlapping layout without rewriting
+  saved positions. Room cells are at least 160 px tall for readable device labels.
 - Font: IBM Plex Sans (installed on the Pi by install.sh), falling back to Inter / system fonts.
 
 Color tokens (`app.css`): `--night` page, `--dusk` surfaces, `--slate` controls,

@@ -1,7 +1,7 @@
-/* Sign-in (js/auth.js): the profile picker, PIN pad, email + password form and the
-   first-run setup, in the same frosted glass as the rest of the panel; the profile
+/* Sign-in (js/auth.js): the profile picker and optional password form,
+   in the same frosted glass as the rest of the panel; the profile
    button in the top bar and its menu; avatars for Settings → Profiles.
-   Touch targets are at least 48 px; the PIN keys are 72 px. */
+   Touch targets are at least 48 px. */
 
 /* Signed out: the app underneath holds no data, and isn't shown at all. */
 html[data-auth="out"] #app { visibility: hidden; }
@@ -71,36 +71,6 @@ html[data-auth="switch"] .signin { background: rgb(6 10 28 / .55);
 .avatar-choice:focus-visible { outline: 2px solid var(--paper); outline-offset: 2px; }
 .avatar-name { font-size: 17px; font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* PIN pad */
-.pin-card { width: min(400px, 100%); }
-.pin-card > .avatar { margin-top: 6px; }
-.pin-dots { display: flex; justify-content: center; gap: 14px; margin-top: 20px; height: 18px; }
-.pin-dots span { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgb(255 255 255 / .45); transition: background-color .12s; }
-.pin-dots span.on { background: var(--paper); border-color: var(--paper); }
-.pinpad { display: grid; grid-template-columns: repeat(3, 72px); justify-content: center; gap: 14px 22px; margin-top: 6px; }
-.pinpad button { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; font-size: 28px; font-weight: 500;
-                 font-variant-numeric: tabular-nums; background: rgb(255 255 255 / .08); border: 1px solid rgb(255 255 255 / .08);
-                 transition: transform .1s var(--ease), background-color .15s; }
-.pinpad button:active { transform: scale(.92); background: rgb(255 255 255 / .2); }
-.pinpad button.ok { background: var(--paper); color: var(--night); }
-.pinpad button[disabled] { opacity: .35; }
-.pinpad .i { width: 26px; height: 26px; }
-
-/* setup: PIN or email + password */
-.setup-card { width: min(520px, 100%); }
-.setup-card .signin-head { margin-bottom: 22px; }
-.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 0 0 16px; border-radius: 16px;
-             background: rgb(255 255 255 / .07); }
-.segmented label { position: relative; }
-.segmented input { position: absolute; opacity: 0; inset: 0; }
-.segmented span { display: grid; place-items: center; min-height: 48px; border-radius: 12px; font-size: 16px; font-weight: 500;
-                  color: var(--haze); text-align: center; padding: 0 8px; }
-.segmented input:checked + span { background: var(--paper); color: var(--night); }
-.segmented input:focus-visible + span { outline: 2px solid var(--indigo); }
-.signin .check span { font-size: 15px; line-height: 1.4; }
-.signin .check { align-items: flex-start; padding: 6px 0; }
-.signin .check input { flex: none; margin-top: 1px; }
-
 /* Settings → Profiles */
 .profile-preview { display: flex; justify-content: center; margin-bottom: 14px; }
 .color-choices { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
@@ -118,13 +88,6 @@ html[data-auth="switch"] .signin { background: rgb(6 10 28 / .55);
   .avatars { gap: 14px 10px; }
   .avatar-choice { width: 96px; }
   .avatar.xl { width: 80px; height: 80px; font-size: 34px; }
-  .pinpad { gap: 12px 18px; }
-}
-@media (max-height: 760px) and (min-width: 768px) {
-  .pinpad button { width: 64px; height: 64px; }
-  .pinpad { grid-template-columns: repeat(3, 64px); gap: 10px 20px; }
-  .pin-card { padding-top: 22px; padding-bottom: 18px; }
-  .pin-card h2 { margin-top: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .signin, .profile-menu { animation: none; }

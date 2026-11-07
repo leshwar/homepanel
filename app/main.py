@@ -129,7 +129,7 @@ def main() -> None:
     p.add_argument("--logs", default=os.environ.get("HOMEPANEL_LOGS", os.path.join(ROOT, "logs")))
     p.add_argument("--demo", action="store_true", help="Use pretend devices (no hardware needed)")
     p.add_argument("--sign-in", action="store_true", default=os.environ.get("HOMEPANEL_SIGN_IN") == "1",
-                   help="Demo mode: ask for sign-in like a real panel (Owner PIN 1234, Sam PIN 2468)")
+                   help="Demo mode: show the profile picker (Owner password: homepanel; Sam: one tap)")
     p.add_argument("--debug", action="store_true", help="Verbose logging")
     args = p.parse_args()
 

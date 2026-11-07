@@ -11,7 +11,7 @@ make dev        # run with pretend devices: http://localhost:8080
 make run        # run against real devices on this Wi-Fi
 make test-unit         # tests/unit: logic only, no network
 make test-integration  # tests/integration: real server, fake devices, browser UI
-make test       # both (must pass before every commit)
+make test       # both, once on the final revision before merge
 make check-tests  # PR rule: app/ or web/ changes need a unit AND an integration test
 make lint       # ruff
 make docker-demo  # demo in Docker → http://localhost:8081 (CI also builds and smoke-tests the image)
@@ -42,10 +42,19 @@ See `docs/DEVELOPMENT.md`.
 ## Pull requests and tests
 
 - Never push to `main`; work on a branch and open a PR. CI must be green.
+- During development, run focused checks for the behavior being changed (for example,
+  `.venv/bin/python -m pytest -q tests/unit/test_layout.py -k positions`).
+  Do not run both full suites after every edit or commit. On the final revision,
+  run `make lint`, `REQUIRE_UI_TESTS=1 make test`, and `make check-tests` once.
+  Do not also run `make test-unit` and `make test-integration`: `make test` includes both.
+  Fix failures and rerun affected checks; later product changes invalidate the
+  affected results. Required CI still checks the final PR revision before merge.
 - Every change to `app/` or `web/` must add/update a test in **both** `tests/unit/`
   and `tests/integration/` — CI rejects the PR otherwise. See `tests/README.md`.
 - Tests must not need real devices or the internet; simulate devices with a small
   local server (see `tests/integration/test_fake_devices.py`).
+- Read the relevant code and focused test files, not every test file or the entire
+  documentation tree for each change. `tests/README.md` is the short test workflow.
 
 ## Adding a brand
 

@@ -26,7 +26,7 @@ dev:             ## Run with pretend devices on http://localhost:8080 (auto-relo
 run:             ## Run against real devices on your Wi-Fi
 	$(BIN)/python -m app.main --debug
 
-test:            ## Run unit + integration tests (what CI runs)
+test:            ## Final unit + integration pass (do not also run the separate suites)
 	$(BIN)/python -m pytest -q tests/unit tests/integration
 
 test-unit:       ## Fast tests: logic only, no network or browser

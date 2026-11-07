@@ -19,10 +19,9 @@ import { svg, roomIcon } from "./icons.js";
 import { haptic } from "./tiles.js";
 import { currentWeather } from "./sky.js";
 import { weatherIcon } from "./clockfaces.js";
+import { SIZES, SIZE_NAMES, columnsFor, arrange, remember, place, fits, placementStyle, gridStyle, bindGridEditor, watchGridWidth } from "./grid.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
-const SIZES = ["1x1", "2x1", "2x2"];
-const SIZE_NAMES = { "1x1": "Small", "2x1": "Wide", "2x2": "Large" };
 const TYPE_NAMES = { clock: "Clock", zone: "Clock", weather: "Weather", scenes: "Scenes", rooms: "Rooms" };
 
 // ---------- time zones ----------
@@ -74,8 +73,11 @@ export function greeting(now = new Date()) {
 // ---------- layout ----------
 let draft = null;          // a copy being edited; null when not editing
 export const isEditing = () => !!draft;
-const layout = () => draft || store.settings.home_layout || { version: 2, widgets: [] };
+const layout = () => draft || store.settings.home_layout || { version: 3, widgets: [] };
 const clone = (o) => JSON.parse(JSON.stringify(o));
+const columns = () => columnsFor($("#home").clientWidth);
+const placed = (w) => ({ ...w, ...arrange(layout().widgets, columns()).get(w.id) });
+let cancelGesture = () => {};
 
 // ---------- widgets ----------
 const isOn = (d) => !!d.state?.on && d.state?.online !== false;
@@ -163,16 +165,19 @@ function chrome(w) {
 function widgetHtml(w, i, now) {
   const body = widgetBody(w, now);
   if (body == null) return "";
-  return `<div class="widget t-${w.type} s-${w.size}" data-wid="${esc(w.id)}" style="--i:${i}">${body}${isEditing() ? chrome(w) : ""}</div>`;
+  return `<div class="widget layout-item t-${w.type} s-${w.size}" data-wid="${esc(w.id)}"
+    ${isEditing() ? `tabindex="0" aria-label="Move ${esc(widgetName(w))} with arrow keys"` : ""}
+    style="--i:${i};${placementStyle(w)}">${body}${isEditing() ? chrome(w) : ""}</div>`;
 }
 
 export function renderHome({ enter = false } = {}) {
   const el = $("#home");
   if (!el) return;
   const now = new Date();
-  const visible = layout().widgets.filter((w) => !w.hidden);
+  const positions = arrange(layout().widgets, columns());
+  const visible = layout().widgets.filter((w) => !w.hidden).map((w) => ({ ...w, ...positions.get(w.id) }));
   el.classList.toggle("editing", isEditing());
-  el.innerHTML = `<div class="home-grid">${visible.map((w, i) => widgetHtml(w, i, now)).join("")}</div>${
+  el.innerHTML = `<div class="home-grid layout-grid" style="${gridStyle(layout().widgets, columns(), isEditing())}">${visible.map((w, i) => widgetHtml(w, i, now)).join("")}</div>${
     !visible.length ? `<div class="empty"><h2>Your Home page is empty</h2><p>Add the clock, weather, scenes or your rooms.</p>
       <button class="btn primary" data-edit-home>${svg("pencil")}Edit Home page</button></div>` : ""}${
     isEditing() ? editBar() : ""}`;
@@ -228,7 +233,7 @@ export function refreshHomeParts(types = ["rooms", "weather", "scenes"]) {
 // ---------- edit mode ----------
 function editBar() {
   return `<div class="editbar" role="toolbar" aria-label="Edit Home page">
-      <span class="editbar-hint">Hold to move · drag a corner to resize</span>
+      <span class="editbar-hint">Hold to move into free space · corner to resize</span>
       <button class="btn small" data-add-widget>${icon("plus")}Add</button>
       <button class="btn small" data-edit-cancel>Cancel</button>
       <button class="btn small primary" data-edit-done>Done</button>
@@ -237,13 +242,15 @@ function editBar() {
 
 export function startEditing() {
   if (isEditing()) return;
-  draft = clone(store.settings.home_layout || { version: 2, widgets: [] });
+  draft = clone(store.settings.home_layout || { version: 3, widgets: [] });
   draft.widgets = draft.widgets.filter((w) => w.type !== "device");   // devices live on the Rooms pages
+  remember(draft.widgets, columns());
   haptic(18);
   renderHome();
 }
 
 export function stopEditing() {
+  cancelGesture();
   draft = null;
   closeMenu();
   renderHome();
@@ -251,8 +258,10 @@ export function stopEditing() {
 
 async function saveEditing() {
   const next = draft;
+  const profile = store.me?.id;
   try {
     const s = await api.saveLayout(next);     // this profile's own Home page
+    if (draft !== next || store.me?.id !== profile) return;
     store.settings = { ...store.settings, ...s };
     stopEditing();
     toast("Home page saved");
@@ -263,26 +272,15 @@ const find = (id) => draft.widgets.find((w) => w.id === id);
 
 function setSize(id, size) {
   const w = find(id);
-  if (!w || w.size === size) return;
-  w.size = size;
-  const box = $(`#home .widget[data-wid="${CSS.escape(id)}"]`);
-  if (box) {
-    box.classList.remove(...SIZES.map((s) => `s-${s}`));
-    box.classList.add(`s-${size}`);
-    const body = widgetBody(w, new Date());
-    if (body != null) {
-      box.innerHTML = body + chrome(w);
-      updateCounts(box);
-    }
-  }
+  if (!w) return;
+  const p = arrange(draft.widgets, columns()).get(id);
+  if (!place(draft.widgets, columns(), id, { ...p, size })) return toast("Not enough free space. Move the tile first or choose a smaller size.", true);
+  renderHome();
 }
 
-function move(id, step) {
-  const list = draft.widgets.filter((w) => !w.hidden);
-  const i = list.findIndex((w) => w.id === id), j = i + step;
-  if (i < 0 || j < 0 || j >= list.length) return;
-  [list[i], list[j]] = [list[j], list[i]];
-  draft.widgets = [...list, ...draft.widgets.filter((w) => w.hidden)];
+function move(id, dx, dy) {
+  const p = arrange(draft.widgets, columns()).get(id);
+  if (!place(draft.widgets, columns(), id, { ...p, x: p.x + dx, y: p.y + dy })) return toast("Choose an empty space inside the grid.", true);
   renderHome();
 }
 
@@ -299,7 +297,8 @@ function openMenu(html, label) {
 function closeMenu() { document.querySelector(".wmenu-wrap")?.remove(); }
 
 function widgetMenu(id) {
-  const w = find(id);
+  const raw = find(id);
+  const w = raw && placed(raw);
   if (!w) return;
   const zones = w.type === "zone" ? `
     <label class="field"><span>Time zone</span><select data-zone-pick="${esc(id)}">
@@ -311,9 +310,12 @@ function widgetMenu(id) {
       `<button role="radio" aria-checked="${w.size === s}" data-size-pick="${s}" data-wid="${esc(id)}">${SIZE_NAMES[s]}</button>`).join("")}</div>
     ${zones}
     <div class="wmenu-row">
-      <button class="btn small" data-move="-1" data-wid="${esc(id)}">${icon("left")}Move earlier</button>
-      <button class="btn small" data-move="1" data-wid="${esc(id)}">Move later${icon("right")}</button>
+      <button class="btn small" data-move="-1,0" data-wid="${esc(id)}">Left</button>
+      <button class="btn small" data-move="1,0" data-wid="${esc(id)}">Right</button>
+      <button class="btn small" data-move="0,-1" data-wid="${esc(id)}">Up</button>
+      <button class="btn small" data-move="0,1" data-wid="${esc(id)}">Down</button>
     </div>
+    <p>Column ${w.x + 1}, row ${w.y + 1}. Changes apply to this ${columns()}-column layout.</p>
     <button class="btn small danger" data-hide-id="${esc(id)}">${svg("hide")}Hide from Home</button>
     <button class="btn small primary" data-menu-close>Close</button>`, `${widgetName(w)} options`);
 }
@@ -330,109 +332,26 @@ function addMenu() {
 
 function addWidget(w) {
   const existing = find(w.id);
-  if (existing) existing.hidden = false;
+  if (existing) {
+    for (const cols of [2, 4, 6]) {
+      const others = [...arrange(draft.widgets, cols).values()];
+      if (existing.positions?.[cols] && !fits(existing.positions[cols], others, cols)) delete existing.positions[cols];
+    }
+    existing.hidden = false;
+  }
   else draft.widgets.push(w);
+  remember(draft.widgets, columns());
   closeMenu();
   renderHome();
   $(`#home .widget[data-wid="${CSS.escape(w.id)}"]`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
 }
 
-// --- hold to move ---
-let drag = null;
-function setupDrag(el) {
-  el.addEventListener("pointerdown", (e) => {
-    if (!isEditing() || e.button > 0 || e.target.closest("button, select")) return;
-    const box = e.target.closest(".widget");
-    if (!box) return;
-    drag = { box, id: box.dataset.wid, x: e.clientX, y: e.clientY, started: false };
-    drag.timer = setTimeout(() => {
-      if (!drag) return;
-      const r = box.getBoundingClientRect();
-      Object.assign(drag, { started: true, grabX: drag.x - r.left, grabY: drag.y - r.top });
-      box.classList.add("dragging");
-      haptic(12);
-    }, 220);
-  });
-  window.addEventListener("pointermove", (e) => {
-    if (!drag) return;
-    if (!drag.started) {
-      if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 10) { clearTimeout(drag.timer); drag = null; }  // a scroll
-      return;
-    }
-    const grid = el.querySelector(".home-grid");
-    const hit = document.elementFromPoint(e.clientX, e.clientY)?.closest(".widget");
-    if (hit && hit !== drag.box && grid.contains(hit)) {
-      const boxes = [...grid.children];
-      grid.insertBefore(drag.box, boxes.indexOf(drag.box) < boxes.indexOf(hit) ? hit.nextSibling : hit);
-    }
-    const g = grid.getBoundingClientRect();
-    const tx = e.clientX - g.left - drag.grabX - drag.box.offsetLeft;
-    const ty = e.clientY - g.top - drag.grabY - drag.box.offsetTop;
-    drag.box.style.transform = `translate(${tx}px, ${ty}px) scale(1.04)`;
-  });
-  const drop = () => {
-    if (!drag) return;
-    clearTimeout(drag.timer);
-    const { box, started } = drag;
-    drag = null;
-    if (!started) return;
-    box.classList.remove("dragging");
-    box.style.transform = "";
-    const order = [...el.querySelectorAll(".home-grid > .widget")].map((b) => b.dataset.wid);
-    draft.widgets.sort((a, b) => (a.hidden - b.hidden) || order.indexOf(a.id) - order.indexOf(b.id));
-    box.classList.add("dropped");
-    setTimeout(() => box.classList.remove("dropped"), 260);
-  };
-  window.addEventListener("pointerup", drop);
-  window.addEventListener("pointercancel", drop);
-  // Once a drag has started, the page mustn't scroll under the finger.
-  el.addEventListener("touchmove", (e) => { if (drag?.started) e.preventDefault(); }, { passive: false });
-}
-
-// --- drag a corner to resize (a tap steps through the sizes) ---
-function setupResize(el) {
-  let rs = null;
-  el.addEventListener("pointerdown", (e) => {
-    const h = e.target.closest("[data-resize]");
-    if (!h || !isEditing()) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const box = h.closest(".widget");
-    const grid = el.querySelector(".home-grid");
-    const cs = getComputedStyle(grid);
-    const col = parseFloat(cs.gridTemplateColumns.split(" ")[0]) || 150;
-    const row = parseFloat(cs.gridAutoRows) || col;
-    const r = box.getBoundingClientRect();
-    rs = { box, id: box.dataset.wid, left: r.left, top: r.top, col, row, x: e.clientX, y: e.clientY, moved: false };
-    h.setPointerCapture?.(e.pointerId);
-  });
-  el.addEventListener("pointermove", (e) => {
-    if (!rs) return;
-    if (Math.hypot(e.clientX - rs.x, e.clientY - rs.y) > 8) rs.moved = true;
-    if (!rs.moved) return;
-    const wide = e.clientX - rs.left > rs.col * 1.4;
-    const tall = e.clientY - rs.top > rs.row * 1.4;
-    setSize(rs.id, tall ? "2x2" : wide ? "2x1" : "1x1");
-  });
-  const end = () => {
-    if (!rs) return;
-    const { id, moved } = rs;
-    rs = null;
-    if (!moved) {
-      const w = find(id);
-      if (w) setSize(id, SIZES[(SIZES.indexOf(w.size) + 1) % SIZES.length]);
-    }
-    haptic(8);
-  };
-  el.addEventListener("pointerup", end);
-  el.addEventListener("pointercancel", end);
-}
-
 // ---------- events ----------
 export function setupHome({ goRoom, showAmbient }) {
   const el = $("#home");
-  setupDrag(el);
-  setupResize(el);
+  cancelGesture = bindGridEditor(el, { enabled: isEditing, items: () => draft.widgets,
+    render: renderHome, error: (message) => toast(message, true) });
+  watchGridWidth(el, () => { cancelGesture(); renderHome(); });
 
   el.addEventListener("click", async (e) => {
     const t = e.target;
@@ -472,7 +391,7 @@ export function setupHome({ goRoom, showAmbient }) {
     const size = t.closest("[data-size-pick]");
     if (size) { setSize(size.dataset.wid, size.dataset.sizePick); return widgetMenu(size.dataset.wid); }
     const mv = t.closest("[data-move]");
-    if (mv) { move(mv.dataset.wid, Number(mv.dataset.move)); return widgetMenu(mv.dataset.wid); }
+    if (mv) { move(mv.dataset.wid, ...mv.dataset.move.split(",").map(Number)); return widgetMenu(mv.dataset.wid); }
     const hide = t.closest("[data-hide-id]");
     if (hide) { find(hide.dataset.hideId).hidden = true; closeMenu(); return renderHome(); }
     const un = t.closest("[data-unhide]");

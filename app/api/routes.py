@@ -87,7 +87,7 @@ async def events(request: Request):
         # Looked up again for every event (publish() runs in other requests' context,
         # so never read current_viewer here): a removed profile or ended session stops at once.
         v = svc.profiles.viewer_for(token) or auto_viewer
-        return v if v and not (v.session and v.session.locked) else None
+        return v
 
     def allow(ev: dict) -> bool:
         v = viewer_now()
@@ -410,7 +410,7 @@ async def health(request):
     """Without a session only "it's running" (for the kiosk script and Docker's health check)."""
     svc = _svc(request)
     viewer = current_viewer.get()
-    if viewer is None or (viewer.session and viewer.session.locked):
+    if viewer is None:
         return {"ok": True, "time": time.time(), "sign_in": True}
     devices = list(svc.store.devices.values())
     return {"ok": True, "time": time.time(), "uptime_s": round(time.time() - request.app.state.started, 1),
@@ -443,13 +443,10 @@ def _session_info(request: Request) -> dict:
     svc = _svc(request)
     viewer = current_viewer.get()
     session = viewer.session if viewer else None
-    locked = bool(session and session.locked)
-    signed_in = viewer is not None and not locked
+    signed_in = viewer is not None
     return {
         "signed_in": signed_in,
         "auto": bool(viewer and viewer.auto),
-        "setup": svc.profiles.needs_setup and not (viewer and viewer.auto),
-        "locked": locked,
         "panel": bool(session and session.panel),
         "me": svc.profiles.public(viewer.profile) if signed_in else None,
         "profiles": svc.profiles.picker(),
@@ -476,32 +473,17 @@ async def _start_session(request: Request, profile: dict, panel: bool):
 
 @handle_errors
 async def sign_in(request):
-    """{profile_id, pin} | {profile_id, password} | {email, password}; optional panel: true (admins)."""
+    """{profile_id}, or {profile_id/email, password}; optional panel: true (admins)."""
     body = await _body(request)
     p = await asyncio.to_thread(_svc(request).profiles.check_credentials, body, client_address(request.scope))
     return await _start_session(request, p, panel=bool(body.get("panel")) and p.get("role") == "admin")
 
 
 @handle_errors
-async def setup(request):
-    """First open after upgrading: protect the Owner profile with a PIN or password."""
-    body = await _body(request)
-    svc = _svc(request)
-    p = await asyncio.to_thread(svc.profiles.setup, body)
-    return await _start_session(request, p, panel=bool(body.get("panel")))
-
-
-@handle_errors
 async def sign_out(request):
-    """Ends this browser's session. On the wall panel it locks instead (unless forget: true),
-    so the panel stays signed in and shows the profile picker."""
+    """End this screen's session and return to the profile picker."""
     svc = _svc(request)
-    body = await _body(request)
     viewer = svc.profiles.viewer_for(read_cookie(request.scope))
-    if viewer and viewer.session and viewer.session.panel and not body.get("forget"):
-        svc.profiles.sessions.update(viewer.session, locked=True)
-        current_viewer.set(viewer)
-        return JSONResponse(_session_info(request), headers={"Cache-Control": "no-store"})
     if viewer and viewer.session:
         svc.profiles.sessions.delete(viewer.session)
     current_viewer.set(None)
@@ -509,20 +491,11 @@ async def sign_out(request):
 
 
 @handle_errors
-async def lock(request):
-    """The wall panel was idle: back to the profile picker (the session is kept)."""
-    viewer = current_viewer.get()
-    if viewer and viewer.session:
-        _svc(request).profiles.sessions.update(viewer.session, locked=True)
-    return JSONResponse(_session_info(request), headers={"Cache-Control": "no-store"})
-
-
-@handle_errors
 async def set_panel(request):
-    """Admin: make this screen the wall panel (stays signed in, locks when idle), or not."""
+    """Admin: make this screen the wall panel (stays signed in), or not."""
     viewer = current_viewer.get()
     if not viewer or not viewer.session:
-        raise AdapterError("Sign in with a PIN or password first.")
+        raise AdapterError("Choose your profile first.")
     body = await _body(request)
     _svc(request).profiles.sessions.update(viewer.session, panel=bool(body.get("panel")))
     return _with_cookie(request, _session_info(request), read_cookie(request.scope), int(viewer.session.ttl))
@@ -559,17 +532,24 @@ async def put_my_layout(request):
     return _svc(request).save_my_layout((await _body(request)).get("home_layout"))
 
 
+@handle_errors
+async def put_my_room_layout(request):
+    body = await _body(request)
+    if "room" not in body or "layout" not in body:
+        raise AdapterError("Choose a room and include its layout.")
+    return _svc(request).save_my_room_layout(body["room"], body["layout"])
+
+
 routes = [
     Route("/api/v1/auth/session", auth_session),
     Route("/api/v1/auth/sign-in", sign_in, methods=["POST"]),
-    Route("/api/v1/auth/setup", setup, methods=["POST"]),
     Route("/api/v1/auth/sign-out", sign_out, methods=["POST"]),
-    Route("/api/v1/auth/lock", lock, methods=["POST"]),
     Route("/api/v1/auth/panel", set_panel, methods=["POST"]),
     Route("/api/v1/profiles", list_profiles, methods=["GET"]),
     Route("/api/v1/profiles", add_profile, methods=["POST"]),
     Route("/api/v1/profiles/me", update_me, methods=["PATCH"]),
     Route("/api/v1/profiles/me/layout", put_my_layout, methods=["PUT"]),
+    Route("/api/v1/profiles/me/rooms/layout", put_my_room_layout, methods=["PUT"]),
     Route("/api/v1/profiles/{id}", update_profile, methods=["PATCH"]),
     Route("/api/v1/profiles/{id}", delete_profile, methods=["DELETE"]),
     Route("/api/v1/state", get_state),

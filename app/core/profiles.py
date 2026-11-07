@@ -1,12 +1,10 @@
 """Profiles, sign-in and sessions.
 
 Each person in the home has a profile: a name, an avatar (initial + colour), an
-optional email, a role and a way to sign in:
-
-    * a 4–6 digit PIN, for quick switching on the wall panel, and/or
-    * an email address + password, for phones and laptops.
-
-PINs and passwords are hashed with scrypt and never logged or sent back.
+optional email and password, and a role. Profiles without a password open with
+one tap. Passwords are hashed with scrypt and never logged or sent back.
+Profiles are not a security boundary on a panel with password-free admins:
+only make the panel available on a trusted LAN or private tailnet.
 
 Roles: an **admin** can add devices, edit rooms, accounts, settings and profiles;
 a **member** only uses the devices their profile is allowed to see ("all", or a
@@ -15,7 +13,7 @@ list of device ids). Each profile also keeps its own Home page layout.
 Sessions: signing in creates a random token, sent to the browser in an HttpOnly
 cookie and stored here only as a SHA-256 hash (data/sessions.json, mode 600). A
 browser session lasts 30 days from its last use; a wall-panel session lasts
-about a year and "locks" back to the profile picker when the panel is idle.
+about a year. Idle screens show the clock or photos without locking the profile.
 
 The viewer of the current request (who is signed in) is kept in a context
 variable, `current_viewer`, set by the API's auth middleware. The service reads
@@ -45,7 +43,6 @@ log = logging.getLogger("homepanel.auth")
 ADMIN, MEMBER = "admin", "member"
 ROLES = (ADMIN, MEMBER)
 COLORS = ("#f2b35b", "#7cc7a5", "#96a6ff", "#ff8a7a", "#e59ad8", "#6fc3df", "#c3d36b", "#b9a1ff")
-PIN_RE = re.compile(r"^\d{4,6}$")
 EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,190}\.[^@\s]{2,}$")
 MIN_PASSWORD = 8
 MAX_PROFILES = 20
@@ -169,8 +166,7 @@ class Session:
     profile_id: str
     created: float
     expires: float
-    panel: bool = False        # the wall panel: long-lived, locks to the picker when idle
-    locked: bool = False       # locked panel: shows the profile picker until someone signs in
+    panel: bool = False        # the wall panel: long-lived
 
     @property
     def ttl(self) -> float:
@@ -194,6 +190,7 @@ class Sessions:
                 raw = json.load(f)
             now = self.clock()
             for s in raw.get("sessions", []):
+                s.pop("locked", None)  # old idle locks no longer block saved sessions
                 sess = Session(**s)
                 if sess.expires > now:
                     self._items[sess.id] = sess
@@ -335,15 +332,6 @@ class Profiles:
     def admins(self) -> list[dict]:
         return [p for p in self.items if p.get("role") == ADMIN]
 
-    @staticmethod
-    def has_credential(p: dict) -> bool:
-        return bool(p.get("pin_hash") or p.get("password_hash"))
-
-    @property
-    def needs_setup(self) -> bool:
-        """True until an admin has a PIN or password: the first screen asks for one."""
-        return not any(self.has_credential(p) for p in self.admins())
-
     def owner(self) -> dict | None:
         admins = self.admins()
         return admins[0] if admins else None
@@ -352,7 +340,7 @@ class Profiles:
         """What the UI may see of a profile. Never the hashes. `full=False` is the picker
         shown before sign-in: name, avatar and how to sign in, nothing else."""
         out = {"id": p["id"], "name": p["name"], "initial": initial(p["name"]), "color": p.get("color") or COLORS[0],
-               "has_pin": bool(p.get("pin_hash")), "has_password": bool(p.get("password_hash") and p.get("email"))}
+               "has_password": bool(p.get("password_hash"))}
         if full:
             out.update({"email": p.get("email") or "", "role": p.get("role", MEMBER),
                         "devices": p.get("devices", "all") if p.get("role") != ADMIN else "all",
@@ -364,23 +352,33 @@ class Profiles:
 
     # --- migration -------------------------------------------------------------
     def migrate(self, settings: dict) -> bool:
-        """First start after upgrading: everything belongs to one "Owner" admin who sees all
-        devices and keeps today's Home layout. The panel then asks for a PIN or password."""
+        """Preserve profiles and passwords, retire PINs, and create an Owner if needed."""
+        changed = "lock_after_minutes" in settings
+        settings.pop("lock_after_minutes", None)
+        for p in self.items:
+            if "pin_hash" in p:
+                p.pop("pin_hash")
+                changed = True
         if self.items:
-            return False
+            if changed:
+                self.store.save()
+            return changed
         layout = settings.get("home_layout")
         self.store.profiles = [{
             "id": uuid.uuid4().hex[:10], "name": "Owner", "color": COLORS[0], "email": "", "role": ADMIN,
-            "pin_hash": None, "password_hash": None, "devices": "all",
+            "password_hash": None, "devices": "all",
             "home_layout": json.loads(json.dumps(layout)) if layout else None, "created": time.time(),
         }]
         self.store.save()
-        log.info("Created the Owner profile. Choose a PIN or password on the panel to protect it.")
+        log.info("Created the Owner profile. Choose it on the panel to get started.")
         return True
 
     # --- editing ---------------------------------------------------------------
     def _clean(self, data: dict, current: dict | None) -> dict:
+        if "pin" in data:
+            raise ProfileError("Profile PINs are no longer used. Reload the panel and save again.")
         p = dict(current or {})
+        p.pop("pin_hash", None)
         if "name" in data or not current:
             name = " ".join(str(data.get("name") or "").split())[:24]
             if not name:
@@ -410,14 +408,7 @@ class Profiles:
                     raise ProfileError("Devices should be \"all\" or a list of device ids.")
                 dev = sorted(set(dev))
             p["devices"] = dev
-        # PIN / password: a value sets it, "" or missing keeps it, None removes it.
-        if data.get("pin") is not None and data.get("pin") != "":
-            pin = str(data["pin"])
-            if not PIN_RE.match(pin):
-                raise ProfileError("A PIN is 4 to 6 digits.")
-            p["pin_hash"] = hash_secret(pin)
-        elif "pin" in data and data["pin"] is None:
-            p["pin_hash"] = None
+        # A password value sets it, "" or missing keeps it, None removes it.
         if data.get("password") is not None and data.get("password") != "":
             pw = str(data["password"])
             if len(pw) < MIN_PASSWORD:
@@ -429,20 +420,17 @@ class Profiles:
             p["password_hash"] = None
         if p.get("password_hash") and not p.get("email"):
             raise ProfileError("Add an email address to sign in with a password.")
-        if not self.has_credential(p):
-            raise ProfileError("Choose a PIN or a password, so only this person can use the profile.")
         return p
 
     def _check_admins(self, profiles: list[dict]) -> None:
-        if not any(p.get("role") == ADMIN and self.has_credential(p) for p in profiles):
-            raise ProfileError("The panel needs at least one admin with a PIN or password.")
+        if not any(p.get("role") == ADMIN for p in profiles):
+            raise ProfileError("The panel needs at least one admin.")
 
     def create(self, data: dict) -> dict:
         if len(self.items) >= MAX_PROFILES:
             raise ProfileError(f"The panel can hold up to {MAX_PROFILES} profiles.")
         p = self._clean(data, None)
         p.update({"id": uuid.uuid4().hex[:10], "home_layout": None, "created": time.time()})
-        p.setdefault("pin_hash", None)
         p.setdefault("password_hash", None)
         self.store.profiles = [*self.items, p]
         self.store.save()
@@ -477,35 +465,27 @@ class Profiles:
             if isinstance(p.get("devices"), list) and device_id in p["devices"]:
                 p["devices"] = [d for d in p["devices"] if d != device_id]
 
-    def setup(self, data: dict) -> dict:
-        """First open: give the owner a PIN or password (and optionally a name and email)."""
-        if not self.needs_setup:
-            raise ProfileError("The panel is already set up. Sign in instead.")
-        owner = self.owner()
-        if not owner:
-            raise ProfileError("There's no owner profile to set up.")
-        allowed = {k: data[k] for k in ("name", "email", "pin", "password", "color") if k in data}
-        return self.update(owner["id"], allowed)
-
     # --- signing in ------------------------------------------------------------
     def check_credentials(self, data: dict, client: str) -> dict:
         """Blocking (scrypt): run in a thread. Returns the profile or raises AuthError."""
+        if "pin" in data:
+            raise AuthError("Profile PINs are no longer used. Reload the panel and choose your profile.")
         email = str(data.get("email") or "").strip().lower()
         pid = data.get("profile_id")
-        pin, password = data.get("pin"), data.get("password")
+        password = data.get("password")
         p = self.find(pid) if pid else next((o for o in self.items if email and o.get("email") == email), None)
         keys = [f"ip:{client}"] + ([f"profile:{p['id']}"] if p else [f"email:{email}"] if email else [])
         self.limiter.check(*keys)
-        ok = False
-        if pin not in (None, ""):
-            ok = verify_secret(str(pin), p.get("pin_hash") if p else None) if p else verify_secret(str(pin), _dummy_hash())
-            wrong = "That PIN isn't right."
+        if pid and p and not p.get("password_hash") and password in (None, ""):
+            ok = True
+            wrong = ""
         elif password not in (None, ""):
             stored = p.get("password_hash") if p and (p.get("email") or not email) else None
             ok = verify_secret(str(password), stored or _dummy_hash()) and bool(stored)
             wrong = "That email and password don't match." if email else "That password isn't right."
         else:
-            raise AuthError("Enter your PIN or password.")
+            ok = False
+            wrong = "Enter your password." if p and p.get("password_hash") else "Choose an available profile."
         if not ok or not p:
             self.limiter.failure(*keys)
             log.warning("Sign-in failed from %s", client)

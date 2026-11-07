@@ -16,7 +16,7 @@ def free_port() -> int:
 
 class DemoServer:
     """Runs the real HomePanel server (demo mode) in a background thread.
-    sign_in=True asks for sign-in like a real panel (demo PINs: Owner 1234, Sam 2468)."""
+    sign_in=True shows the profile picker (Owner password: homepanel; Sam: one tap)."""
 
     def __init__(self, data_dir: str, sign_in: bool = False):
         self.port = free_port()

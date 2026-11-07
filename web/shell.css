@@ -88,13 +88,9 @@ html[data-view="home"] #clock[hidden] { display: none; }
 
 /* ---------- Home page ---------- */
 .home { position: relative; container-type: inline-size; }
-.home-grid { --cols: 2; --g: 14px; display: grid; gap: var(--g); grid-auto-flow: row dense;
-             grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
-             grid-auto-rows: 160px;   /* fallback; square cells below */
-             grid-auto-rows: calc((100cqi - (var(--cols) - 1) * var(--g)) / var(--cols)); }
-/* Add columns only when even Small widgets have room for readable content. */
-@container (min-width: 600px) { .home-grid { --cols: 4; } }
-@container (min-width: 960px) { .home-grid { --cols: 6; --g: 16px; } }
+.layout-grid { --cols: 2; --g: 14px; --cell: calc((100cqi - (var(--cols) - 1) * var(--g)) / var(--cols));
+               display: grid; gap: var(--g); grid-auto-flow: row;
+               grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-auto-rows: var(--cell); }
 
 .widget { position: relative; min-width: 0; min-height: 0; border-radius: 26px; container-type: size; isolation: isolate;
           background-color: rgb(12 18 40 / var(--glass-alpha)); background-image: linear-gradient(160deg, rgb(255 255 255 / .08), rgb(255 255 255 / 0) 60%);
@@ -153,11 +149,17 @@ html[data-view="home"] #clock[hidden] { display: none; }
 .w-room:active, .scene:active { transform: scale(.96); }
 
 /* ---------- edit mode ---------- */
-.home.editing .widget { animation: wiggle .3s ease-in-out infinite alternate; animation-delay: calc(var(--i) * -71ms); cursor: grab; touch-action: none; }
+.home.editing .widget, .tiles.editing .layout-item { cursor: grab; touch-action: none; outline: 1px dashed var(--haze); outline-offset: 3px; }
 .home.editing .widget > :not(.w-badge):not(.w-resize) { pointer-events: none; }
+.tiles.editing .tile, .tiles.editing .tile * { pointer-events: none; }
+.home.editing .layout-grid, .tiles.editing { background-image: radial-gradient(circle, rgb(180 190 210 / .45) 1px, transparent 1px);
+  background-size: calc((100% + var(--g)) / var(--cols)) calc(var(--cell) + var(--g)); padding-bottom: 88px; }
+.layout-item.invalid-drop { outline: 3px solid #e77c6f; }
+.layout-item:focus-visible { outline: 3px solid var(--paper); }
 @keyframes wiggle { from { transform: rotate(-.6deg); } to { transform: rotate(.6deg); } }
 .widget.dragging { animation: none !important; z-index: 10; pointer-events: none; cursor: grabbing;
                    box-shadow: 0 26px 60px rgb(0 0 0 / .45); opacity: .96; }
+.room-tile.dragging { z-index: 10; opacity: .85; }
 .widget.dropped { animation: drop .26s var(--ease) !important; }
 @keyframes drop { from { transform: scale(1.04); } }
 
@@ -213,10 +215,11 @@ html[data-view="home"] #clock[hidden] { display: none; }
 
 /* room tiles size with their column, not the window (the rail takes room on wide screens) */
 #grid { container-type: inline-size; }
-.tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-@container (min-width: 520px) { .tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@container (min-width: 760px) { .tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@container (min-width: 1040px) { .tiles { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
+.tiles.layout-grid { --cell: max(160px, calc((100cqi - (var(--cols) - 1) * var(--g)) / var(--cols)));
+                    grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); grid-auto-flow: row; }
+.room-tile { position: relative; min-width: 0; min-height: 0; border-radius: 26px; }
+.room-tile > .tile { height: 100%; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; }
+.room-tile.s-1x1 .tile-tv-ctl { display: none; }
 
 /* ---------- sheet: slide away when closing ---------- */
 .sheet.closing { animation: sink .2s var(--ease) forwards; }
@@ -328,7 +331,7 @@ html[data-bg="sky"] .w-wx .cf-wx-icon { color: var(--paper); }
 /* one room: the title bar already says what's on; the heading keeps its Turn off */
 .room-head.single .room-status { display: none; }
 .room-head.single .room-off { margin-left: auto; }
-.room-head.single:not(:has(.room-off)) { display: none; }
+.room-head.single:not(:has(button)) { display: none; }
 /* Phones: the buttons on top, the big title on its own line under them (like Apple Home).
    The small clock is left out: the phone shows the time already. */
 @media (max-width: 1000px) {   /* phones, iPad portrait, the portrait panel: room for long room names */

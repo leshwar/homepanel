@@ -1,8 +1,8 @@
 """Sign-in end to end: the real server in demo mode with sign-in turned on, called over
 HTTP like a phone would, and the sign-in screens in a real browser.
 
-Demo profiles: Owner (admin, PIN 1234, owner@example.com / homepanel) and Sam
-(member, PIN 2468, sees bd-fan, bd-lamp, bd-tv, kt-pendant).
+Demo profiles: Owner (admin, owner@example.com / homepanel) and Sam
+(one-tap member, sees bd-fan, bd-lamp, bd-tv, kt-pendant).
 """
 import http.cookiejar
 import json
@@ -83,8 +83,9 @@ class SignInApiTests(unittest.TestCase):
     def test_sign_in_sets_a_safe_cookie(self):
         c = self.client()
         status, err, _ = c.call("POST", "/auth/sign-in", {"profile_id": "sam", "pin": "1111"})
-        self.assertEqual((status, err["error"]), (401, "That PIN isn't right."))
-        headers = c.sign_in(profile_id="sam", pin="2468")
+        self.assertEqual(status, 401)
+        self.assertIn("no longer used", err["error"])
+        headers = c.sign_in(profile_id="sam")
         cookie = headers["Set-Cookie"]
         self.assertIn("HttpOnly", cookie)
         self.assertIn("SameSite=strict", cookie)
@@ -107,7 +108,7 @@ class SignInApiTests(unittest.TestCase):
 
     def test_member_cannot_control_a_hidden_device(self):
         sam = self.client()
-        sam.sign_in(profile_id="sam", pin="2468")
+        sam.sign_in(profile_id="sam")
         _, state, _ = sam.call("GET", "/state")
         self.assertEqual(sorted(d["id"] for d in state["devices"]), SAM_SEES)
         status, err, _ = sam.call("POST", "/devices/lr-tv/command", {"action": "power", "value": True})
@@ -122,7 +123,7 @@ class SignInApiTests(unittest.TestCase):
 
     def test_members_see_wallpapers_and_pictures_but_cant_change_them(self):
         sam = self.client()
-        sam.sign_in(profile_id="sam", pin="2468")
+        sam.sign_in(profile_id="sam")
         status, walls, _ = sam.call("GET", "/wallpapers")
         self.assertEqual(status, 200)
         self.assertTrue(walls["wallpapers"])
@@ -137,8 +138,8 @@ class SignInApiTests(unittest.TestCase):
 
     def test_events_stream_never_sends_hidden_devices(self):
         sam, owner = self.client(), self.client()
-        sam.sign_in(profile_id="sam", pin="2468")
-        owner.sign_in(profile_id="owner", pin="1234")
+        sam.sign_in(profile_id="sam")
+        owner.sign_in(profile_id="owner", password="homepanel")
         got: list[str] = []
         stream = sam.opener.open(f"{self.server.url}/api/v1/events", timeout=10)
 
@@ -165,8 +166,8 @@ class SignInApiTests(unittest.TestCase):
 
     def test_each_profile_has_its_own_home_layout(self):
         sam, owner = self.client(), self.client()
-        sam.sign_in(profile_id="sam", pin="2468")
-        owner.sign_in(profile_id="owner", pin="1234")
+        sam.sign_in(profile_id="sam")
+        owner.sign_in(profile_id="owner", password="homepanel")
         _, before, _ = owner.call("GET", "/state")
         try:
             mine = {"widgets": [{"id": "weather", "type": "weather", "size": "2x2"},
@@ -182,15 +183,15 @@ class SignInApiTests(unittest.TestCase):
 
     def test_admin_manages_profiles(self):
         owner = self.client()
-        owner.sign_in(profile_id="owner", pin="1234")
-        status, kid, _ = owner.call("POST", "/profiles", {"name": "Kid", "pin": "13579", "devices": ["bd-lamp", "nope"]})
-        self.assertEqual((status, kid["devices"], kid["has_pin"]), (200, ["bd-lamp"], True))
+        owner.sign_in(profile_id="owner", password="homepanel")
+        status, kid, _ = owner.call("POST", "/profiles", {"name": "Kid", "devices": ["bd-lamp", "nope"]})
+        self.assertEqual((status, kid["devices"], kid["has_password"]), (200, ["bd-lamp"], False))
         self.assertNotIn("pin_hash", kid)
-        status, err, _ = owner.call("POST", "/profiles", {"name": "Kid 2"})
+        status, err, _ = owner.call("POST", "/profiles", {"name": "Kid 2", "pin": "1234"})
         self.assertEqual(status, 400)
-        self.assertIn("PIN or a password", err["error"])
+        self.assertIn("no longer used", err["error"])
         k = self.client()
-        k.sign_in(profile_id=kid["id"], pin="13579")
+        k.sign_in(profile_id=kid["id"])
         self.assertEqual([d["id"] for d in k.call("GET", "/state")[1]["devices"]], ["bd-lamp"])
         owner.call("PATCH", f"/profiles/{kid['id']}", {"devices": "all"})
         self.assertEqual(len(k.call("GET", "/state")[1]["devices"]), 13)
@@ -199,24 +200,40 @@ class SignInApiTests(unittest.TestCase):
         status, err, _ = owner.call("DELETE", "/profiles/owner")
         self.assertEqual(status, 400)
 
-    def test_wall_panel_locks_and_unlocks(self):
+    def test_room_layout_positions_are_private_and_validated(self):
+        sam, owner = self.client(), self.client()
+        sam.sign_in(profile_id="sam")
+        owner.sign_in(profile_id="owner", password="homepanel")
+        layout = {"widgets": [{"id": "bd-lamp", "positions": {"4": {"x": 2, "y": 3, "size": "2x2"}}}]}
+        try:
+            status, saved, _ = sam.call("PUT", "/profiles/me/rooms/layout", {"room": "Bedroom", "layout": layout})
+            self.assertEqual(status, 200)
+            self.assertEqual(saved["room_layouts"]["Bedroom"]["widgets"][0]["positions"], layout["widgets"][0]["positions"])
+            self.assertEqual(owner.call("GET", "/state")[1]["settings"]["room_layouts"], {})
+            bad = {"widgets": [*layout["widgets"], {"id": "bd-fan", "positions": {"4": {"x": 3, "y": 3, "size": "1x1"}}}]}
+            self.assertEqual(sam.call("PUT", "/profiles/me/rooms/layout", {"room": "Bedroom", "layout": bad})[0], 400)
+            self.assertEqual(sam.call("GET", "/state")[1]["settings"]["room_layouts"], saved["room_layouts"])
+            for did in ("lr-tv", "kt-pendant", "missing"):
+                self.assertEqual(sam.call("PUT", "/profiles/me/rooms/layout",
+                                         {"room": "Bedroom", "layout": {"widgets": [{"id": did}]}})[0], 400)
+        finally:
+            sam.call("PUT", "/profiles/me/rooms/layout", {"room": "Bedroom", "layout": None})
+
+    def test_wall_panel_keeps_session_until_explicit_sign_out(self):
         panel = self.client()
-        panel.sign_in(profile_id="owner", pin="1234", panel=True)
+        panel.sign_in(profile_id="owner", password="homepanel", panel=True)
         _, s, _ = panel.call("GET", "/auth/session")
         self.assertTrue(s["panel"])
-        panel.call("POST", "/auth/lock")
-        _, s, _ = panel.call("GET", "/auth/session")
-        self.assertEqual((s["signed_in"], s["locked"], s["panel"]), (False, True, True))
-        self.assertIn("lock_after_minutes", s["display"])
-        status, err, _ = panel.call("GET", "/state")
-        self.assertEqual((status, err.get("locked")), (401, True))
-        self.assertEqual(panel.call("GET", "/photos")[0], 200)           # the photo frame keeps going
-        panel.sign_in(profile_id="sam", pin="2468")                      # the next person picks themselves
+        self.assertNotIn("locked", s)
+        self.assertNotIn("lock_after_minutes", s["display"])
+        self.assertEqual(panel.call("GET", "/state")[0], 200)
+        panel.sign_in(profile_id="sam")
         _, s, _ = panel.call("GET", "/auth/session")
         self.assertEqual((s["me"]["name"], s["panel"]), ("Sam", True))   # still the wall panel
-        panel.call("POST", "/auth/sign-out", {})                         # "sign out" on a panel = lock
+        panel.call("POST", "/auth/sign-out", {})
         _, s, _ = panel.call("GET", "/auth/session")
-        self.assertTrue(s["locked"])
+        self.assertFalse(s["signed_in"])
+        self.assertEqual(panel.call("GET", "/state")[0], 401)
 
 
 
@@ -240,7 +257,41 @@ class RateLimitTests(unittest.TestCase):
 
 
 class MigrationTests(unittest.TestCase):
-    """A panel from before profiles: devices but no profiles. The first open must set a PIN."""
+    """A panel from before profiles: keep devices and choose the new Owner with one tap."""
+
+    def test_old_pin_profiles_keep_layouts_devices_and_passwords(self):
+        from app.core.profiles import hash_secret
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d, True)
+        password_hash = hash_secret("existing password")
+        layout = {"version": 2, "widgets": [{"id": "weather", "type": "weather", "size": "1x1"}]}
+        with open(os.path.join(d, "demo.json"), "w") as f:
+            json.dump({
+                "devices": [{"id": "kt-kettle", "adapter": "demo", "name": "Kettle", "kind": "plug",
+                             "room": "Kitchen", "config": {"_uid": "kt-kettle"}, "caps": ["power"]}],
+                "rooms": ["Kitchen"], "settings": {"lock_after_minutes": 2},
+                "profiles": [
+                    {"id": "old-owner", "name": "Owner", "role": "admin", "email": "",
+                     "devices": "all", "pin_hash": hash_secret("1234"), "home_layout": layout},
+                    {"id": "password", "name": "Password", "role": "member", "email": "me@example.com",
+                     "devices": ["kt-kettle"], "pin_hash": hash_secret("5678"), "password_hash": password_hash},
+                ],
+            }, f)
+        server = DemoServer(d, sign_in=True).start()
+        self.addCleanup(server.stop)
+        c = Client(server.url)
+        c.sign_in(profile_id="old-owner")
+        state = c.call("GET", "/state")[1]
+        self.assertEqual(state["settings"]["home_layout"]["widgets"], layout["widgets"])
+        self.assertEqual([x["id"] for x in state["devices"]], ["kt-kettle"])
+        other = Client(server.url)
+        self.assertEqual(other.call("POST", "/auth/sign-in", {"profile_id": "password"})[0], 401)
+        other.sign_in(profile_id="password", password="existing password")
+        with open(os.path.join(d, "demo.json")) as f:
+            saved = json.load(f)
+        self.assertTrue(all("pin_hash" not in p for p in saved["profiles"]))
+        self.assertEqual(saved["profiles"][1]["password_hash"], password_hash)
+        self.assertNotIn("lock_after_minutes", saved["settings"])
 
     def test_first_open_after_upgrading(self):
         d = tempfile.mkdtemp()
@@ -253,21 +304,18 @@ class MigrationTests(unittest.TestCase):
             try:
                 c = Client(server.url)
                 status, err, _ = c.call("GET", "/state")
-                self.assertEqual((status, err["setup"]), (401, True))
+                self.assertEqual((status, err["signin"]), (401, True))
                 _, s, _ = c.call("GET", "/auth/session")
-                self.assertEqual((s["setup"], [p["name"] for p in s["profiles"]]), (True, ["Owner"]))
+                self.assertEqual([p["name"] for p in s["profiles"]], ["Owner"])
+                self.assertNotIn("setup", s)
                 self.assertEqual(s["display"]["home_name"], "Our flat")
-                status, err, _ = c.call("POST", "/auth/setup", {"pin": "12"})
-                self.assertEqual(status, 400)
-                status, s, _ = c.call("POST", "/auth/setup", {"pin": "8642", "name": "Asha", "panel": True})
-                self.assertEqual((status, s["me"]["name"], s["panel"]), (200, "Asha", True))
+                status, s, _ = c.call("POST", "/auth/sign-in", {"profile_id": s["profiles"][0]["id"], "panel": True})
+                self.assertEqual((status, s["me"]["name"], s["panel"]), (200, "Owner", True))
                 _, state, _ = c.call("GET", "/state")
                 self.assertEqual([x["id"] for x in state["devices"]], ["kt-kettle"])
-                other = Client(server.url)                      # someone else can't take it over now
-                self.assertEqual(other.call("POST", "/auth/setup", {"pin": "1111"})[0], 400)
                 with open(os.path.join(d, "demo.json")) as f:
                     saved = f.read()
-                self.assertNotIn("8642", saved)
+                self.assertNotIn("pin_hash", saved)
             finally:
                 server.stop()
         finally:
@@ -308,22 +356,13 @@ class SignInUITests(unittest.TestCase):
         self.addCleanup(ctx.close)
         return page
 
-    def pin(self, page, digits):
-        for d in digits:
-            page.click(f'[data-digit="{d}"]')
-        page.click('[data-digit="ok"]')
-
-    def test_sign_in_with_pin_and_switch_profiles(self):
+    def test_one_tap_profile_and_password_profile_switch(self):
         page = self.open()
         page.wait_for_selector('.avatar-choice[data-pick="sam"]')
         self.assertFalse(page.locator("#app").is_visible())               # nothing of the home before sign-in
         box = page.locator('[data-pick="sam"]').bounding_box()
         self.assertGreaterEqual(box["height"], 48)
         page.click('[data-pick="sam"]')
-        self.pin(page, "1111")                                            # wrong PIN: an error, still on the pad
-        page.wait_for_selector("#signin-error:text('That PIN isn')")
-        self.assertGreaterEqual(page.locator('[data-digit="5"]').bounding_box()["width"], 48)
-        self.pin(page, "2468")
         page.wait_for_selector("#signin", state="hidden")
         page.wait_for_selector("#profile-btn:not([hidden])")
         self.assertEqual(page.inner_text("#profile-btn"), "S")
@@ -340,7 +379,11 @@ class SignInUITests(unittest.TestCase):
         page.click("#profile-btn")                                        # switch to Owner
         page.click('[data-pm="switch"]')
         page.click('[data-pick="owner"]')
-        self.pin(page, "1234")
+        page.fill("[data-signin-password] input[name=password]", "wrong")
+        page.click("[data-signin-password] button[type=submit]")
+        page.wait_for_selector("#signin-error:text('That password isn')")
+        page.fill("[data-signin-password] input[name=password]", "homepanel")
+        page.click("[data-signin-password] button[type=submit]")
         page.wait_for_function("document.querySelector('#profile-btn')?.textContent.trim() === 'O'")
         page.wait_for_selector('#grid .tile[data-id="lr-tv"]')
 
@@ -363,37 +406,37 @@ class SignInUITests(unittest.TestCase):
         self.assertIn("Sam", page.inner_text("[data-profile-list]"))
         page.click('[data-go="profile"]:has-text("Add a profile")')
         page.fill("[data-profile-form] input[name=name]", "Guest")
-        page.fill("[data-profile-form] input[name=pin]", "0000")
+        self.assertEqual(page.locator("[data-profile-form] input[name=pin]").count(), 0)
         page.check("[data-profile-form] input[name=access][value=some]")
         page.check('[data-profile-form] input[name=device][value="kt-pendant"]')
         page.click("[data-profile-form] button[type=submit]")
-        page.wait_for_selector("text=Guest can now sign in")
+        page.wait_for_selector("text=Guest's profile is ready")
         page.wait_for_selector("[data-profile-list]:has-text('Guest')")
         self.assertIn("Member, 1 device", page.inner_text("[data-profile-list]"))
         self.assertEqual(self.errors, [])
 
-    def test_wall_panel_locks_when_idle(self):
+    def test_wall_panel_has_no_lock_controls_and_keeps_profile_on_reload(self):
         page = self.open(1280, 720)
         page.click('[data-pick="owner"]')
-        self.pin(page, "1234")
+        page.fill("[data-signin-password] input[name=password]", "homepanel")
+        page.click("[data-signin-password] button[type=submit]")
         page.wait_for_selector("#profile-btn:not([hidden])")
         page.click("#profile-btn")                                        # Settings → Profiles → This screen
         page.click('[data-pm="profiles"]')
         page.check("[data-this-screen] input[name=panel]")
-        page.select_option("[data-this-screen] select[name=lock_after_minutes]", "2")
+        self.assertEqual(page.locator("[name=lock_after_minutes]").count(), 0)
         page.click("[data-this-screen] button[type=submit]")
         page.wait_for_selector("text=Saved")
         page.keyboard.press("Escape")
         page.keyboard.press("Escape")
         page.wait_for_selector("#settings", state="hidden")
         page.click("#profile-btn")
-        page.click('[data-pm="lock"]')                                    # what the idle timer does
-        page.wait_for_selector('.avatar-choice[data-pick="sam"]')
-        page.wait_for_selector("text=The panel locked itself")
-        page.reload()                                                     # a restart: still a locked panel, not signed out
-        page.wait_for_selector("text=The panel locked itself")
+        self.assertEqual(page.locator('[data-pm="lock"]').count(), 0)
+        page.reload()
+        page.wait_for_selector("#signin", state="hidden")
+        page.click("#profile-btn")
+        page.click('[data-pm="switch"]')
         page.click('[data-pick="sam"]')
-        self.pin(page, "2468")
         page.wait_for_function("document.querySelector('#profile-btn')?.textContent.trim() === 'S'")
         self.assertEqual(self.errors, [])
 

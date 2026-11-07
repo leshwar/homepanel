@@ -35,12 +35,22 @@ ready, and finds Docker even if `docker` isn't on your PATH yet.
 | Try someone's branch / PR | `./scripts/dev/wt.sh get ui/glass-look` |
 | Run a branch's demo in Docker | `./scripts/dev/wt.sh demo ui/glass-look` → prints its URL (8081, 8082, …) |
 | Run without Docker | inside the branch folder: `make setup` once, then `make dev` → http://localhost:8080 |
-| Tests | inside the branch folder: `make test-unit`, `make test-integration`, `make check-tests` |
+| Final validation | inside the branch folder: `make lint`, `REQUIRE_UI_TESTS=1 make test`, `make check-tests` |
 | See all branch folders | `./scripts/dev/wt.sh list` |
 | Clean up merged branches | `./scripts/dev/wt.sh prune` |
 
 Then push the branch and open a pull request to `main` (see
 [CI_AND_BRANCH_RULES.md](CI_AND_BRANCH_RULES.md)).
+
+During development, run the smallest relevant test selection, not both full suites
+after each edit. Run the complete unit/integration pass once when the final revision
+is ready for merge; fix failures and rerun affected checks if code changes afterwards.
+`make test` includes both suites, so do not follow it with `make test-unit` and
+`make test-integration`. Required PR CI remains the merge gate, not an optional
+replacement for checking the final code. See [tests/README.md](../tests/README.md).
+
+An app-managed worktree is already an isolated branch folder. Work there directly
+instead of creating another worktree or modifying the main clone.
 
 ### With Claude Code
 

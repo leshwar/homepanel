@@ -31,7 +31,7 @@ from .adapter import (ADAPTERS, Action, AdapterError, Cap, Clean, Device, Device
                       Key, PairingRequired, Pointer, missing_requirements, unsupported_reason)
 from .automations import Automations
 from .history import History
-from .layout import LayoutError, clean_layout, default_layout, migrate_layout
+from .layout import LayoutError, clean_layout, clean_room_layout, default_layout, migrate_layout
 from .net import in_container, normalize_mac, parse_color
 from .photos import DevicePictures, PhotoLibrary
 from .presence import Presence
@@ -463,6 +463,7 @@ class HomeService:
         if viewer is not None and not viewer.is_admin:
             s.pop("presence", None)          # phones' addresses: admins only
         s["home_layout"] = self.layout_for(viewer)
+        s["room_layouts"] = self.room_layouts_for(viewer)
         return s
 
     def layout_for(self, viewer: Viewer | None) -> dict:
@@ -496,6 +497,43 @@ class HomeService:
         self.profiles.set_layout(viewer.id, clean)
         self._publish_layout()
         return {"home_layout": self.layout_for(viewer)}
+
+    def room_layouts_for(self, viewer: Viewer | None) -> dict:
+        if viewer is None:
+            return {}
+        layouts = viewer.profile.get("room_layouts", {})
+        out = {}
+        for room, layout in layouts.items():
+            ids = {d.id for d in self.store.devices.values()
+                   if viewer.sees(d.id) and (d.room if d.room in self.store.rooms else "") == room}
+            if ids:
+                out[room] = {**layout, "widgets": [w for w in layout["widgets"] if w["id"] in ids]}
+        return out
+
+    def save_my_room_layout(self, room: str, layout: Any) -> dict:
+        viewer = current_viewer.get()
+        if viewer is None:
+            raise AdapterError("Choose your profile to arrange room tiles.")
+        if not isinstance(room, str) or (room and room not in self.store.rooms):
+            raise AdapterError("Choose an available room.")
+        try:
+            clean = clean_room_layout(layout) if layout is not None else None
+        except LayoutError as e:
+            raise AdapterError(str(e)) from None
+        allowed = {d.id for d in self.store.devices.values()
+                   if viewer.sees(d.id) and (d.room if d.room in self.store.rooms else "") == room}
+        if clean and any(w["id"] not in allowed for w in clean["widgets"]):
+            raise AdapterError("Only this room's available devices can be arranged.")
+        profile = self.profiles.get(viewer.id)
+        layouts = dict(profile.get("room_layouts", {}))
+        if clean is None:
+            layouts.pop(room, None)
+        else:
+            layouts[room] = clean
+        profile["room_layouts"] = layouts
+        self.store.save()
+        self._publish_layout()
+        return {"room_layouts": self.room_layouts_for(viewer)}
 
     def get(self, device_id: str) -> Device:
         d = self.store.devices.get(device_id)
@@ -990,11 +1028,6 @@ class HomeService:
             changes["temperature_unit"] = unit
         if "clock_face" in changes and changes["clock_face"] not in CLOCK_FACES:
             raise AdapterError(f"Clock face should be one of: {', '.join(CLOCK_FACES)}.")
-        if "lock_after_minutes" in changes:
-            try:
-                changes["lock_after_minutes"] = max(0, min(240, int(float(changes["lock_after_minutes"]))))
-            except (TypeError, ValueError):
-                raise AdapterError("Lock after should be a number of minutes.")
         if "frame_seconds" in changes:
             try:
                 changes["frame_seconds"] = max(5, min(300, int(float(changes["frame_seconds"]))))
@@ -1043,7 +1076,7 @@ class HomeService:
         return self.profiles.public(p)
 
     async def update_me(self, data: dict) -> dict:
-        """Change your own name, colour, email, PIN or password (not your role or devices)."""
+        """Change your own name, colour, email or password (not your role or devices)."""
         viewer = current_viewer.get()
         if viewer is None:
             raise AdapterError("Sign in first.")
@@ -1058,11 +1091,10 @@ class HomeService:
         self._publish_layout()
 
     def display_settings(self, with_location: bool = False) -> dict:
-        """The look of the panel, for the sign-in screen and a locked wall panel's clock.
-        Nothing private: no location unless asked (a locked panel), no people, no layout."""
+        """The sign-in screen's look. No people, layout, or location unless signed in."""
         keys = ("home_name", "background", "glass_effect", "glass_transparency", "clock_24h", "clock_face",
                 "dim_after_seconds", "idle_screen", "frame_seconds", "frame_shuffle", "frame_clock",
-                "frame_night_clock", "temperature_unit", "lock_after_minutes", "tile_style")
+                "frame_night_clock", "temperature_unit", "tile_style")
         out = {k: self.store.settings.get(k) for k in keys}
         if with_location:
             out.update({k: self.store.settings.get(k) for k in ("latitude", "longitude", "place_name", "weather_enabled")})
@@ -1094,13 +1126,13 @@ class HomeService:
                 {"device_id": "lr-tv", "action": "power", "value": False},
                 {"device_id": "bd-lamp", "action": "brightness", "value": 10}]},
         ]
-        # Two pretend people. Owner: PIN 1234, or owner@example.com / homepanel. Sam: PIN 2468.
+        # Owner demonstrates optional password sign-in; Sam opens with one tap.
         self.store.profiles = [
             {"id": "owner", "name": "Owner", "color": "#f2b35b", "email": "owner@example.com", "role": ADMIN,
-             "pin_hash": hash_secret("1234"), "password_hash": hash_secret("homepanel"), "devices": "all",
+             "password_hash": hash_secret("homepanel"), "devices": "all",
              "home_layout": None, "created": time.time()},
             {"id": "sam", "name": "Sam", "color": "#7cc7a5", "email": "", "role": MEMBER,
-             "pin_hash": hash_secret("2468"), "password_hash": None,
+             "password_hash": None,
              "devices": ["bd-fan", "bd-lamp", "bd-tv", "kt-pendant"], "home_layout": None, "created": time.time()},
         ]
         self.store.automations = [

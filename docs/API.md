@@ -8,9 +8,8 @@ The API is brand-agnostic: callers never need to know which adapter a device use
 ## Sign-in and profiles
 
 Every route needs a signed-in session except `/auth/session`, `/auth/sign-in`,
-`/auth/setup`, `/auth/sign-out` and a minimal `/health`. Without one you get
-`401 {"error": "Sign in to use the panel.", "signin": true}` (`"setup": true` on the
-first open after upgrading, `"locked": true` on a locked wall panel). A **member**
+`/auth/sign-out` and a minimal `/health`. Without one you get
+`401 {"error": "Choose your profile to use the panel.", "signin": true}`. A **member**
 gets `403 {"error": "Only an admin can do that…"}` on admin-only routes, and a
 device their profile can't see answers `404` exactly like one that doesn't exist.
 
@@ -20,32 +19,35 @@ days after they're last used; the wall panel for about a year.
 
 | Method | Path | Body / result |
 |---|---|---|
-| GET | `/auth/session` | `{signed_in, auto, setup, locked, panel, me, profiles, display, demo}`. `profiles` is the picker: `{id, name, initial, color, has_pin, has_password}` (no emails). `display` is the panel's look (background, clock face…) for the sign-in screen; it has the location only for a signed-in screen or the wall panel |
-| POST | `/auth/sign-in` | `{"profile_id", "pin"}`, `{"profile_id", "password"}` or `{"email", "password"}`; admins may add `"panel": true` (this screen is the wall panel). Sets the cookie; returns the same as `/auth/session`. Wrong: 401. Too many tries (8 in 15 minutes per address and per profile): 429 with `Retry-After` |
-| POST | `/auth/setup` | First open after upgrading only: `{"pin"}` or `{"email", "password"}`, optional `name`, `panel`. Protects the Owner profile and signs in |
-| POST | `/auth/sign-out` | `{}` ends this browser's session. On the wall panel it locks instead (back to the profile picker); `{"forget": true}` really signs it out |
-| POST | `/auth/lock` | Lock this screen now (the wall panel does this after `lock_after_minutes` idle). A locked panel can still read `/weather`, `/sun` and `/photos` for its resting clock and photo frame |
+| GET | `/auth/session` | `{signed_in, auto, panel, me, profiles, display, demo}`. `profiles` is the picker: `{id, name, initial, color, has_password}` (no emails). `display` is the panel's look; it includes location only when signed in |
+| POST | `/auth/sign-in` | `{"profile_id": "..."}` for a password-free profile; otherwise `{"profile_id", "password"}` or `{"email", "password"}`. Admins may add `"panel": true`. Sets the cookie and returns the session. Wrong: 401. Too many tries (8 in 15 minutes per address/profile): 429 with `Retry-After` |
+| POST | `/auth/sign-out` | `{}` ends this screen's session, including wall panels |
 | POST | `/auth/panel` | admin: `{"panel": true}` makes this screen the wall panel, `false` makes it an ordinary browser |
-| GET | `/profiles` | admin: `{"profiles": [{id, name, initial, color, email, role, devices, has_pin, has_password, custom_layout}]}` |
-| POST | `/profiles` | admin: `{name, color?, email?, role: "admin"\|"member", pin?, password?, devices: "all"\|[device ids]}`. Needs a PIN (4–6 digits) or a password (8+ characters, with an email) |
-| PATCH | `/profiles/{id}` | admin: any of the above. `pin`/`password`: a value sets it, `""` keeps it, `null` removes it. The panel always keeps one admin with a PIN or password |
+| GET | `/profiles` | admin: `{"profiles": [{id, name, initial, color, email, role, devices, has_password, custom_layout}]}` |
+| POST | `/profiles` | admin: `{name, color?, email?, role: "admin"\|"member", password?, devices: "all"\|[device ids]}`. A password is optional; if set it needs 8+ characters and an email |
+| PATCH | `/profiles/{id}` | admin: any of the above. `password`: a value sets it, `""` keeps it, `null` removes it. At least one admin must remain |
 | DELETE | `/profiles/{id}` | admin: removes the profile and signs out its screens (not your own) |
-| PATCH | `/profiles/me` | your own `name`, `color`, `email`, `pin`, `password` |
+| PATCH | `/profiles/me` | your own `name`, `color`, `email`, `password` |
 | PUT | `/profiles/me/layout` | `{"home_layout": {...}}` your own Home page (see below); `null` = back to the default |
+| PUT | `/profiles/me/rooms/layout` | `{"room": "Kitchen", "layout": {...}}` your own room tile layout; `room: ""` is Other, `layout: null` resets this room |
 
-PINs and passwords are hashed with scrypt; they are never returned or logged.
+Optional passwords are hashed with scrypt; they are never returned or logged.
+PIN fields and the old setup/lock endpoints are retired. Upgrading preserves
+profiles and passwords, removes old PIN hashes/idle-lock settings, and unlocks
+saved sessions. Password-free profiles are selectable by anyone who can reach
+the service: use trusted LAN/private tailnet access, not public exposure.
 `GET /state` adds `me` (your profile) and, for admins, `profiles`. For a member it
 lists only their devices and the scenes made of them, and leaves out `adapters`,
 `automations`, `presence` and `settings.presence`.
 
 Members may: `GET /state`, `/events`, `/weather`, `/sun`, `/photos`, `/wallpapers`, the
 energy, map and picture of their devices; `POST` commands and refresh to their devices, `/all-off` (their
-devices only), `/scenes/{id}/run` (scenes made of their devices), `/auth/lock`; and
-change their own profile and layout. Everything else is for admins.
+devices only), `/scenes/{id}/run` (scenes made of their devices); and
+change their own profile, Home layout and room layouts. Everything else is for admins.
 
 Demo mode (`--demo`) doesn't ask anyone to sign in: requests without a session act
 as the Owner. Add `--sign-in` (or `HOMEPANEL_SIGN_IN=1`) to try it like a real panel:
-Owner's PIN is `1234` (or `owner@example.com` / `homepanel`), Sam's is `2468`.
+Owner uses `owner@example.com` / `homepanel`; Sam opens with just `{"profile_id": "sam"}`.
 
 ```bash
 # sign in once, keep the cookie, then use the API as that profile
@@ -233,7 +235,7 @@ Response (always 200 unless the body has no `text`):
 | POST | `/scenes` | `{"name", "icon", "actions": [{device_id, action, value}]}` **or** `{"name", "icon", "capture": [device ids]}` to save devices as they are now |
 | DELETE | `/scenes/{id}` | — |
 | POST | `/scenes/{id}/run` | — → `{"ok": n, "failed": [messages]}` |
-| PUT | `/settings` | admin: `lock_after_minutes` (the wall panel locks after this idle time, 0 = never), `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`sky` (default: follows the weather and time of day)/`ocean`/`aurora`/`night`), `home_layout` (the shared default Home page for profiles that haven't made their own, see below; `null` = the built-in default), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`), `place_name` (shown on the clock, max 40 characters), `weather_enabled` (opt-in), `temperature_unit` (`C`/`F`) |
+| PUT | `/settings` | admin: `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`sky` (default: follows the weather and time of day)/`ocean`/`aurora`/`night`), `home_layout` (the shared default Home page for profiles that haven't made their own, see below; `null` = the built-in default), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`), `place_name` (shown on the clock, max 40 characters), `weather_enabled` (opt-in), `temperature_unit` (`C`/`F`) |
 
 `home_layout` is one object per profile, the same on every screen that profile uses.
 `GET /state` returns the signed-in profile's own one (save it with `PUT
@@ -242,8 +244,9 @@ default. There are no devices on Home: they're on the Rooms pages (All rooms, th
 page per room), which only list rooms with devices the profile can see.
 
 ```json
-{"version": 2, "widgets": [
-  {"id": "clock",   "type": "clock",   "size": "2x2", "hidden": false, "options": {}},
+{"version": 3, "widgets": [
+  {"id": "clock",   "type": "clock",   "size": "2x2", "hidden": false, "options": {},
+   "positions": {"4": {"x": 2, "y": 4, "size": "2x2"}, "2": {"x": 0, "y": 2, "size": "2x1"}}},
   {"id": "zone-in", "type": "zone",    "size": "1x1", "hidden": false, "options": {"tz": "Asia/Kolkata", "label": "India"}},
   {"id": "zone-us", "type": "zone",    "size": "1x1", "hidden": false, "options": {"tz": null, "label": "US"}},
   {"id": "rooms",   "type": "rooms",   "size": "2x2", "hidden": false, "options": {}}]}
@@ -255,6 +258,20 @@ page). Sizes are grid columns × rows: `1x1`, `2x1`, `2x2`. Up to 40 widgets; a 
 layout gets a 400 that says what's wrong. Version 1 layouts could also hold `device`
 widgets: the server drops them when it starts (and from anything an older screen
 saves), so nobody is left with an empty slot.
+
+`positions` is optional for compatibility with older ordered layouts. Its keys
+are column counts (`"2"`, `"4"`, `"6"`); each value has zero-based integer `x`, `y`
+and a size. A saved position overrides the fallback `size` at that width. Tiles
+must fit inside the columns and 200 rows and may not overlap another visible
+tile in that grid. Bad positions return 400 without changing the saved layout.
+Empty rows/cells persist. Missing widths are derived without modifying the saved
+ones, and editing a width changes only that width's geometry.
+
+Room layouts use `{"version": 3, "widgets": [{"id": "device-id", "size": "1x1",
+"positions": {"4": {"x": 2, "y": 3, "size": "2x2"}}}]}` (up to 100 tiles).
+They are stored per profile and room, and returned as `settings.room_layouts`.
+Only visible devices in that room can be saved or returned. New devices use
+free space; removed/moved-away devices are left out of the displayed layout.
 
 ## Energy
 

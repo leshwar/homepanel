@@ -95,7 +95,7 @@ const VIEWS = {
         ${row("data-go=photos", "image", "Photo frame", store.settings.idle_screen === "photos"
               ? "Shows when the panel is idle" : "Slideshow of your photos")}
         ${row("data-go=display", "sun", "Display and clock")}
-        ${row("data-go=profiles", "users", "Profiles and sign-in", profilesSummary())}
+        ${row("data-go=profiles", "users", "Profiles", profilesSummary())}
         ${row("data-go=diagnostics", "pulse", "Diagnostics and logs")}
       </div>
       <p class="group-label">Tip: typing is easier from a phone or laptop. Open this panel's address in any browser on your Wi-Fi.</p>`);
@@ -104,7 +104,7 @@ const VIEWS = {
   // Members: their own profile only. Devices, rooms and settings are for admins.
   member() {
     page("Settings", `
-      <div class="list">${row("data-go=me", "users", "Your profile", "Name, colour, PIN and password")}</div>
+      <div class="list">${row("data-go=me", "users", "Your profile", "Name, colour and optional password")}</div>
       <div class="card"><h3>Want more devices here?</h3>
         <p>Adding devices, rooms and panel settings is for admins. Ask an admin to share more devices with your profile.</p></div>`);
   },
@@ -297,6 +297,7 @@ const VIEWS = {
     page("Rooms", `
       <div class="list">${store.rooms.map((r, i) => `
         <div class="row"><span class="grow"><span class="title">${esc(r)}</span></span>
+          <button class="btn small" data-room-layout="${esc(r)}" aria-label="Edit ${esc(r)} tiles">Edit tiles</button>
           ${i > 0 ? `<button class="btn small" data-room-up="${i}" aria-label="Move ${esc(r)} up">${icon("up")}</button>` : ""}
           <button class="btn small danger" data-room-del="${i}" aria-label="Delete ${esc(r)}">${icon("trash")}</button></div>`).join("")}</div>
       <form class="card" data-room-add>
@@ -706,6 +707,8 @@ async function useMyLocation(btn) {
 
 root.addEventListener("click", async (e) => {
   const t = (sel) => e.target.closest(sel);
+  const roomLayout = t("[data-room-layout]");
+  if (roomLayout) return document.dispatchEvent(new CustomEvent("hp:edit-room", { detail: roomLayout.dataset.roomLayout }));
   if (t("[data-back]")) return back();
   if (t("[data-close]")) return close();
   const goEl = t("[data-go]");

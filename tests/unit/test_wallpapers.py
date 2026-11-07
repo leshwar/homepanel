@@ -7,7 +7,7 @@ import unittest
 
 from PIL import Image
 
-from app.api.auth import LOCKED_OK, MEMBER_OK, _match
+from app.api.auth import MEMBER_OK, _match
 from app.core.adapter import AdapterError
 from app.core.photos import DevicePictures, PhotoError, PhotoLibrary
 from app.core.service import HomeService
@@ -167,12 +167,11 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AccessRuleTests(unittest.TestCase):
-    def test_members_and_locked_panels_see_but_dont_change(self):
-        for rules in (MEMBER_OK, LOCKED_OK):
-            self.assertTrue(_match(rules, "GET", "/api/v1/wallpapers"))
-            self.assertTrue(_match(rules, "GET", "/api/v1/wallpapers/abc.jpg/image"))
-            self.assertFalse(_match(rules, "POST", "/api/v1/wallpapers"))
-            self.assertFalse(_match(rules, "DELETE", "/api/v1/wallpapers/abc.jpg"))
+    def test_members_see_but_dont_change(self):
+        self.assertTrue(_match(MEMBER_OK, "GET", "/api/v1/wallpapers"))
+        self.assertTrue(_match(MEMBER_OK, "GET", "/api/v1/wallpapers/abc.jpg/image"))
+        self.assertFalse(_match(MEMBER_OK, "POST", "/api/v1/wallpapers"))
+        self.assertFalse(_match(MEMBER_OK, "DELETE", "/api/v1/wallpapers/abc.jpg"))
         self.assertTrue(_match(MEMBER_OK, "GET", "/api/v1/devices/bd-lamp/picture"))
         self.assertFalse(_match(MEMBER_OK, "PUT", "/api/v1/devices/bd-lamp/picture"))
         self.assertFalse(_match(MEMBER_OK, "DELETE", "/api/v1/devices/bd-lamp/picture"))

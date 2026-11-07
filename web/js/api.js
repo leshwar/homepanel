@@ -40,10 +40,8 @@ async function call(method, path, body) {
 export const api = {
   // sign-in and profiles
   session: () => call("GET", "/auth/session"),
-  signIn: (body) => call("POST", "/auth/sign-in", body),       // {profile_id, pin} | {profile_id, password} | {email, password}
-  setup: (body) => call("POST", "/auth/setup", body),
-  signOut: (forget = false) => call("POST", "/auth/sign-out", { forget }),
-  lock: () => call("POST", "/auth/lock"),
+  signIn: (body) => call("POST", "/auth/sign-in", body),       // {profile_id} | {profile_id/email, password}
+  signOut: () => call("POST", "/auth/sign-out", {}),
   setPanel: (panel) => call("POST", "/auth/panel", { panel }),
   profiles: () => call("GET", "/profiles"),
   addProfile: (p) => call("POST", "/profiles", p),
@@ -51,6 +49,7 @@ export const api = {
   deleteProfile: (id) => call("DELETE", `/profiles/${encodeURIComponent(id)}`),
   updateMe: (p) => call("PATCH", "/profiles/me", p),
   saveLayout: (layout) => call("PUT", "/profiles/me/layout", { home_layout: layout }),   // null = back to the default
+  saveRoomLayout: (room, layout) => call("PUT", "/profiles/me/rooms/layout", { room, layout }),
 
   state: () => call("GET", "/state"),
   health: () => call("GET", "/health"),

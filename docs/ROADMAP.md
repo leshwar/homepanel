@@ -9,10 +9,10 @@ on (or open) an issue before starting so work isn't duplicated.
 - Energy history and 7-day chart for plugs that report watts.
 - Presence: "all off when everyone leaves" using phones on the Wi-Fi.
 - Home Assistant adapter (REST API, areas become rooms).
-- Profiles and sign-in (PIN or email/password), member device access, admin-only settings.
+- One-tap profiles with optional email/password, member device access, admin-only settings.
 - Add to Home Screen icons and full-screen mode on phones and tablets.
 - Weather widgets and weather-aware backgrounds/resting clocks (opt-in).
-- Per-profile Home widgets: move, resize, hide, and save across screens.
+- Per-profile Home and room tiles: position in free grid space, resize, and save across screens.
 - Room pages with their own Turn off button.
 - Voice/typed commands, photo frame, wallpapers and device pictures.
 
@@ -20,7 +20,7 @@ on (or open) an issue before starting so work isn't duplicated.
 
 Today any phone uses the panel as a web page. Ideas for later, in order:
 - Optional phone approval/pairing with a code shown on the hub, in addition to
-  the existing PIN and email/password sign-in.
+  the existing optional email/password sign-in.
 - iPhone/iPad and Android apps (e.g. Capacitor wrapping the same web UI) that
   find the hub on the Wi-Fi.
 - A guided setup for reaching the hub away from home (e.g. Tailscale/VPN).
@@ -58,7 +58,7 @@ additional sources, each as its own module next to `app/core/photos.py`:
 
 ## UI
 
-- Drag to reorder **device tiles**; pin favourites to the top (Home widgets already move).
+- Favourite-device shortcuts (Home and room tiles already support grid placement and resizing).
 - Indoor temperature and an optional weather summary in the header.
 - Per-room "All off" directly from the room tab (long-press); room pages already have Turn off.
 - Backlight control on the official display (dim at night instead of showing the night clock).

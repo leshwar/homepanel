@@ -846,6 +846,40 @@ class UITests(unittest.TestCase):
     def order(self, page):
         return page.eval_on_selector_all(".home-grid > .widget", "els => els.map(e => e.dataset.wid)")
 
+    def drag_to_cell(self, page, selector, x, y, cancel=False):
+        box = page.locator(selector)
+        box.scroll_into_view_if_needed()
+        metrics = box.evaluate("""el => {
+            const r = el.getBoundingClientRect(), grid = el.parentElement, g = grid.getBoundingClientRect();
+            const cs = getComputedStyle(grid);
+            return {left:r.left, top:r.top, x:g.left, y:g.top,
+              stepX:parseFloat(cs.gridTemplateColumns) + parseFloat(cs.columnGap),
+              stepY:parseFloat(cs.gridAutoRows) + parseFloat(cs.rowGap)};
+        }""")
+        page.mouse.move(metrics["left"] + 55, metrics["top"] + 55)
+        page.mouse.down()
+        page.wait_for_timeout(250)
+        page.mouse.move(metrics["x"] + x * metrics["stepX"] + 55,
+                        metrics["y"] + y * metrics["stepY"] + 55, steps=6)
+        if cancel:
+            box.evaluate("el => el.parentElement.dispatchEvent(new PointerEvent('pointercancel', {bubbles:true, pointerId:1}))")
+        page.mouse.up()
+
+    def placements(self, page, selector=".home-grid > .widget"):
+        return page.eval_on_selector_all(selector, """els => Object.fromEntries(els.map(el =>
+          [el.dataset.wid, {column:el.style.gridColumnStart, row:el.style.gridRowStart,
+                           size:[...el.classList].find(c => c.startsWith('s-'))}]))""")
+
+    def assert_grid_fits(self, page, selector):
+        self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+        boxes = page.locator(selector).evaluate_all("""els => els.map(el => {
+          const r = el.getBoundingClientRect(); return {x:r.x, y:r.y, right:r.right, bottom:r.bottom};
+        })""")
+        for i, a in enumerate(boxes):
+            for b in boxes[i + 1:]:
+                self.assertFalse(a["x"] < b["right"] - 1 and b["x"] < a["right"] - 1
+                                 and a["y"] < b["bottom"] - 1 and b["y"] < a["bottom"] - 1, (a, b))
+
     def test_home_page_has_clocks_and_rooms_but_no_devices(self):
         page = self.home(timezone_id="America/Denver")
         try:
@@ -998,30 +1032,32 @@ class UITests(unittest.TestCase):
             self.long_press(page, '.widget[data-wid="clock"]')                 # long press the page = edit
             page.wait_for_selector(".home.editing .editbar")
             page.click('.widget[data-wid="scenes"] [data-hide]')
+            before = self.placements(page)
+            self.drag_to_cell(page, '.widget[data-wid="weather"]', 2, 2)
             page.click('.widget[data-wid="weather"] [data-resize]')            # a tap on the corner: next size
             self.assertIn("s-2x2", page.get_attribute('.widget[data-wid="weather"]', "class"))
             page.click('.widget[data-wid="zone-us"] [data-menu]')
             page.select_option("[data-zone-pick]", "America/Chicago")
-            page.click('[data-size-pick="2x1"]')
+            page.click('[data-size-pick="1x1"]')
             page.click(".wmenu button.btn[data-menu-close]")
-            a = page.locator('.widget[data-wid="clock"]').bounding_box()       # hold the clock and drag it down
-            t = page.locator('.widget[data-wid="rooms"]').bounding_box()
-            page.mouse.move(a["x"] + 50, a["y"] + 50)
-            page.mouse.down()
-            page.wait_for_timeout(350)
-            page.mouse.move(t["x"] + t["width"] / 2, t["y"] + t["height"] / 2, steps=10)
-            page.mouse.up()
-            self.assertNotEqual(self.order(page)[0], "clock")
-            moved = self.order(page)
+            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 2)         # occupied: don't displace Rooms
+            self.assertEqual(self.placements(page)["clock"], before["clock"])
+            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 4, cancel=True)
+            self.assertEqual(self.placements(page)["clock"], before["clock"])
+            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 4)         # empty space, not another tile
+            moved = self.placements(page)
+            self.assertEqual(moved["clock"]["row"], "5")
+            self.assertEqual(moved["rooms"], before["rooms"])                 # the other tiles stay put
+            self.assert_grid_fits(page, ".home-grid > .widget")
             page.click("[data-edit-done]")
             page.wait_for_selector("text=Home page saved")
 
             other = self.home(width=1180, height=820)                           # another screen: same Home page
             try:
-                self.assertEqual(self.order(other), moved)
+                self.assertEqual(self.placements(other), moved)
                 self.assertEqual(other.locator('.widget[data-wid="scenes"]').count(), 0)
                 self.assertIn("s-2x2", other.get_attribute('.widget[data-wid="weather"]', "class"))
-                self.assertIn("s-2x1", other.get_attribute('.widget[data-wid="zone-us"]', "class"))
+                self.assertIn("s-1x1", other.get_attribute('.widget[data-wid="zone-us"]', "class"))
                 self.assertEqual(other.get_attribute('.widget[data-wid="zone-us"] .w-zone', "data-zone"), "America/Chicago")
             finally:
                 other.close()
@@ -1035,10 +1071,69 @@ class UITests(unittest.TestCase):
             page.wait_for_selector('.widget[data-wid="scenes"]')
             page.click("[data-edit-cancel]")
             page.wait_for_selector(".home:not(.editing)")
-            self.assertEqual(self.order(page), moved)
+            self.assertEqual(self.placements(page), moved)
+            saved = page.evaluate("async () => (await (await import('/js/api.js')).api.state()).settings.home_layout")
+            for width, height in ((393, 852), (1280, 720), (720, 1280)):
+                page.set_viewport_size({"width": width, "height": height})
+                page.wait_for_timeout(100)
+                self.assert_grid_fits(page, ".home-grid > .widget")
+                self.assertEqual(page.evaluate("async () => (await (await import('/js/api.js')).api.state()).settings.home_layout"), saved)
+            self.assertEqual(self.placements(page), moved)
         finally:
             page.evaluate("fetch('/api/v1/profiles/me/layout', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: '{\"home_layout\": null}'})")
             page.close()
+
+    def test_room_settings_edit_tiles_resize_save_cancel_and_live_updates(self):
+        page = self.page
+        page.set_viewport_size({"width": 1280, "height": 720})
+        page.click('#rail [data-open-settings]')
+        page.click('[data-go="rooms"]')
+        page.click('[data-room-layout="Kitchen"]')
+        page.wait_for_selector("#settings", state="hidden")
+        page.wait_for_selector(".tiles.editing")
+        # Portrait provides room to drag down into unused grid cells.
+        page.set_viewport_size({"width": 720, "height": 1280})
+        page.wait_for_timeout(100)
+        selector = '.room-tile[data-wid="kt-pendant"]'
+        before = self.placements(page, ".room-tile")
+        state_before = page.locator('.tile[data-id="kt-pendant"]').get_attribute("data-on")
+        try:
+            self.drag_to_cell(page, selector, 2, 2)
+            page.click(selector + " [data-resize]")
+            page.click(selector + " [data-resize]")
+            self.assertIn("s-2x2", page.get_attribute(selector, "class"))
+            moved = self.placements(page, ".room-tile")
+            self.assertEqual(moved["kt-pendant"]["row"], "3")
+            self.assertEqual(moved["kt-kettle"], before["kt-kettle"])
+            self.assertEqual(page.locator('.tile[data-id="kt-pendant"]').get_attribute("data-on"), state_before)
+            page.evaluate("""async () => {
+              const {store, upsertDevice} = await import('/js/store.js');
+              upsertDevice({...store.devices.get('kt-pendant')});
+            }""")
+            self.assertEqual(self.placements(page, ".room-tile"), moved)
+            for handle in page.locator(".tiles.editing .w-resize, .tiles.editing .w-menu").all():
+                self.assertGreaterEqual(handle.bounding_box()["width"], 48)
+                self.assertGreaterEqual(handle.bounding_box()["height"], 48)
+            page.click("[data-room-done]")
+            page.wait_for_selector("text=Kitchen layout saved")
+            page.reload()
+            page.wait_for_selector(selector)
+            self.assertEqual(self.placements(page, ".room-tile"), moved)
+            page.click('[data-edit-room="Kitchen"]')
+            page.click(selector + " [data-room-options]")
+            page.click('[data-room-size="1x1"]')
+            page.click("[data-room-options-close].btn")
+            page.click("[data-room-cancel]")
+            self.assertEqual(self.placements(page, ".room-tile"), moved)
+            saved = page.evaluate("async () => (await (await import('/js/api.js')).api.state()).settings.room_layouts")
+            for width, height in ((393, 852), (1280, 720), (720, 1280)):
+                page.set_viewport_size({"width": width, "height": height})
+                page.wait_for_timeout(100)
+                self.assert_grid_fits(page, ".room-tile")
+            self.assertEqual(self.placements(page, ".room-tile"), moved)
+            self.assertEqual(page.evaluate("async () => (await (await import('/js/api.js')).api.state()).settings.room_layouts"), saved)
+        finally:
+            page.evaluate("async () => (await import('/js/api.js')).api.saveRoomLayout('Kitchen', null)")
 
     def test_sky_background_follows_the_weather(self):
         source = FakeWeatherSource(temperature=28.4, code=71)                 # snow
@@ -1178,7 +1273,7 @@ class SignedInRoomsTests(unittest.TestCase):
         try:
             page.goto(f"{self.server.url}/")
             status = page.evaluate("""fetch('/api/v1/auth/sign-in', {method: 'POST', headers: {'Content-Type': 'application/json'},
-                                      body: JSON.stringify({profile_id: 'sam', pin: '2468'})}).then(r => r.status)""")
+                                      body: JSON.stringify({profile_id: 'sam'})}).then(r => r.status)""")
             self.assertEqual(status, 200)
             page.add_init_script("localStorage.setItem('view', '\"home\"')")
             page.reload()

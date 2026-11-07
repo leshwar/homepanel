@@ -13,16 +13,23 @@ import { openFrame, isFrameOpen } from "./photoframe.js";
 import { roomGroups, OTHER } from "./store.js";   // room tabs
 import { renderAmbient } from "./clockfaces.js";
 import { svg, roomIcon } from "./icons.js";
-import { tileHtml, updateTiles, bindTiles } from "./tiles.js";
+import { updateTiles, bindTiles } from "./tiles.js";
 import { applySky, refreshWeather, onWeather } from "./sky.js";
 import { applyWallpaper } from "./wallpaper.js";
 import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEditing, stopEditing } from "./home.js";
 import { startAuth } from "./auth.js";
 import "./profiles.js";      // Settings → Profiles
+import { roomTiles, setupRoomEditor, startRoomEditing, stopRoomEditing, isRoomEditing } from "./room-layout.js";
 import { setupVoice, closeVoice, isVoiceOpen } from "./voice.js";
 
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const wide = () => matchMedia("(min-width: 768px)").matches;
+const editing = () => isEditing() || isRoomEditing();
+function canNavigate() {
+  if (!editing()) return true;
+  toast("Save or cancel your layout changes first.");
+  return false;
+}
 
 // ---------- clock ----------
 function renderClock() {
@@ -128,6 +135,7 @@ function revealTab() {
 }
 
 function goRoom(room) {
+  if (!canNavigate()) return;
   const fromHome = store.view === "home";
   if (fromHome) { setRoom(room); setView("rooms"); return; }
   if (room === store.room) return;
@@ -162,7 +170,8 @@ function roomHead(r, linked) {
     : `<h2 class="room-title">${name}</h2>`;
   const status = on ? `${on} of ${list.length} on` : "Everything is off";
   return `<div class="room-head${linked ? "" : " single"}" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>${
-    offable ? `<button class="room-off" data-room-off="${esc(r)}">${icon("power")}Turn off</button>` : ""}</div>`;
+    offable ? `<button class="room-off" data-room-off="${esc(r)}">${icon("power")}Turn off</button>` : ""}
+    <button class="btn small" data-edit-room="${esc(r)}" aria-label="Edit ${name} tiles">${svg("pencil")}Edit tiles</button></div>`;
 }
 
 function updateHeads() {
@@ -202,13 +211,10 @@ function renderGrid() {
   }
   const room = store.room;
   const section = (r, linked) => `<section class="room-section" aria-label="${esc(roomLabel(r))}">${roomHead(r, linked)}${
-    r === OTHER ? sortNudge() : ""}<div class="tiles">${sortDevices(devicesIn(r)).map((d) => tileHtml(d)).join("")}</div></section>`;
+    r === OTHER ? sortNudge() : ""}${roomTiles(r)}</section>`;
   const html = room === "all" ? roomGroups().map((r) => section(r, true)).join("") : section(room, false);
   grid.innerHTML = html;
 }
-
-const KIND_ORDER = { tv: 0, speaker: 1, light: 2, switch: 3, fan: 4, plug: 5, vacuum: 6, other: 7 };
-const sortDevices = (list) => list.sort((a, b) => (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9) || a.name.localeCompare(b.name));
 
 // The backdrop behind the glass takes on the color of the lights that are on,
 // so the whole screen gets warmer as the room does.
@@ -260,6 +266,7 @@ function setupGrid() {
   // Swipe sideways anywhere on the grid to change room tab.
   let start = null, swiped = false;
   grid.addEventListener("pointerdown", (e) => {
+    if (isRoomEditing()) return;
     start = { x: e.clientX, y: e.clientY };
     swiped = false;
   });
@@ -276,9 +283,15 @@ function setupGrid() {
   grid.addEventListener("click", (e) => {   // a swipe isn't a tap
     if (swiped) { swiped = false; e.stopImmediatePropagation(); e.preventDefault(); }
   }, { capture: true });
-  bindTiles(grid);
+  bindTiles(grid, { enabled: () => !isRoomEditing() });
 
   grid.addEventListener("click", (e) => {
+    if (isRoomEditing()) return;
+    const edit = e.target.closest("[data-edit-room]");
+    if (edit) {
+      goRoom(edit.dataset.editRoom);
+      return startRoomEditing(edit.dataset.editRoom);
+    }
     if (e.target.closest("[data-sort-rooms]")) return openSorting();
     const off = e.target.closest("[data-room-off]");
     if (off) return turnOff(off.dataset.roomOff);
@@ -308,18 +321,25 @@ function setupChrome() {
     if (!t.closest("#app")) return;
     const nav = t.closest("[data-nav]");
     if (nav) {
+      if (!canNavigate()) return;
       if (nav.dataset.nav === store.view && nav.dataset.nav === "rooms" && store.room !== "all") return goRoom("all");
       return setView(nav.dataset.nav);
     }
     const room = t.closest("#rooms [data-room], #rail [data-room]");
     if (room) return goRoom(room.dataset.room);
-    if (t.closest("[data-open-settings]")) return openSettings();
-    if (t.closest("[data-add-device]")) return openSettings("add");
+    if (t.closest("[data-open-settings]") && canNavigate()) return openSettings();
+    if (t.closest("[data-add-device]") && canNavigate()) return openSettings("add");
   });
   $("#all-off").addEventListener("click", () => turnOff());   // always everything; rooms have their own button
   $("#open-frame").addEventListener("click", () => { closeSheet(); openFrame(); });
   $("#clock").addEventListener("click", showAmbient);
   $("#edit-home").addEventListener("click", startEditing);
+  document.addEventListener("hp:edit-room", (e) => {
+    if (!canNavigate()) return;
+    closeSettings();
+    goRoom(e.detail);
+    startRoomEditing(e.detail);
+  });
   matchMedia("(min-width: 768px)").addEventListener?.("change", () => { renderNav(); renderTitle(); });
 }
 
@@ -335,7 +355,7 @@ function setupIdle() {
   });
   setInterval(() => {
     const after = Number(store.settings.dim_after_seconds || 0);
-    if (!(after > 0 && Date.now() - lastActivity > after * 1000) || isSettingsOpen() || isEditing() || isVoiceOpen()) return;
+    if (!(after > 0 && Date.now() - lastActivity > after * 1000) || isSettingsOpen() || editing() || isVoiceOpen()) return;
     if (!$("#ambient").hidden || isFrameOpen()) return;
     const hour = new Date().getHours();
     const night = store.settings.frame_night_clock !== false && (hour >= 22 || hour < 7);
@@ -390,6 +410,7 @@ onChange((what, id) => {
 onWeather(() => refreshHomeParts(["weather"]));
 
 setupGrid();
+setupRoomEditor($("#grid"), renderGrid);
 setupChrome();
 setupVoice();
 setupHome({ goRoom, showAmbient });
@@ -399,11 +420,12 @@ setInterval(renderClock, 10_000);
 setInterval(() => { applySky(); refreshWeather(); }, 60_000);
 
 // Sign-in first (js/auth.js). Signed out, the panel keeps only its look (background,
-// clock face) so the resting clock and photo frame still work on a locked wall panel.
+// clock face) without keeping the previous profile's devices on screen.
 function closeAll() {
   closeSheet();
   closeSettings();
   if (isEditing()) stopEditing();
+  if (isRoomEditing()) stopRoomEditing();
 }
 startAuth({
   signedIn: () => reload().then(() => { revealTab(); setupLive(); }).catch((e) => { toast(e.message, true); setupLive(); }),

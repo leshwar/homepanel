@@ -1,13 +1,8 @@
-"""The Home page layout: which widgets are on it, their order, size and options.
+"""Per-profile Home and room layouts: widgets, responsive positions, sizes and options.
 
-Kept as one plain object in settings (`home_layout`) so every screen shows the
-same Home page. It is self-contained on purpose: when profiles arrive, each
-profile can hold its own copy without anything else changing.
-
-    {"version": 1,
-     "widgets": [{"id": "clock", "type": "clock", "size": "2x2", "hidden": false, "options": {}},
-                 {"id": "zone-in", "type": "zone", "size": "1x1", "options": {"tz": "Asia/Kolkata", "label": "India"}},
-                 {"id": "rooms", "type": "rooms", "size": "2x2", "options": {}}, ...]}
+Version 3 adds optional `positions`: {"4": {"x": 2, "y": 3, "size": "2x2"}}.
+Each 2/4/6-column grid keeps its own geometry, so narrower screens do not destroy
+the arrangement saved on a wider one. Older layouts keep their order and sizes.
 
 Devices live on the Rooms pages, not on Home. Layouts saved before version 2 could
 hold "device" widgets; `migrate_layout` drops them, and a "device" widget sent by an
@@ -21,8 +16,10 @@ from __future__ import annotations
 import re
 from typing import Any, Iterable
 
-VERSION = 2
+VERSION = 3
 SIZES = ("1x1", "2x1", "2x2")
+COLUMNS = ("2", "4", "6")
+MAX_ROWS = 200
 WIDGET_TYPES = ("clock", "zone", "weather", "scenes", "rooms")
 RETIRED_TYPES = ("device",)      # from version 1; dropped quietly
 MAX_WIDGETS = 40
@@ -71,6 +68,37 @@ def _options(kind: str, raw: Any) -> dict:
     return {}
 
 
+def _positions(raw: Any) -> dict:
+    if not isinstance(raw, dict) or any(k not in COLUMNS for k in raw):
+        raise LayoutError("Tile positions should use the 2, 4 or 6 column grid.")
+    out = {}
+    for cols, p in raw.items():
+        if not isinstance(p, dict):
+            raise LayoutError("Each tile position needs a column, row and size.")
+        x, y, size = p.get("x"), p.get("y"), p.get("size")
+        if size not in SIZES:
+            raise LayoutError(f"Tile size should be one of: {', '.join(SIZES)}.")
+        w, h = map(int, size.split("x"))
+        if type(x) is not int or type(y) is not int or not (0 <= x <= int(cols) - w and 0 <= y <= MAX_ROWS - h):
+            raise LayoutError("Keep tiles inside the grid.")
+        out[cols] = {"x": x, "y": y, "size": size}
+    return out
+
+
+def _check_overlaps(widgets: list[dict]) -> None:
+    for cols in COLUMNS:
+        occupied = set()
+        for tile in widgets:
+            p = tile.get("positions", {}).get(cols)
+            if tile.get("hidden") or not p:
+                continue
+            w, h = map(int, p["size"].split("x"))
+            cells = {(x, y) for x in range(p["x"], p["x"] + w) for y in range(p["y"], p["y"] + h)}
+            if occupied & cells:
+                raise LayoutError("Tiles overlap. Move or shrink a tile before saving.")
+            occupied.update(cells)
+
+
 def clean_layout(value: Any) -> dict:
     """Check a layout sent by the UI and return a tidy copy. Raises LayoutError."""
     if not isinstance(value, dict) or not isinstance(value.get("widgets"), list):
@@ -94,4 +122,29 @@ def clean_layout(value: Any) -> dict:
         seen.add(wid)
         widgets.append({"id": wid, "type": kind, "size": size, "hidden": bool(w.get("hidden", False)),
                         "options": _options(kind, w.get("options"))})
+        if "positions" in w:
+            widgets[-1]["positions"] = _positions(w["positions"])
+    _check_overlaps(widgets)
+    return {"version": VERSION, "widgets": widgets}
+
+
+def clean_room_layout(value: Any) -> dict:
+    """Room device tiles use the same sizes and responsive positions as Home widgets."""
+    if not isinstance(value, dict) or not isinstance(value.get("widgets"), list):
+        raise LayoutError("The room layout should have a list of tiles.")
+    if len(value["widgets"]) > 100:
+        raise LayoutError("A room can hold up to 100 tiles.")
+    seen = set()
+    widgets = []
+    for tile in value["widgets"]:
+        if not isinstance(tile, dict):
+            raise LayoutError("Each tile should be an object.")
+        wid, size = tile.get("id"), tile.get("size", "1x1")
+        if not isinstance(wid, str) or not _ID.fullmatch(wid) or wid in seen:
+            raise LayoutError("Each tile needs its own device id.")
+        if size not in SIZES:
+            raise LayoutError(f"Tile size should be one of: {', '.join(SIZES)}.")
+        seen.add(wid)
+        widgets.append({"id": wid, "size": size, "positions": _positions(tile.get("positions", {}))})
+    _check_overlaps(widgets)
     return {"version": VERSION, "widgets": widgets}

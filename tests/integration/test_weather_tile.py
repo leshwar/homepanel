@@ -5,7 +5,7 @@ import os
 import shutil
 import tempfile
 import unittest
-from PIL import Image
+from PIL import Image, ImageChops, ImageStat
 
 from tests.helpers import DemoServer
 
@@ -190,6 +190,56 @@ class WeatherTileTests(unittest.TestCase):
         self.page.click('.widget[data-wid="weather"] [data-hide]')
         self.assertEqual(self.page.locator(".w-weather-fx").count(), 0)
         self.page.click("[data-edit-cancel]")
+
+    def test_night_cloud_motion_changes_visible_pixels_and_preserves_legibility(self):
+        self.response = self.weather("cloudy", False)
+        self.enable()
+        self.page.wait_for_selector('.w-weather-fx[data-active="true"]')
+        self.page.wait_for_function("""document.getAnimations().filter(a =>
+            Number.isFinite(a.effect.getComputedTiming().endTime)).every(a => a.playState !== 'running')""")
+        cloud = self.page.locator(".w-fx-clouds")
+        before_time = cloud.evaluate("e => e.getAnimations()[0].currentTime")
+        cloud.evaluate("e => {window.originalCloud = e;}")
+        first = Image.open(io.BytesIO(self.page.locator(".w-weather").screenshot())).convert("RGB")
+        self.page.wait_for_timeout(3000)
+        second = Image.open(io.BytesIO(self.page.locator(".w-weather").screenshot())).convert("RGB")
+        self.assertTrue(cloud.evaluate("e => e === window.originalCloud"))
+        self.assertGreater(cloud.evaluate("e => e.getAnimations()[0].currentTime"), before_time + 2500)
+        delta = ImageChops.difference(first, second)
+        red, green, blue = delta.split()
+        largest_change = ImageChops.lighter(ImageChops.lighter(red, green), blue)
+        changed = sum(largest_change.histogram()[12:]) / (delta.width * delta.height)
+        self.assertGreaterEqual(changed, .08, changed)
+        self.assertGreaterEqual(sum(ImageStat.Stat(delta).mean) / 3, 1.8)
+        self.assert_scene_text_is_readable_without_backdrops()
+        for condition in ("partly-cloudy", "cloudy", "rain", "snow", "fog", "storm"):
+            self.response = self.weather(condition, False)
+            self.refresh()
+            self.page.wait_for_function("label => document.querySelector('.w-weather .w-sub')?.textContent.startsWith(label)",
+                                        arg=condition.title())
+            for phase in (0, 7, 14, 21):
+                with self.subTest(condition=condition, phase=phase):
+                    self.page.locator(".w-weather-fx").evaluate(
+                        "(el, time) => el.getAnimations({subtree:true}).forEach(a => {a.pause(); a.currentTime=time;})", phase * 1000)
+                    self.assert_scene_text_is_readable_without_backdrops()
+        for size in ("1x1", "2x1"):
+            self.page.evaluate("""async size => {
+                await (await import('/js/api.js')).api.saveLayout({widgets:[{id:'weather',type:'weather',size}]});
+                await (await import('/js/store.js')).reload();
+            }""", size)
+            for condition in ("cloudy", "partly-cloudy"):
+                self.response = self.weather(condition, False)
+                self.refresh()
+                self.page.wait_for_function("label => document.querySelector('.w-weather .w-sub')?.textContent.startsWith(label)",
+                                            arg=condition.title())
+                for phase in (0, 7, 14, 21):
+                    with self.subTest(size=size, condition=condition, phase=phase):
+                        self.page.locator(".w-weather-fx").evaluate(
+                            "(el, time) => el.getAnimations({subtree:true}).forEach(a => {a.pause(); a.currentTime=time;})", phase * 1000)
+                        self.assert_scene_text_is_readable_without_backdrops()
+        self.page.emulate_media(reduced_motion="reduce")
+        self.assertEqual(self.page.locator(".w-weather-fx").evaluate("e => e.getAnimations({subtree:true}).length"), 0)
+        self.assert_scene_text_is_readable_without_backdrops()
 
     def test_missing_loading_error_retry_and_disabled_request_never_fake_weather(self):
         self.assertEqual(self.page.locator(".w-weather-fx").count(), 0)

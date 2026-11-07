@@ -61,6 +61,9 @@ web/
   labels readable without caption panels, pills or a scrim. They pause offscreen, in background tabs and during
   editing; reduced motion uses a still scene. Unconfigured, loading and unavailable
   weather have explicit messages and no invented scene; unavailable weather has Retry.
+  Night clouds use defined blue silhouettes and a 28-second continuous drift rather
+  than barely visible white haze. Night precipitation stays within the same readable
+  palette; pixel-level checks cover visible motion and text contrast across phases.
 - **Glass over a scene.** Or a static background (`.backdrop` in `index.html`:
   gradients plus soft SVG shapes; Ocean, Aurora or Night via `html[data-bg]`) sits
   behind frosted-glass tiles, sheets and buttons. Settings → Display has the

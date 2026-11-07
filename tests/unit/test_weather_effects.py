@@ -1,5 +1,6 @@
 """Weather tile scenes and animation lifecycle without a browser or network."""
 import base64
+import re
 import shutil
 import subprocess
 import unittest
@@ -13,6 +14,15 @@ SOURCE = Path(__file__).resolve().parents[2] / "web/js/weather-effects.js"
 
 @unittest.skipUnless(NODE, "Node.js is needed for the JS unit tests")
 class WeatherEffectsTests(unittest.TestCase):
+    def test_night_clouds_have_distinct_artwork_and_visible_continuous_drift(self):
+        css = (SOURCE.parents[1] / "shell.css").read_text()
+        rule = re.search(r'\.w-weather-fx\[data-weather-period="night"\] \.w-fx-clouds \{([^}]+)\}', css).group(1)
+        self.assertIn("opacity: .85", rule)
+        self.assertIn("animation-duration: 28s", rule)
+        self.assertIn("background-image:", rule)
+        self.assertIn("stdDeviation='4'", rule)
+        self.assertIn("prefers-reduced-motion: reduce", css)
+
     def test_existing_scene_keeps_moving_during_refresh_and_stale_replies_are_ignored(self):
         source = SOURCE.with_name("sky.js").read_text()
         source = "\n".join(line for line in source.splitlines() if not line.startswith("import "))

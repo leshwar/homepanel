@@ -137,7 +137,7 @@ class LGSoundbar(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.mod.shown_input(6, [15, 1]), 6)          # not offered, no twin: keep it
         self.assertEqual(self.mod.to_percent(20, 0, 40), 50)
         self.assertEqual(self.mod.from_percent(50, 0, 40), 20)
-        self.assertEqual(self.mod.sound_mode_name(26), "Sound mode 26")
+        self.assertEqual(self.mod.sound_mode_name(26), "Device-reported mode 26")
         self.assertEqual(self.mod.input_name(20), "HDMI eARC")
 
     async def test_setup_and_refresh(self):
@@ -149,7 +149,20 @@ class LGSoundbar(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([i["name"] for i in self.dev.meta["inputs"]],
                          ["Optical / HDMI ARC", "Bluetooth", "Wi-Fi", "HDMI", "USB 2"])
         self.assertEqual(self.dev.meta["sound_modes"][0], {"id": "19", "name": "AI Sound Pro"})
+        self.assertEqual(self.dev.meta["sound_modes"][-1], {"id": "26", "name": "Device-reported mode 26", "advanced": True})
+        self.assertIn("Spotify app on your phone", self.dev.meta["playback_help"])
+        self.assertIn("does not start playback", self.dev.meta["playback_help"])
         self.assertTrue(self.link.closed)
+
+    def test_unknown_and_format_modes_are_not_presented_as_confirmed_presets(self):
+        replies = {k: dict(v) for k, v in SOUNDBAR_REPLIES.items()}
+        replies["EQ_VIEW_INFO"] = {"i_curr_eq": 26, "ai_eq_list": [19, 0, 15, 23, 24, 25, 26]}
+        state = self.adapter._state(self.dev, replies)
+        self.assertEqual(state["sound_mode"], "26")
+        modes = self.dev.meta["sound_modes"]
+        self.assertEqual([m["id"] for m in modes if not m.get("advanced")], ["19", "0"])
+        self.assertEqual([m["id"] for m in modes if m.get("advanced")], ["15", "23", "24", "25", "26"])
+        self.assertTrue(all(m["name"].startswith("Device-reported") for m in modes if m["id"] in {"23", "24", "25", "26"}))
 
     async def test_standby_reads_as_off_and_blocks_commands(self):
         self.link.replies["SPK_LIST_VIEW_INFO"]["b_powerstatus"] = False

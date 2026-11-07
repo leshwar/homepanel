@@ -90,7 +90,7 @@ class ReadabilityTests(unittest.TestCase):
             const luma = rgb => rgb.map(v => v / 255).map(v =>
                 v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)
                 .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
-            const root = e.closest('.tile, .widget, .rail, .topbar-clock, .btn-alloff, .room-off');
+            const root = e.closest('.tile, .widget, .rail, .topbar-clock, .btn-alloff, .room-off, .sheet');
             const layers = [];
             let node = e, opacity = 1;
             while (node) {

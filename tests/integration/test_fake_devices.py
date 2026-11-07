@@ -220,6 +220,16 @@ class LGSoundbarAdapterTests(unittest.IsolatedAsyncioTestCase):
             await self.adapter.setup(dev)
         self.assertIn("same Wi-Fi", str(cm.exception))
 
+    async def test_device_reported_unknown_mode_keeps_its_wire_id(self):
+        self.fake.eq = {"i_curr_eq": 26, "ai_eq_list": [19, 15, 26]}
+        dev = Device(id="modes", adapter="lg_soundbar", name="Bar", kind=Kind.SPEAKER,
+                     caps=list(self.mod.CAPS), config={"ip": "127.0.0.1", "port": self.port})
+        await self.adapter.setup(dev)
+        dev.state = await self.adapter.refresh(dev)
+        self.assertIn({"id": "26", "name": "Device-reported mode 26", "advanced": True}, dev.meta["sound_modes"])
+        await self.adapter.command(dev, Action.SET_SOUND_MODE, "26")
+        self.assertEqual(self.fake.sets, [("EQ_VIEW_INFO", {"i_curr_eq": 26})])
+
 
 class SearchAllOffersNoDuplicateTV(unittest.IsolatedAsyncioTestCase):
     """The real LG adapter and HomeService against a fake webOS TV on 127.0.0.1. A TV saved

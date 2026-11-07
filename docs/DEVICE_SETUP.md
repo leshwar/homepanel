@@ -129,22 +129,37 @@ Volume shows as +/− buttons (Samsung doesn't report the exact level).
 
 ## LG sound bars
 
-LG sound bars with Wi-Fi (2018 and newer, the ones the LG Sound Bar / ThinQ app
-can control) work over the local network. No account or pairing.
+LG sound bars with Wi-Fi (2018 and newer) work over the local network. No account
+or pairing is needed by HomePanel. Use the LG Soundbar app for the S95TR, not ThinQ.
 
 1. Set the sound bar up on your Wi-Fi with the LG app first.
 2. **Search** finds it (it answers on port 9741). If it doesn't, choose
    **Add by IP address**; the app shows the IP under the sound bar's settings, or
    look it up in your router's device list.
 3. Open it on the panel for volume, mute, inputs (TV / HDMI ARC, HDMI, Bluetooth,
-   Wi-Fi …) and sound modes (AI Sound Pro, Cinema, Music …). Each model lists only
-   what it has. Newer modes the panel doesn't have a name for yet show as
-   "Sound mode 23" and so on.
+   Wi-Fi …) and sound modes (AI Sound Pro, Cinema, Music …). Choices come from
+   the device's reported lists. Undocumented IDs such as 23–26 stay under
+   **Device-reported modes**, without guessed preset names. Format-dependent
+   entries such as Dolby Atmos are also advanced, not promised selectable EQ presets.
 
 It works while the TV is off, and alongside the TV: volume changed with the TV
 remote shows up on the panel within about 10 seconds. The power button puts the
 sound bar in standby and wakes it, as long as its network stays on in standby
 (the default after it has been set up with the app).
+
+**Spotify on S95TR:** start a track in the Spotify mobile app, tap its device
+icon, and select the soundbar. Use the same Wi-Fi for the first connection; on
+iPhone, allow Spotify's Local Network permission if the speaker is missing.
+The panel's Music sound mode changes EQ, not playback. No Spotify account/token
+is stored by HomePanel.
+
+Sources: [LG S95TR specifications](https://www.lg.com/au/speakers/soundbars/s95tr/),
+[Spotify Connect help](https://support.spotify.com/us/article/spotify-connect/).
+Protocol IDs are checked against
+[Temescal's tables at 7460c04](https://github.com/mjg59/python-temescal/blob/7460c04ff6bec1be58462399bdb9b72ec0a212c3/temescal/__init__.py)
+and [Home Assistant's equivalent-input handling](https://github.com/home-assistant/core/blob/dev/homeassistant/components/lg_soundbar/media_player.py).
+These sources do not name IDs 23–26; the panel does not infer a mapping from a
+manual's list order.
 
 ## Home Assistant
 

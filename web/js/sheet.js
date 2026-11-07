@@ -10,6 +10,7 @@ import { remoteTop, remoteBody, attachRemote, remoteClick, remoteBusy, startRepe
 
 import { vacuumBody, picked } from "./vacuum.js";
 import { effectsBody, effectsClick, attachEffects, effectsBusy, keepEffects } from "./effects.js";
+import { simpleSpeaker, speakerTop, speakerBody, attachSpeaker, speakerBusy, clearSpeakerInteraction } from "./speaker.js";
 const sheetState = { shownId: null, missed: false };   // last device shown; an update came in mid-drag
 
 let currentId = null;
@@ -26,6 +27,7 @@ export const isSheetOpen = () => !$("#sheet").hidden;
 
 let closing = null;
 export function openDevice(id) {
+  clearSpeakerInteraction();
   clearTimeout(closing);
   $("#sheet").classList.remove("closing"); $("#scrim").classList.remove("closing");
   currentId = id;
@@ -36,6 +38,7 @@ export function openDevice(id) {
 }
 
 export function closeSheet() {
+  clearSpeakerInteraction();
   currentId = null;
   const sheet = $("#sheet"), scrim = $("#scrim");
   if (sheet.hidden) return;
@@ -54,7 +57,7 @@ new MutationObserver(() => { if ($("#sheet").hidden) { sheetState.shownId = null
 export function refreshSheet(id) {
   if (!currentId) return;
   if (id && id !== currentId) return;
-  if (dragging || remoteBusy.active || effectsBusy()) { sheetState.missed = true; return; }
+  if (dragging || remoteBusy.active || effectsBusy() || speakerBusy()) { sheetState.missed = true; return; }
   sheetState.missed = false;
   if (!store.devices.has(currentId)) return closeSheet();
   render();
@@ -73,6 +76,7 @@ function render() {
   const on = !!s.on;
   const sheet = $("#sheet");
   const tv = isMedia(d);              // TVs and speakers share the remote
+  const speaker = simpleSpeaker(d);
   const vac = has(d, "clean");
   let notes = "";
 
@@ -89,7 +93,7 @@ function render() {
 
   let body = notes;
   if (!blocked) {
-    if (tv) body += remoteBody(d);
+    if (tv) body += speaker ? speakerBody(d) : remoteBody(d);
     else if (vac) body += vacuumBody(d);
     else if (isLight(d)) body += lightBody(d);
     if (!tv && s.power_w != null) body += `<div class="section-label"><span>Energy</span></div><div id="energy">${energyHtml(d, s)}</div>`;
@@ -100,20 +104,27 @@ function render() {
   if (!same) stopTilt();
   sheetState.shownId = d.id;
   const keep = same ? { top: sheet.scrollTop, pages: $("#sheet [data-keep-scroll]")?.scrollLeft || 0 } : { top: 0, pages: 0 };
-  const head = tv ? remoteTop(d) : `
+  const focused = same && sheet.contains(document.activeElement) ? document.activeElement : null;
+  const focusKey = focused?.hasAttribute("data-speaker-volume") ? "[data-speaker-volume]"
+    : focused?.dataset.speakerSelect ? `[data-speaker-select="${focused.dataset.speakerSelect}"]` : null;
+  const advancedOpen = same && !!sheet.querySelector(".speaker-advanced")?.open;
+  const head = speaker ? speakerTop(d) : tv ? remoteTop(d) : `
     <div class="sheet-head">
       ${has(d, "power") && !isLight(d) ? `<button class="power-big ${on ? "on" : ""}" data-power aria-label="Turn ${on ? "off" : "on"}" aria-pressed="${on}">${icon("power")}</button>`
         : `<div class="power-big ${on || s.activity === "cleaning" ? "on" : ""}" aria-hidden="true">${icon(kindIcon(d))}</div>`}
       <div class="grow"><h2>${esc(d.name)}</h2><p>${esc(statusText(d))}</p></div>
       <button class="icon-btn" data-close aria-label="Close">${icon("close")}</button>
     </div>`;
-  sheet.classList.toggle("sheet-tv", tv);
+  sheet.classList.toggle("sheet-tv", tv && !speaker);
+  sheet.classList.toggle("sheet-speaker", speaker);
   sheet.classList.toggle("sheet-vac", !tv && vac);
   sheet.classList.toggle("sheet-light", !tv && !vac && isLight(d));
   sheet.style.setProperty("--glow", glowVar(d));
+  sheet.dataset.deviceId = d.id;
+  sheet.setAttribute("aria-label", `${d.name} controls`);
   keepEffects(sheet, same);
   sheet.innerHTML = `
-    <button class="grab" data-close aria-label="Close"></button>
+    <button class="grab" data-close aria-label="Close" ${speaker ? 'tabindex="-1"' : ""}></button>
     ${head}
     <div class="sheet-body">${body}</div>
     <div class="meta-line"><span>${esc(d.room || "No room")}. ${esc(d.adapter_name)}${d.meta?.model ? `, ${esc(d.meta.model)}` : ""}</span>
@@ -121,6 +132,7 @@ function render() {
   sheet.scrollTop = keep.top;
   const pages = $("#sheet [data-keep-scroll]");
   if (pages) pages.scrollLeft = keep.pages;
+  if (advancedOpen && sheet.querySelector(".speaker-advanced")) sheet.querySelector(".speaker-advanced").open = true;
 
   if (!tv && s.power_w != null) loadEnergy(d.id);
   const mapImg = $("#sheet .vac-map img");
@@ -128,7 +140,9 @@ function render() {
     mapImg.addEventListener("error", () => mapImg.parentNode.classList.add("empty"));
     mapImg.addEventListener("load", () => mapImg.parentNode.classList.remove("empty"));
   }
-  if (tv) attachRemote(sheet, d);
+  if (speaker && !blocked) attachSpeaker(sheet, d, () => refreshSheet(d.id));
+  else if (tv) attachRemote(sheet, d);
+  if (focusKey) sheet.querySelector(focusKey)?.focus({ preventScroll: true });
   if (!blocked && isLight(d)) {
     attachLight(d);
     attachEffects(sheet, d, () => { if (sheetState.missed) refreshSheet(); });

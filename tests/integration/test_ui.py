@@ -83,22 +83,22 @@ class UITests(unittest.TestCase):
     def test_sound_bar_opens_media_controls_and_picks_sound_mode(self):
         self.page.wait_for_selector('.tile[data-id="lr-soundbar"].wide')
         self.tile("lr-soundbar").locator(".tile-name").click()
-        self.page.wait_for_selector('[data-sound-mode="cinema"]')
+        self.page.wait_for_selector('[data-speaker-select="set_sound_mode"]')
         self.assertTrue(self.tile("lr-soundbar").evaluate("el => el.classList.contains('on')"))  # tap didn't turn it off
         self.assertEqual(self.page.locator(".dpad").count(), 0)       # no TV remote for a speaker
-        self.assertTrue(self.page.locator('[data-input="bt"]').is_visible())
-        self.page.locator('[data-sound-mode="cinema"]').click()
-        self.page.wait_for_selector('[data-sound-mode="cinema"][aria-pressed="true"]')
-        box = self.page.locator('[data-sound-mode="cinema"]').bounding_box()
+        self.assertTrue(self.page.locator('[data-speaker-select="set_input"]').is_visible())
+        self.page.select_option('[data-speaker-select="set_sound_mode"]', "cinema")
+        self.page.wait_for_function("document.querySelector('[data-speaker-select=\"set_sound_mode\"]').value === 'cinema'")
+        box = self.page.locator('[data-speaker-select="set_sound_mode"]').bounding_box()
         self.assertGreaterEqual(box["height"], 48)
-        # the remote's speaker layout: power, name and mute on top, a volume bar, no keys or touchpad
+        # A labeled speaker panel, without TV keys or touchpad.
         sheet = self.page.locator("#sheet")
-        for sel in (".remote-top [data-power]", ".remote-top [data-mute]", '.vol-bar [data-act="volume_up"]'):
+        for sel in (".speaker-controls [data-power]", ".speaker-controls [data-mute]", '.speaker-volume [data-act="volume_up"]'):
             self.assertEqual(sheet.locator(sel).count(), 1, sel)
         for sel in ("[data-mode]", "#touchpad", "[data-key]", "[data-app]"):
             self.assertEqual(sheet.locator(sel).count(), 0, sel)
-        self.page.click('#sheet [data-input="bt"]')
-        self.page.wait_for_selector('#sheet [data-input="bt"][aria-pressed="true"]')
+        self.page.select_option('#sheet [data-speaker-select="set_input"]', "bt")
+        self.page.wait_for_function("document.querySelector('[data-speaker-select=\"set_input\"]').value === 'bt'")
 
     def test_brightness_pill(self):
         # Ceiling light starts at 80%. Dragging the pill down by half its height dims it to 30%;

@@ -36,6 +36,7 @@ web/
     ├── sheet.js    bottom sheet: light controls and the TV remote
     ├── voice.js    the mic: speech to text in the browser (or a typed box), reply, choices, confirm
     ├── remote.js   TV and speaker remote: D-pad / touchpad / number pad, rockers, apps, pointer
+    ├── speaker.js  opaque simple-speaker controls: labeled power/mute, relative volume and compact selectors
     ├── vacuum.js   robot vacuum: map, status, main button, rooms, Options, Maintenance
     ├── effects.js  light effects in the light sheet: searchable scenes (Scenes / DIY / Snapshots),
     │               music mode + sensitivity, strip parts (tap parts, then a color), toggles
@@ -184,8 +185,14 @@ device can do (its `caps`):
   on big landscape screens. The touchpad sends pointer moves batched (one request in
   flight, ~30 ms apart): drag to move, tap to click, two fingers to scroll. On phones,
   **Aim** moves the pointer by tilting the phone (iOS asks for motion access first).
-- *Speakers and sound bars* use the same sheet without remote keys: power, name and mute,
-  a wide volume bar, then sound mode and input chips.
+- *Simple speakers and sound bars* have an opaque, theme-appropriate control panel
+  independent of dashboard glass transparency. The header has status and Close;
+  Power/Mute show both state and action. The volume slider uses relative drag
+  and applies on release (a track tap or canceled gesture sends no command),
+  with keyboard support and native step buttons. Input and Sound mode use compact
+  selected-value controls; undocumented or format-dependent modes stay under
+  Device-reported modes. Device updates do not replace a control during interaction.
+  Richer speakers and TVs keep their existing transport/app controls.
 - *Robot vacuum*: map, status and battery, one main button (start, pause, keep cleaning,
   or clean the picked rooms), rooms as chips, Options (suction, mode, station jobs) and
   parts wear folded behind Maintenance.

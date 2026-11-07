@@ -121,6 +121,19 @@ class SignInApiTests(unittest.TestCase):
         self.assertIn("admin", err["error"])
         self.assertEqual(sam.call("POST", "/scenes/movie/run", {})[0], 404)
 
+    def test_members_cannot_create_reorder_or_see_empty_and_hidden_rooms(self):
+        owner, sam = self.client(), self.client()
+        owner.sign_in(profile_id="owner", password="homepanel")
+        sam.sign_in(profile_id="sam")
+        original = owner.call("GET", "/state")[1]["rooms"]
+        try:
+            owner.call("PUT", "/rooms", {"rooms": ["Empty office", *original]})
+            self.assertEqual(sam.call("GET", "/state")[1]["rooms"], ["Bedroom", "Kitchen"])
+            self.assertEqual(sam.call("PUT", "/rooms", {"rooms": ["Mine"]})[0], 403)
+            self.assertEqual(owner.call("GET", "/state")[1]["rooms"], ["Empty office", *original])
+        finally:
+            owner.call("PUT", "/rooms", {"rooms": original})
+
     def test_members_see_wallpapers_and_pictures_but_cant_change_them(self):
         sam = self.client()
         sam.sign_in(profile_id="sam")
@@ -375,6 +388,7 @@ class SignInUITests(unittest.TestCase):
         ids = sorted(page.eval_on_selector_all("#grid .tile[data-id]", "els => [...new Set(els.map(e => e.dataset.id))]"))
         self.assertEqual(ids, SAM_SEES)
         self.assertFalse(page.locator(".dock-add").is_visible())          # members don't add devices
+        self.assertEqual(page.locator("#rail [data-add-room], #rail [data-arrange-rooms], #room-tools:visible").count(), 0)
 
         page.click("#profile-btn")                                        # switch to Owner
         page.click('[data-pm="switch"]')

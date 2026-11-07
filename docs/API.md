@@ -231,7 +231,7 @@ Response (always 200 unless the body has no `text`):
 
 | Method | Path | Body |
 |---|---|---|
-| PUT | `/rooms` | `{"rooms": ["Living room", "Bedroom"]}` (order = display order) |
+| PUT | `/rooms` | admin: `{"rooms": ["Living room", "Bedroom"], "expected_rooms": [...]}` (order = shared display order). Optional `expected_rooms` must match the current list or the save is refused, protecting concurrent edits. Members' `/state.rooms` omits empty rooms and rooms with no shared devices |
 | POST | `/scenes` | `{"name", "icon", "actions": [{device_id, action, value}]}` **or** `{"name", "icon", "capture": [device ids]}` to save devices as they are now |
 | DELETE | `/scenes/{id}` | — |
 | POST | `/scenes/{id}/run` | — → `{"ok": n, "failed": [messages]}` |

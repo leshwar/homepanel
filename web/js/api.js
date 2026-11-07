@@ -74,7 +74,7 @@ export const api = {
   saveAccount: (adapter, values) => call("PUT", `/adapters/${adapter}/account`, values),
   accountAction: (adapter, action) => call("POST", `/adapters/${adapter}/actions/${action}`),
 
-  setRooms: (rooms) => call("PUT", "/rooms", { rooms }),
+  setRooms: (rooms, expected_rooms) => call("PUT", "/rooms", { rooms, expected_rooms }),
   saveScene: (scene) => call("POST", "/scenes", scene),
   deleteScene: (id) => call("DELETE", `/scenes/${id}`),
   runScene: (id) => call("POST", `/scenes/${id}/run`),

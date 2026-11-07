@@ -4,10 +4,10 @@
 
 import { api, connectEvents } from "./api.js";
 import { setMarkup, updateRoomCounts } from "./render.js";
-import { store, onChange, reload, upsertDevice, setRoom, setView, devicesIn, applySnapshot } from "./store.js";
+import { store, onChange, reload, upsertDevice, setRoom, setView, devicesIn, applySnapshot, addRoom, moveRoom } from "./store.js";
 import { $, esc, icon, glow, toast } from "./util.js";
 import { refreshSheet, closeSheet } from "./sheet.js";
-import { openSettings, isSettingsOpen, refreshSettings, closeSettings } from "./settings.js";
+import { openSettings, isSettingsOpen, refreshSettings, closeSettings, roomAddForm } from "./settings.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame, isFrameOpen } from "./photoframe.js";
 import { roomGroups, OTHER } from "./store.js";   // room tabs
@@ -24,6 +24,7 @@ import { setupVoice, closeVoice, isVoiceOpen } from "./voice.js";
 
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const wide = () => matchMedia("(min-width: 768px)").matches;
+let arrangingRooms = false, addingRoom = false, savingRooms = false;
 const editing = () => isEditing() || isRoomEditing();
 function canNavigate() {
   if (!editing()) return true;
@@ -67,12 +68,15 @@ function renderTabs() {
     `<button class="room" role="tab" data-room="${esc(id)}" aria-selected="${store.room === id}">${
       esc(id === "all" ? "All" : roomLabel(id))}${countBadge(id)}</button>`).join(""));
   updateRoomCounts(el, onCount);
+  $("#room-tools").hidden = store.view !== "rooms" || store.me?.role !== "admin";
 }
 
 // iPad and the landscape panel: Home plus every room down the left side.
 function renderRail() {
   const order = tabOrder();
   const home = store.view === "home";
+  const admin = store.me?.role === "admin";
+  if (!admin) { arrangingRooms = false; addingRoom = false; }
   const item = (id) => {
     const sel = !home && store.room === id;
     return `<button class="rail-item" role="tab" data-room="${esc(id)}" aria-selected="${sel}">${roomIcon(id)}<span>${
@@ -80,9 +84,20 @@ function renderRail() {
   };
   setMarkup($("#rail"), `
     <button class="rail-item" data-nav="home" aria-current="${home ? "page" : "false"}">${svg("home")}<span>Home</span></button>
-    <p class="rail-label">Rooms</p>
-    <div class="rail-rooms" role="tablist" aria-orientation="vertical" aria-label="Rooms">${order.map(item).join("")}</div>
+    <div class="rail-room-heading"><p class="rail-label">Rooms</p>${admin
+      ? `<button class="icon-btn" data-arrange-rooms aria-label="${arrangingRooms ? "Finish arranging rooms" : "Arrange rooms"}"
+          aria-pressed="${arrangingRooms}">${arrangingRooms ? icon("check") : svg("pencil")}</button>` : ""}</div>
+    <div class="rail-rooms" role="tablist" aria-orientation="vertical" aria-label="Rooms">${order.map((room) => {
+      const i = store.rooms.indexOf(room);
+      if (!arrangingRooms || i < 0) return item(room);
+      return `<div class="rail-room-row">${item(room)}
+        <button class="icon-btn" data-room-step="-1" data-room-name="${esc(room)}" aria-label="Move ${esc(room)} up" ${i === 0 || savingRooms ? "disabled" : ""}>${icon("up")}</button>
+        <button class="icon-btn" data-room-step="1" data-room-name="${esc(room)}" aria-label="Move ${esc(room)} down" ${i === store.rooms.length - 1 || savingRooms ? "disabled" : ""}>${icon("down")}</button>
+      </div>`;
+    }).join("")}</div>
     <div class="rail-foot">
+      ${admin ? `<button class="rail-item" data-add-room aria-expanded="${addingRoom}">${icon("plus")}<span>Add room</span></button>` : ""}
+      ${addingRoom ? roomAddForm("rail-add-room") : ""}
       <button class="rail-item" data-add-device>${icon("plus")}<span>Add a device</span></button>
       <button class="rail-item" data-open-settings>${svg("settings")}<span>Settings</span></button>
     </div>`);
@@ -170,7 +185,7 @@ function roomHead(r, linked) {
   const status = on ? `${on} of ${list.length} on` : "Everything is off";
   return `<div class="room-head${linked ? "" : " single"}" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>${
     offable ? `<button class="room-off" data-room-off="${esc(r)}">${icon("power")}Turn off</button>` : ""}
-    <button class="btn small" data-edit-room="${esc(r)}" aria-label="Edit ${name} tiles">${svg("pencil")}Edit tiles</button></div>`;
+    ${list.length ? `<button class="btn small" data-edit-room="${esc(r)}" aria-label="Edit ${name} tiles">${svg("pencil")}Edit tiles</button>` : ""}</div>`;
 }
 
 function updateHeads() {
@@ -200,7 +215,7 @@ function openSorting() {
 // ---------- tiles ----------
 function renderGrid() {
   const grid = $("#grid");
-  if (!store.devices.size) {
+  if (!store.devices.size && (store.room === "all" || store.me?.role !== "admin")) {
     grid.innerHTML = store.me && store.me.role !== "admin"
       ? `<div class="empty"><h2>No devices yet</h2><p>Ask an admin to share some devices with your profile.</p></div>`
       : `<div class="empty"><h2>Add your first device</h2>
@@ -210,7 +225,9 @@ function renderGrid() {
   }
   const room = store.room;
   const section = (r, linked) => `<section class="room-section" aria-label="${esc(roomLabel(r))}">${roomHead(r, linked)}${
-    r === OTHER ? sortNudge() : ""}${roomTiles(r)}</section>`;
+    r === OTHER ? sortNudge() : ""}${devicesIn(r).length ? roomTiles(r) : `<div class="empty room-empty">
+      <h2>No devices in this room yet</h2><p>Add a device or choose this room in a device's settings.</p>
+      <button class="btn primary" data-add-device>${icon("plus")}Add a device</button></div>`}</section>`;
   const html = room === "all" ? roomGroups().map((r) => section(r, true)).join("") : section(room, false);
   grid.innerHTML = html;
 }
@@ -315,9 +332,35 @@ function setupChrome() {
                              { threshold: [1] }).observe(bar);
   }
   // Navigation and shared buttons, wherever they are (rail, dock, tabs, empty states).
-  document.addEventListener("click", (e) => {
+  document.addEventListener("click", async (e) => {
     const t = e.target;
     if (!t.closest("#app")) return;
+    if (t.closest("[data-manage-rooms]") && canNavigate()) return openSettings("rooms");
+    if (t.closest("[data-add-room]") && canNavigate()) {
+      if (!wide()) return openSettings("rooms", "add");
+      addingRoom = !addingRoom; renderRail();
+      if (addingRoom) $("#rail [data-room-add] input")?.focus();
+      return;
+    }
+    if (t.closest("[data-room-add-cancel]")) { addingRoom = false; renderRail(); return $("#rail [data-add-room]")?.focus(); }
+    if (t.closest("[data-arrange-rooms]") && canNavigate()) {
+      arrangingRooms = !arrangingRooms; renderRail(); return $("#rail [data-arrange-rooms]")?.focus();
+    }
+    const step = t.closest("[data-room-step]");
+    if (step && !savingRooms && canNavigate()) {
+      savingRooms = true;
+      renderRail();
+      try {
+        await moveRoom(step.dataset.roomName, Number(step.dataset.roomStep));
+        toast("Room order saved");
+      } catch (err) { toast(err.message, true); }
+      finally {
+        savingRooms = false; renderRail();
+        const nextControl = $("#rail")?.querySelector(`[data-room-name="${CSS.escape(step.dataset.roomName)}"][data-room-step="${step.dataset.roomStep}"]:not([disabled])`);
+        (nextControl || $("#rail")?.querySelector(`[data-room="${CSS.escape(step.dataset.roomName)}"]`))?.focus();
+      }
+      return;
+    }
     const nav = t.closest("[data-nav]");
     if (nav) {
       if (!canNavigate()) return;
@@ -333,6 +376,19 @@ function setupChrome() {
   $("#open-frame").addEventListener("click", () => { closeSheet(); openFrame(); });
   $("#clock").addEventListener("click", showAmbient);
   $("#edit-home").addEventListener("click", startEditing);
+  $("#rail").addEventListener("submit", async (e) => {
+    const form = e.target.closest("[data-room-add]");
+    if (!form) return;
+    e.preventDefault();
+    if (savingRooms || !canNavigate()) return;
+    savingRooms = true;
+    try {
+      const room = await addRoom(new FormData(form).get("room"));
+      savingRooms = false;
+      addingRoom = false; renderRail(); goRoom(room); toast(`${room} added`);
+    } catch (err) { toast(err.message, true); }
+    finally { savingRooms = false; }
+  });
   document.addEventListener("hp:edit-room", (e) => {
     if (!canNavigate()) return;
     closeSettings();

@@ -201,7 +201,10 @@ async def account_action(request):
 
 @handle_errors
 async def put_rooms(request):
-    return {"rooms": _svc(request).set_rooms((await _body(request)).get("rooms", []))}
+    body = await _body(request)
+    if "rooms" not in body:
+        raise AdapterError("Include the room names to save.")
+    return {"rooms": _svc(request).set_rooms(body["rooms"], body.get("expected_rooms"))}
 
 
 @handle_errors

@@ -433,9 +433,11 @@ class HomeService:
         (and scenes) their profile can see, and none of the admin-only lists."""
         viewer = current_viewer.get()
         admin = viewer is None or viewer.is_admin
+        devices = self.visible_devices()
+        visible_rooms = {d.room for d in devices}
         return {
-            "devices": [self.public_device(d) for d in self.visible_devices()],
-            "rooms": self.store.rooms,
+            "devices": [self.public_device(d) for d in devices],
+            "rooms": self.store.rooms if admin else [r for r in self.store.rooms if r in visible_rooms],
             "scenes": [s for s in self.store.scenes if self.scene_visible(s)],
             "settings": self.settings(),
             "adapters": [self.adapter_meta(a) for a in ADAPTERS if not ADAPTERS[a].hidden or self.demo] if admin else [],
@@ -911,7 +913,11 @@ class HomeService:
         return {"message": result.get("message", "Done"), "account": self.account_public(adapter_id)}
 
     # --- rooms, scenes, settings -------------------------------------------
-    def set_rooms(self, rooms: list[str]) -> list[str]:
+    def set_rooms(self, rooms: list[str], expected: list[str] | None = None) -> list[str]:
+        if expected is not None and expected != self.store.rooms:
+            raise AdapterError("Rooms changed on another screen. Reload and try again.")
+        if not isinstance(rooms, list) or not all(isinstance(r, str) for r in rooms):
+            raise AdapterError("Rooms should be a list of names.")
         clean = []
         for r in rooms:
             r = str(r).strip()

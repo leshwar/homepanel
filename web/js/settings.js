@@ -2,7 +2,7 @@
 // Text entry (API keys etc.) is easiest from a phone or laptop: open http://<panel>.local:8080
 
 import { api } from "./api.js";
-import { store, reload } from "./store.js";
+import { store, reload, addRoom, moveRoom, saveRooms } from "./store.js";
 import { $, esc, icon, kindIcon, toast } from "./util.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame } from "./photoframe.js";
@@ -53,6 +53,12 @@ export function page(title, body, { closeBtn = false } = {}) {
 export const row = (attrs, iconName, title, sub = "", extra = "") =>
   `<button class="row" ${attrs}>${iconName?.startsWith?.("<") ? iconName : iconName ? icon(iconName, "dim") : ""}<span class="grow">
     <span class="title">${esc(title)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}</span>${extra}${icon("right", "dim")}</button>`;
+
+export const roomAddForm = (className = "card") => `<form class="${className}" data-room-add>
+  <label class="field"><span>New room</span><input name="room" maxlength="24" placeholder="Office" required></label>
+  <button class="btn primary" type="submit">Add room</button>
+  ${className === "rail-add-room" ? '<button class="btn" type="button" data-room-add-cancel>Cancel</button>' : ""}
+</form>`;
 
 function searchAllResults(r) {
   const found = r.found.length ? `<div class="list" data-search-all-results>${r.found.map((f) => `
@@ -287,17 +293,20 @@ const VIEWS = {
     form.querySelector(".chip")?.setAttribute("aria-pressed", "true");
   },
 
-  rooms() {
+  rooms(focus) {
     page("Rooms", `
       <div class="list">${store.rooms.map((r, i) => `
-        <div class="row"><span class="grow"><span class="title">${esc(r)}</span></span>
+        <div class="row room-settings-row"><span class="grow"><span class="title">${esc(r)}</span></span>
           <button class="btn small" data-room-layout="${esc(r)}" aria-label="Edit ${esc(r)} tiles">Edit tiles</button>
-          ${i > 0 ? `<button class="btn small" data-room-up="${i}" aria-label="Move ${esc(r)} up">${icon("up")}</button>` : ""}
+          <button class="btn small" data-room-move="-1" data-room-name="${esc(r)}" aria-label="Move ${esc(r)} up" ${i === 0 ? "disabled" : ""}>${icon("up")}</button>
+          <button class="btn small" data-room-move="1" data-room-name="${esc(r)}" aria-label="Move ${esc(r)} down" ${i === store.rooms.length - 1 ? "disabled" : ""}>${icon("down")}</button>
           <button class="btn small danger" data-room-del="${i}" aria-label="Delete ${esc(r)}">${icon("trash")}</button></div>`).join("")}</div>
-      <form class="card" data-room-add>
-        <label class="field"><span>New room</span><input name="room" maxlength="24" placeholder="Office" required></label>
-        <button class="btn primary" type="submit">Add room</button>
-      </form>`);
+      ${roomAddForm()}`);
+    if (focus === "add") {
+      const input = $("#settings [data-room-add] input");
+      input.focus();
+      input.scrollIntoView({ block: "center" });
+    }
   },
 
   automations() {
@@ -806,12 +815,14 @@ root.addEventListener("click", async (e) => {
     if (t("[data-del-scene]")) { await api.deleteScene(t("[data-del-scene]").dataset.delScene); await reload(); return render(); }
     if (t("[data-room-del]")) {
       const rooms = store.rooms.filter((_, i) => i !== +t("[data-room-del]").dataset.roomDel);
-      await api.setRooms(rooms); await reload(); return render();
+      await saveRooms(rooms); return render();
     }
-    if (t("[data-room-up]")) {
-      const i = +t("[data-room-up]").dataset.roomUp; const rooms = [...store.rooms];
-      [rooms[i - 1], rooms[i]] = [rooms[i], rooms[i - 1]];
-      await api.setRooms(rooms); await reload(); return render();
+    if (t("[data-room-move]")) {
+      const button = t("[data-room-move]");
+      await moveRoom(button.dataset.roomName, Number(button.dataset.roomMove));
+      render();
+      $("#settings")?.querySelector(`[data-room-name="${CSS.escape(button.dataset.roomName)}"][data-room-move="${button.dataset.roomMove}"]:not([disabled])`)?.focus();
+      return;
     }
     if (t("[data-logs]") !== null && t("[data-logs]")) return loadLogs(t("[data-logs]").dataset.logs);
   } catch (err) {
@@ -869,7 +880,8 @@ root.addEventListener("submit", async (e) => {
       toast(`Watching ${v.name.trim()}'s phone`); await reload(); return render();
     }
     if (form.matches("[data-room-add]")) {
-      await api.setRooms([...store.rooms, formValues(form).room.trim()]); await reload(); return render();
+      const room = await addRoom(formValues(form).room);
+      toast(`${room} added`); return render();
     }
     if (form.matches("[data-frame-settings]")) {
       const fd = new FormData(form);

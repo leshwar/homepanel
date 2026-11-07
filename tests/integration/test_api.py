@@ -57,6 +57,24 @@ class ApiTests(unittest.TestCase):
         for d in data["devices"]:
             self.assertNotIn("config", d)
 
+    def test_room_order_and_creation_preserve_assignments_and_reject_stale_writes(self):
+        original = self.call("GET", "/state")[1]
+        rooms = original["rooms"]
+        reordered = [*reversed(rooms), "Empty office"]
+        try:
+            status, result = self.call("PUT", "/rooms", {"rooms": reordered, "expected_rooms": rooms})
+            self.assertEqual((status, result["rooms"]), (200, reordered))
+            state = self.call("GET", "/state")[1]
+            self.assertEqual(state["rooms"], reordered)
+            self.assertEqual({d["id"]: d["room"] for d in state["devices"]},
+                             {d["id"]: d["room"] for d in original["devices"]})
+            self.assertEqual(state["settings"]["home_layout"], original["settings"]["home_layout"])
+            self.assertEqual(self.call("PUT", "/rooms", {"rooms": rooms, "expected_rooms": rooms})[0], 400)
+            self.assertEqual(self.call("PUT", "/rooms", {})[0], 400)
+            self.assertEqual(self.call("GET", "/state")[1]["rooms"], reordered)
+        finally:
+            self.call("PUT", "/rooms", {"rooms": rooms})
+
     def test_all_off_for_devices_without_a_room(self):
         self.call("PATCH", "/devices/kt-kettle", {"room": ""})
         try:

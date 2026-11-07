@@ -101,9 +101,34 @@ export const roomOf = (d) => (store.rooms.includes(d.room) ? d.room : OTHER);
 export const devicesIn = (room) =>
   [...store.devices.values()].filter((d) => room === "all" || roomOf(d) === room);
 
-// The groups that get a tab, in display order: rooms that have devices, then "Other".
+// Admins can manage empty rooms; members only see rooms with shared devices.
 export function roomGroups() {
-  const groups = store.rooms.filter((r) => devicesIn(r).length);
+  const groups = store.rooms.filter((r) => store.me?.role === "admin" || devicesIn(r).length);
   if (devicesIn(OTHER).length) groups.push(OTHER);
   return groups;
+}
+
+export async function saveRooms(rooms, expected = [...store.rooms]) {
+  if (store.me?.role !== "admin") throw new Error("Only an admin can change rooms.");
+  await api.setRooms(rooms, expected);
+  await reload();
+}
+
+export async function addRoom(name) {
+  const room = String(name || "").trim();
+  if (!room) throw new Error("Give the room a name.");
+  if (room.length > 24) throw new Error("Keep the room name to 24 characters.");
+  if (store.rooms.includes(room)) throw new Error("That room already exists.");
+  if (room === "all") throw new Error('Choose a name other than "all"; that opens All rooms.');
+  await saveRooms([...store.rooms, room]);
+  return room;
+}
+
+export async function moveRoom(room, direction) {
+  const rooms = [...store.rooms], index = rooms.indexOf(room), next = index + direction;
+  if (index < 0 || ![-1, 1].includes(direction) || next < 0 || next >= rooms.length) {
+    throw new Error("That room cannot move further in that direction.");
+  }
+  [rooms[index], rooms[next]] = [rooms[next], rooms[index]];
+  await saveRooms(rooms);
 }

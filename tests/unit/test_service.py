@@ -3,6 +3,7 @@
 Run:  python -m unittest discover -s tests -v      (or: make test / pytest)
 """
 import asyncio
+import copy
 import os
 import shutil
 import tempfile
@@ -11,6 +12,7 @@ import unittest
 from app.core.adapter import (Action, AdapterError, Cap, DeviceAdapter, Field,
                               Found, Kind, register)
 from app.core.service import HomeService
+from app.core.profiles import Viewer, current_viewer
 
 
 # A fake brand, registered exactly like a real adapter. Proves a new brand plugs in
@@ -138,6 +140,34 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(again.store.rooms, ["Den", "Porch"])
         self.assertTrue(any(d.name == "Lamp" for d in again.store.devices.values()))
         self.assertEqual(oct(os.stat(again.store.path).st_mode & 0o777), "0o600")
+
+    async def test_room_order_and_empty_rooms_persist_without_changing_devices_or_layouts(self):
+        before_rooms = list(self.svc.store.rooms)
+        assignments = {d.id: d.room for d in self.svc.store.devices.values()}
+        self.svc.store.profiles[0]["room_layouts"] = {"Bedroom": {"widgets": [{"id": "bd-lamp", "size": "2x2"}]}}
+        profiles = copy.deepcopy(self.svc.store.profiles)
+        rooms = [*reversed(before_rooms), "Office"]
+        self.assertEqual(self.svc.set_rooms(rooms, expected=before_rooms), rooms)
+        self.assertEqual({d.id: d.room for d in self.svc.store.devices.values()}, assignments)
+        self.assertEqual(self.svc.store.profiles, profiles)
+        again = HomeService(self.dir, demo=True)
+        self.assertEqual(again.store.rooms, rooms)
+        self.assertEqual(again.store.profiles, profiles)
+        with self.assertRaisesRegex(AdapterError, "changed on another screen"):
+            self.svc.set_rooms(before_rooms, expected=before_rooms)
+        for bad in ("Office", None, [123]):
+            with self.assertRaises(AdapterError):
+                self.svc.set_rooms(bad)
+        self.assertEqual(self.svc.store.rooms, rooms)
+
+    async def test_member_room_names_exclude_hidden_and_empty_rooms(self):
+        self.svc.set_rooms(["Office", "Kitchen", "Living room", "Bedroom"])
+        token = current_viewer.set(Viewer(self.svc.profiles.get("sam")))
+        try:
+            self.assertEqual(self.svc.snapshot()["rooms"], ["Kitchen", "Bedroom"])
+        finally:
+            current_viewer.reset(token)
+        self.assertEqual(self.svc.snapshot()["rooms"], ["Office", "Kitchen", "Living room", "Bedroom"])
 
     async def test_custom_middleware(self):
         seen = []

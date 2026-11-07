@@ -206,14 +206,63 @@ class UITests(unittest.TestCase):
             page.close()
 
     def test_add_room_and_open_add_flow(self):
-        self.page.click("#open-settings")
-        self.page.click("[data-go=rooms]")
-        self.page.fill("input[name=room]", "Office")
-        self.page.click("[data-room-add] button[type=submit]")
-        self.page.wait_for_selector("text=Office")
-        self.page.click("[data-back]")
-        self.page.click("[data-go=add]")
-        self.page.wait_for_selector("text=Shelly")
+        original = self.page.request.get(self.server.url + "/api/v1/state").json()["rooms"]
+        try:
+            self.page.click("#open-settings")
+            self.page.click("[data-go=rooms]")
+            self.page.fill("input[name=room]", "Office")
+            self.page.click("[data-room-add] button[type=submit]")
+            self.page.wait_for_selector('#settings .room-settings-row .title:text-is("Office")')
+            self.page.click("[data-back]")
+            self.page.click("[data-go=add]")
+            self.page.wait_for_selector("text=Shelly")
+        finally:
+            self.page.request.put(self.server.url + "/api/v1/rooms", data={"rooms": original})
+
+    def test_sidebar_adds_empty_rooms_and_reorders_with_accessible_controls(self):
+        page = self.page
+        page.set_viewport_size({"width": 1280, "height": 720})
+        original = page.request.get(self.server.url + "/api/v1/state").json()
+        try:
+            page.click("#rail [data-add-room]")
+            page.fill("#rail [data-room-add] input", "  Empty office  ")
+            page.click("#rail [data-room-add] button[type=submit]")
+            page.wait_for_selector('#rail [data-room="Empty office"]')
+            page.wait_for_selector('#title:text-is("Empty office")')
+            self.assertTrue(page.locator(".room-empty").is_visible())
+            self.assertEqual(page.locator("#grid .tile").count(), 0)
+            page.click("#rail [data-arrange-rooms]")
+            page.get_by_role("button", name="Move Empty office up", exact=True).focus()
+            page.keyboard.press("Enter")
+            page.wait_for_selector("text=Room order saved")
+            expected = ["Living room", "Bedroom", "Empty office", "Kitchen"]
+            self.assertEqual(page.request.get(self.server.url + "/api/v1/state").json()["rooms"], expected)
+            self.assertEqual(page.locator('#rail [data-room="all"]').count(), 1)
+            self.assertEqual(page.locator('#rail [data-room-name="all"], #rail [data-room-name=""]').count(), 0)
+            for button in page.locator("#rail [data-room-step]").all():
+                self.assertGreaterEqual(button.bounding_box()["width"], 48)
+                self.assertGreaterEqual(button.bounding_box()["height"], 48)
+            page.reload()
+            page.wait_for_selector('#rail [data-room="Empty office"]')
+            self.assertEqual(page.eval_on_selector_all("#rail [data-room]", "els => els.map(e => e.dataset.room)"),
+                             ["all", *expected])
+            page.click('#rail [data-nav="home"]')
+            self.assertEqual(page.eval_on_selector_all("[data-go-room]", "els => els.map(e => e.dataset.goRoom)"), expected)
+            page.set_viewport_size({"width": 393, "height": 852})
+            page.click('#dock [data-nav="rooms"]')
+            self.assertTrue(page.locator("#room-tools [data-add-room]").is_visible())
+            page.click("#room-tools [data-add-room]")
+            page.wait_for_selector("#settings [data-room-add] input:focus")
+            page.fill("#settings [data-room-add] input", "Empty office")
+            page.click("#settings [data-room-add] button[type=submit]")
+            page.wait_for_selector("text=That room already exists.")
+            self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), 393)
+            saved = page.request.get(self.server.url + "/api/v1/state").json()
+            self.assertEqual({d["id"]: d["room"] for d in saved["devices"]},
+                             {d["id"]: d["room"] for d in original["devices"]})
+            self.assertEqual(saved["settings"]["home_layout"], original["settings"]["home_layout"])
+        finally:
+            page.request.put(self.server.url + "/api/v1/rooms", data={"rooms": original["rooms"]})
 
     def test_energy_chart_for_metering_plug(self):
         self.tile("kt-fridge").locator("[data-more]").click()
@@ -1275,7 +1324,7 @@ class UITests(unittest.TestCase):
 @unittest.skipIf(sync_playwright is None, "playwright not installed")
 class SignedInRoomsTests(unittest.TestCase):
     """With sign-in on, a member only gets rooms that have devices they can see.
-    Demo member Sam (PIN 2468) sees bd-fan, bd-lamp, bd-tv and kt-pendant: no Living room."""
+    Demo member Sam sees bd-fan, bd-lamp, bd-tv and kt-pendant: no Living room."""
 
     @classmethod
     def setUpClass(cls):

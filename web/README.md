@@ -96,6 +96,13 @@ web/
   remembered on each screen. Home has no repeated visible brand/page headings:
   its heading remains available to screen readers, with the status count and
   actions visible. Room page titles remain visible.
+- **Room management.** Admins can add a room in the sidebar and use **Arrange rooms**
+  to move rooms up/down with 48 px keyboard-accessible buttons. The same actions
+  are available above portrait room tabs and in Settings → Rooms. Order is shared
+  across profiles and all room navigation; Home/All rooms/Other are not reorderable.
+  Empty rooms remain visible to admins with an Add device action. Members receive
+  only rooms containing their shared devices, including in the API. Stale room-list
+  saves are rejected rather than removing another screen's new room.
 - **Tap = do the obvious thing** (toggle). Long-press or "…" = full controls (with a
   short vibration where the browser supports it). TVs, and devices with no on/off like
   a robot vacuum, open their controls on tap so they're never switched by accident.

@@ -16,6 +16,7 @@ import { effectsBody, effectsClick, attachEffects, effectsBusy, keepEffects } fr
 import { simpleSpeaker, speakerTop, speakerBody, attachSpeaker, speakerBusy, clearSpeakerInteraction } from "./speaker.js";
 const sheetState = { shownId: null, missed: false, force: false };
 const pressedPointers = new Set();
+let pendingClick = null;
 
 let currentId = null;
 let dragging = null;
@@ -35,6 +36,7 @@ let closing = null;
 export function openDevice(id) {
   cancelLightDrag(); clearControlGestures(); cancelRemoteInteraction();
   pressedPointers.clear();
+  pendingClick = null;
   sheetState.missed = false; sheetState.force = false;
   if (!isSheetOpen()) returnFocus = document.activeElement;
   clearSpeakerInteraction();
@@ -50,6 +52,7 @@ export function openDevice(id) {
 export function closeSheet() {
   cancelLightDrag(); clearControlGestures(); cancelRemoteInteraction();
   pressedPointers.clear();
+  pendingClick = null;
   clearSpeakerInteraction();
   currentId = null;
   const sheet = $("#sheet"), scrim = $("#scrim");
@@ -70,7 +73,7 @@ new MutationObserver(() => { if ($("#sheet").hidden) { sheetState.shownId = null
 export function refreshSheet(id, force = false) {
   if (!currentId) return;
   if (id && id !== currentId) return;
-  if (pressedPointers.size || dragging || controlGestureBusy() || remoteBusy.active || effectsBusy() || speakerBusy()) {
+  if (pendingClick || pressedPointers.size || dragging || controlGestureBusy() || remoteBusy.active || effectsBusy() || speakerBusy()) {
     sheetState.missed = true; sheetState.force ||= force; return;
   }
   force ||= sheetState.force;
@@ -448,10 +451,26 @@ async function loadEnergy(id) {
 
 // ---------- events ----------
 $("#scrim").addEventListener("click", closeSheet);
-$("#sheet").addEventListener("pointerdown", e => pressedPointers.add(e.pointerId), { capture: true });
+$("#sheet").addEventListener("pointerdown", e => {
+  if (e.button > 0) return;
+  pressedPointers.add(e.pointerId);
+  const control = e.target.closest("button, summary");
+  pendingClick = control?.matches(":disabled") ? null : control;
+}, { capture: true });
 for (const event of ["pointerup", "pointercancel"]) addEventListener(event, e => {
   pressedPointers.delete(e.pointerId);
-  setTimeout(() => { if (sheetState.missed) refreshSheet(); }, 0);
+  const box = pendingClick?.getBoundingClientRect();
+  if (event === "pointercancel" || (box && (e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom))) {
+    pendingClick = null;
+  }
+  if (!pendingClick) setTimeout(() => { if (sheetState.missed) refreshSheet(); }, 0);
+});
+addEventListener("blur", () => {
+  pendingClick = null;
+  pressedPointers.clear();
+  cancelLightDrag();
+  clearControlGestures();
+  refreshSheet(undefined, true);
 });
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isSheetOpen()) closeSheet(); });
 $("#sheet").addEventListener("keydown", (e) => {
@@ -542,4 +561,15 @@ $("#sheet").addEventListener("click", async (e) => {
   if (t("[data-refresh]")) {
     try { await api.refresh(d.id); } catch (err) { toast(err.message, true); }
   }
+});
+
+// Touch browsers may dispatch click after pointerup; retain the target until then.
+$("#sheet").addEventListener("click", () => {
+  pendingClick = null;
+  setTimeout(() => { if (sheetState.missed) refreshSheet(); }, 0);
+});
+$("#sheet").addEventListener("contextmenu", () => {
+  pendingClick = null;
+  pressedPointers.clear();
+  setTimeout(() => { if (sheetState.missed) refreshSheet(); }, 0);
 });

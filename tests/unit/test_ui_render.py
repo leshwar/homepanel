@@ -160,6 +160,8 @@ const saveRooms = () => {}, moveRoom = () => {}, invalidateMarkup = () => {};
             assert.equal(setMarkup(el, 'reported value'), true);
             assert.equal(value, 'reported value');
             assert.equal(writes, 2);
+            assert.equal(setMarkup(el, 'reported value'), false);
+            assert.equal(writes, 2); // a subsequent release/click flush must be a cache hit
         """)
 
     def test_badges_update_in_place_including_zero_without_rewriting_same_text(self):

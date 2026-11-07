@@ -181,6 +181,13 @@ class DevicePanelTests(unittest.TestCase):
                     self.assertTrue(page.locator("#sheet [data-power]").is_disabled())
                     self.assertEqual(page.locator("#bri").get_attribute("aria-disabled"), "true")
                     self.assertEqual(page.inner_text("#bri-val"), "Not reported")
+        box = page.locator("#sheet [data-power]").bounding_box()
+        page.touchscreen.tap(box["x"] + 20, box["y"] + 20)
+        page.evaluate("""async () => {
+          const {store,upsertDevice}=await import('/js/store.js'), d=store.devices.get('lr-lamp');
+          upsertDevice({...d,state:{online:true,on:true,brightness:50}});
+        }""")
+        page.wait_for_selector('#sheet [data-power][aria-pressed="true"]:not([disabled])')
         self.assertEqual(self.commands, [])
 
     def test_music_sensitivity_and_remote_holds_cancel_without_commands(self):
@@ -215,6 +222,14 @@ class DevicePanelTests(unittest.TestCase):
         page.mouse.up()
         page.wait_for_selector('[data-effect="scene-sunset"][aria-pressed="true"]')
         self.assertEqual(self.commands, [{"action": "set_effect", "value": "scene-sunset"}])
+        page.fill(".fx-search", "sunrise")
+        sunrise = page.locator('[data-effect="scene-sunrise"]')
+        sunrise.scroll_into_view_if_needed()
+        box = sunrise.bounding_box()
+        page.touchscreen.tap(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        page.wait_for_selector('[data-effect="scene-sunrise"][aria-pressed="true"]')
+        self.assertEqual(self.commands[-1], {"action": "set_effect", "value": "scene-sunrise"})
+        self.assertEqual(len(self.commands), 2)
 
     def test_brightness_only_capability_does_not_invent_power_or_color_controls(self):
         page = self.page

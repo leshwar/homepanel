@@ -3,6 +3,7 @@
 Node is only a development/test dependency; the panel still has no build step.
 """
 import base64
+import hashlib
 import re
 import shutil
 import subprocess
@@ -14,6 +15,14 @@ SOURCE = Path(__file__).resolve().parents[2] / "web/js/render.js"
 
 
 class HeadingStructureTests(unittest.TestCase):
+    def test_sortable_vendor_build_is_pinned_and_keeps_its_license(self):
+        vendor = SOURCE.parents[1] / "vendor/sortablejs"
+        self.assertEqual(hashlib.sha256((vendor / "Sortable.min.js").read_bytes()).hexdigest(),
+                         "bf4241bc73fef7f11c59a283a69fe8051cdd31c6d8ff5a2b9ba219e7831fcf76")
+        license_text = (vendor / "LICENSE").read_text()
+        self.assertIn("MIT License", license_text)
+        self.assertIn("Copyright (c) 2019 All contributors to Sortable", license_text)
+
     def test_home_keeps_accessible_heading_and_navigation_without_brand_heading(self):
         web = SOURCE.parents[1]
         self.assertIn('<h1 id="title">Home</h1>', (web / "index.html").read_text())
@@ -35,7 +44,7 @@ class RenderTests(unittest.TestCase):
         result = subprocess.run(
             [NODE, "--input-type=module", "-e",
              'import assert from "node:assert/strict";\n'
-             'const {setMarkup, updateRoomCounts} = await import(process.argv[1]);\n' + script, module],
+             'const {setMarkup, updateRoomCounts, invalidateMarkup} = await import(process.argv[1]);\n' + script, module],
             capture_output=True, text=True, timeout=10,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -59,6 +68,16 @@ class RenderTests(unittest.TestCase):
             assert.equal(setMarkup(b, 'Rooms'), true);
             assert.equal(setMarkup(a, 'Rooms'), false);
             assert.equal(b.innerHTML, 'Rooms');
+        """)
+
+    def test_external_drag_changes_can_be_reset_to_saved_markup(self):
+        self.run_js("""
+            const el = {};
+            setMarkup(el, 'saved order');
+            el.innerHTML = 'dragged order';
+            invalidateMarkup(el);
+            assert.equal(setMarkup(el, 'saved order'), true);
+            assert.equal(el.innerHTML, 'saved order');
         """)
 
     def test_badges_update_in_place_including_zero_without_rewriting_same_text(self):

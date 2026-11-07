@@ -4,7 +4,7 @@
 
 import { api, connectEvents } from "./api.js";
 import { setMarkup, updateRoomCounts } from "./render.js";
-import { store, onChange, reload, upsertDevice, setRoom, setView, devicesIn, applySnapshot, addRoom, moveRoom } from "./store.js";
+import { store, onChange, reload, upsertDevice, setRoom, setView, devicesIn, applySnapshot, addRoom } from "./store.js";
 import { $, esc, icon, glow, toast } from "./util.js";
 import { refreshSheet, closeSheet } from "./sheet.js";
 import { openSettings, isSettingsOpen, refreshSettings, closeSettings, roomAddForm } from "./settings.js";
@@ -20,13 +20,15 @@ import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEdit
 import { startAuth } from "./auth.js";
 import "./profiles.js";      // Settings → Profiles
 import { roomTiles, setupRoomEditor, startRoomEditing, stopRoomEditing, isRoomEditing } from "./room-layout.js";
+import { roomGrip, syncRoomSorters, isSortingRooms } from "./room-sort.js";
 import { setupVoice, closeVoice, isVoiceOpen } from "./voice.js";
 
 const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const wide = () => matchMedia("(min-width: 768px)").matches;
-let arrangingRooms = false, addingRoom = false, savingRooms = false;
+let addingRoom = false, savingRooms = false;
 const editing = () => isEditing() || isRoomEditing();
 function canNavigate() {
+  if (isSortingRooms()) { toast("Finish moving the room first."); return false; }
   if (!editing()) return true;
   toast("Save or cancel your layout changes first.");
   return false;
@@ -63,12 +65,19 @@ const countBadge = (room) => `<span class="count" data-room-count="${esc(room)}"
 function renderTabs() {
   const el = $("#rooms");
   const order = tabOrder();
+  const admin = store.me?.role === "admin";
   el.hidden = !order.length || store.view !== "rooms";
-  setMarkup(el, order.map((id) =>
+  const tab = (id) =>
     `<button class="room" role="tab" data-room="${esc(id)}" aria-selected="${store.room === id}">${
-      esc(id === "all" ? "All" : roomLabel(id))}${countBadge(id)}</button>`).join(""));
+      esc(id === "all" ? "All" : roomLabel(id))}${countBadge(id)}</button>`;
+  const actual = order.filter((r) => r !== "all" && r !== OTHER);
+  setMarkup(el, `${order.includes("all") ? tab("all") : ""}
+    <div class="room-sort-tabs" ${admin ? 'data-room-sort="horizontal"' : ""}>${actual.map((r) =>
+      `<div class="room-tab" data-sort-room="${esc(r)}">${tab(r)}${admin ? roomGrip(r) : ""}</div>`).join("")}</div>
+    ${order.includes(OTHER) ? tab(OTHER) : ""}`);
   updateRoomCounts(el, onCount);
   $("#room-tools").hidden = store.view !== "rooms" || store.me?.role !== "admin";
+  syncRoomSorters();
 }
 
 // iPad and the landscape panel: Home plus every room down the left side.
@@ -76,7 +85,7 @@ function renderRail() {
   const order = tabOrder();
   const home = store.view === "home";
   const admin = store.me?.role === "admin";
-  if (!admin) { arrangingRooms = false; addingRoom = false; }
+  if (!admin) addingRoom = false;
   const item = (id) => {
     const sel = !home && store.room === id;
     return `<button class="rail-item" role="tab" data-room="${esc(id)}" aria-selected="${sel}">${roomIcon(id)}<span>${
@@ -84,17 +93,13 @@ function renderRail() {
   };
   setMarkup($("#rail"), `
     <button class="rail-item" data-nav="home" aria-current="${home ? "page" : "false"}">${svg("home")}<span>Home</span></button>
-    <div class="rail-room-heading"><p class="rail-label">Rooms</p>${admin
-      ? `<button class="icon-btn" data-arrange-rooms aria-label="${arrangingRooms ? "Finish arranging rooms" : "Arrange rooms"}"
-          aria-pressed="${arrangingRooms}">${arrangingRooms ? icon("check") : svg("pencil")}</button>` : ""}</div>
-    <div class="rail-rooms" role="tablist" aria-orientation="vertical" aria-label="Rooms">${order.map((room) => {
-      const i = store.rooms.indexOf(room);
-      if (!arrangingRooms || i < 0) return item(room);
-      return `<div class="rail-room-row">${item(room)}
-        <button class="icon-btn" data-room-step="-1" data-room-name="${esc(room)}" aria-label="Move ${esc(room)} up" ${i === 0 || savingRooms ? "disabled" : ""}>${icon("up")}</button>
-        <button class="icon-btn" data-room-step="1" data-room-name="${esc(room)}" aria-label="Move ${esc(room)} down" ${i === store.rooms.length - 1 || savingRooms ? "disabled" : ""}>${icon("down")}</button>
-      </div>`;
-    }).join("")}</div>
+    <p class="rail-label">Rooms</p>
+    <div class="rail-rooms" role="tablist" aria-orientation="vertical" aria-label="Rooms">
+      ${order.includes("all") ? item("all") : ""}
+      <div class="room-sort-rail" ${admin ? 'data-room-sort="vertical"' : ""}>${order.filter((r) => r !== "all" && r !== OTHER).map((room) =>
+        `<div class="rail-room-row" data-sort-room="${esc(room)}">${item(room)}${admin ? roomGrip(room) : ""}</div>`).join("")}</div>
+      ${order.includes(OTHER) ? item(OTHER) : ""}
+    </div>
     <div class="rail-foot">
       ${admin ? `<button class="rail-item" data-add-room aria-expanded="${addingRoom}">${icon("plus")}<span>Add room</span></button>` : ""}
       ${addingRoom ? roomAddForm("rail-add-room") : ""}
@@ -102,6 +107,7 @@ function renderRail() {
       <button class="rail-item" data-open-settings>${svg("settings")}<span>Settings</span></button>
     </div>`);
   updateRoomCounts($("#rail"), onCount);
+  syncRoomSorters();
 }
 
 function renderDock() {
@@ -110,6 +116,7 @@ function renderDock() {
 }
 
 function renderNav() {
+  if (isSortingRooms()) return;
   const order = tabOrder();
   if (store.room !== "all" && !order.includes(store.room)) { setRoom("all"); return; }   // its devices moved away
   renderTabs();
@@ -335,7 +342,6 @@ function setupChrome() {
   document.addEventListener("click", async (e) => {
     const t = e.target;
     if (!t.closest("#app")) return;
-    if (t.closest("[data-manage-rooms]") && canNavigate()) return openSettings("rooms");
     if (t.closest("[data-add-room]") && canNavigate()) {
       if (!wide()) return openSettings("rooms", "add");
       addingRoom = !addingRoom; renderRail();
@@ -343,24 +349,6 @@ function setupChrome() {
       return;
     }
     if (t.closest("[data-room-add-cancel]")) { addingRoom = false; renderRail(); return $("#rail [data-add-room]")?.focus(); }
-    if (t.closest("[data-arrange-rooms]") && canNavigate()) {
-      arrangingRooms = !arrangingRooms; renderRail(); return $("#rail [data-arrange-rooms]")?.focus();
-    }
-    const step = t.closest("[data-room-step]");
-    if (step && !savingRooms && canNavigate()) {
-      savingRooms = true;
-      renderRail();
-      try {
-        await moveRoom(step.dataset.roomName, Number(step.dataset.roomStep));
-        toast("Room order saved");
-      } catch (err) { toast(err.message, true); }
-      finally {
-        savingRooms = false; renderRail();
-        const nextControl = $("#rail")?.querySelector(`[data-room-name="${CSS.escape(step.dataset.roomName)}"][data-room-step="${step.dataset.roomStep}"]:not([disabled])`);
-        (nextControl || $("#rail")?.querySelector(`[data-room="${CSS.escape(step.dataset.roomName)}"]`))?.focus();
-      }
-      return;
-    }
     const nav = t.closest("[data-nav]");
     if (nav) {
       if (!canNavigate()) return;

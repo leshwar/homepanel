@@ -2,7 +2,8 @@
 // Text entry (API keys etc.) is easiest from a phone or laptop: open http://<panel>.local:8080
 
 import { api } from "./api.js";
-import { store, reload, addRoom, moveRoom, saveRooms } from "./store.js";
+import { store, reload, addRoom, saveRooms } from "./store.js";
+import { roomGrip, syncRoomSorters, isSortingRooms } from "./room-sort.js";
 import { $, esc, icon, kindIcon, toast } from "./util.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame } from "./photoframe.js";
@@ -35,7 +36,7 @@ export function go(view, arg = null) { stack.push({ view, arg }); if (view === "
 export function back() { if (stack.at(-1)?.view === "display") dropPreview(); stack.pop(); stack.length ? render() : close(); }
 
 export function refreshSettings() {
-  if (!isSettingsOpen()) return;
+  if (!isSettingsOpen() || isSortingRooms()) return;
   const top = stack.at(-1);
   if (top && ["home", "devices", "scenes", "rooms", "automations", "location", "profiles"].includes(top.view)) render();
 }
@@ -48,6 +49,7 @@ export function page(title, body, { closeBtn = false } = {}) {
       <h1>${esc(title)}</h1>
       ${closeBtn && stack.length > 1 ? `<button class="icon-btn" data-close aria-label="Close">${icon("close")}</button>` : ""}
     </div>${body}</div>`;
+  syncRoomSorters();
 }
 
 export const row = (attrs, iconName, title, sub = "", extra = "") =>
@@ -295,11 +297,11 @@ const VIEWS = {
 
   rooms(focus) {
     page("Rooms", `
-      <div class="list">${store.rooms.map((r, i) => `
-        <div class="row room-settings-row"><span class="grow"><span class="title">${esc(r)}</span></span>
+      <p class="group-label">Drag the handles to reorder rooms. With a keyboard, focus a handle and use the arrow keys.</p>
+      <div class="list" data-room-sort="vertical">${store.rooms.map((r, i) => `
+        <div class="row room-settings-row" data-sort-room="${esc(r)}"><span class="grow"><span class="title">${esc(r)}</span></span>
           <button class="btn small" data-room-layout="${esc(r)}" aria-label="Edit ${esc(r)} tiles">Edit tiles</button>
-          <button class="btn small" data-room-move="-1" data-room-name="${esc(r)}" aria-label="Move ${esc(r)} up" ${i === 0 ? "disabled" : ""}>${icon("up")}</button>
-          <button class="btn small" data-room-move="1" data-room-name="${esc(r)}" aria-label="Move ${esc(r)} down" ${i === store.rooms.length - 1 ? "disabled" : ""}>${icon("down")}</button>
+          ${roomGrip(r)}
           <button class="btn small danger" data-room-del="${i}" aria-label="Delete ${esc(r)}">${icon("trash")}</button></div>`).join("")}</div>
       ${roomAddForm()}`);
     if (focus === "add") {
@@ -816,13 +818,6 @@ root.addEventListener("click", async (e) => {
     if (t("[data-room-del]")) {
       const rooms = store.rooms.filter((_, i) => i !== +t("[data-room-del]").dataset.roomDel);
       await saveRooms(rooms); return render();
-    }
-    if (t("[data-room-move]")) {
-      const button = t("[data-room-move]");
-      await moveRoom(button.dataset.roomName, Number(button.dataset.roomMove));
-      render();
-      $("#settings")?.querySelector(`[data-room-name="${CSS.escape(button.dataset.roomName)}"][data-room-move="${button.dataset.roomMove}"]:not([disabled])`)?.focus();
-      return;
     }
     if (t("[data-logs]") !== null && t("[data-logs]")) return loadLogs(t("[data-logs]").dataset.logs);
   } catch (err) {

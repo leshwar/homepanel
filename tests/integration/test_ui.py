@@ -231,15 +231,16 @@ class UITests(unittest.TestCase):
             page.wait_for_selector('#title:text-is("Empty office")')
             self.assertTrue(page.locator(".room-empty").is_visible())
             self.assertEqual(page.locator("#grid .tile").count(), 0)
-            page.click("#rail [data-arrange-rooms]")
-            page.get_by_role("button", name="Move Empty office up", exact=True).focus()
-            page.keyboard.press("Enter")
+            self.assertEqual(page.locator("[data-arrange-rooms], [data-room-step], [data-room-move]").count(), 0)
+            page.locator('#rail [data-room-grip="Empty office"]').focus()
+            page.keyboard.press("ArrowUp")
             page.wait_for_selector("text=Room order saved")
             expected = ["Living room", "Bedroom", "Empty office", "Kitchen"]
             self.assertEqual(page.request.get(self.server.url + "/api/v1/state").json()["rooms"], expected)
             self.assertEqual(page.locator('#rail [data-room="all"]').count(), 1)
-            self.assertEqual(page.locator('#rail [data-room-name="all"], #rail [data-room-name=""]').count(), 0)
-            for button in page.locator("#rail [data-room-step]").all():
+            self.assertEqual(page.locator('#rail [data-room-grip="all"], #rail [data-room-grip=""]').count(), 0)
+            self.assertIn("Empty office moved to position 3", page.inner_text("#room-sort-status"))
+            for button in page.locator("#rail [data-room-grip]").all():
                 self.assertGreaterEqual(button.bounding_box()["width"], 48)
                 self.assertGreaterEqual(button.bounding_box()["height"], 48)
             page.reload()
@@ -262,6 +263,92 @@ class UITests(unittest.TestCase):
                              {d["id"]: d["room"] for d in original["devices"]})
             self.assertEqual(saved["settings"]["home_layout"], original["settings"]["home_layout"])
         finally:
+            page.request.put(self.server.url + "/api/v1/rooms", data={"rooms": original["rooms"]})
+
+    def test_room_grips_support_mouse_touch_and_normal_navigation(self):
+        page = self.page
+        original = page.request.get(self.server.url + "/api/v1/state").json()["rooms"]
+        try:
+            page.set_viewport_size({"width": 1280, "height": 720})
+            page.wait_for_selector('#rail [data-room-grip="Kitchen"]')
+            self.assertEqual(page.evaluate("Sortable.version"), "1.15.7")
+            grip = page.locator('#rail [data-room-grip="Kitchen"]').bounding_box()
+            target = page.locator('#rail [data-sort-room="Living room"]').bounding_box()
+            with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith("/api/v1/rooms")):
+                page.mouse.move(grip["x"] + 24, grip["y"] + 24)
+                page.mouse.down()
+                page.mouse.move(target["x"] + target["width"] - 24, target["y"] + 5, steps=12)
+                page.wait_for_selector(".room-sort-ghost")
+                page.wait_for_timeout(200)
+                page.mouse.up()
+            page.wait_for_function("document.querySelector('#rail [data-sort-room]').dataset.sortRoom === 'Kitchen'")
+            self.assertEqual(page.request.get(self.server.url + "/api/v1/state").json()["rooms"],
+                             ["Kitchen", "Living room", "Bedroom"])
+            page.locator('#rail [data-room="Kitchen"]').click()
+            self.assertEqual(page.inner_text("#title"), "Kitchen")
+            page.set_viewport_size({"width": 720, "height": 1280})
+            page.wait_for_selector('#rooms [data-room-grip="Kitchen"]')
+            grip = page.locator('#rooms [data-room-grip="Kitchen"]').bounding_box()
+            target = page.locator('#rooms [data-sort-room="Living room"]').bounding_box()
+            cdp = page.context.new_cdp_session(page)
+            x, y = grip["x"] + 24, grip["y"] + 24
+            with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith("/api/v1/rooms")):
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+                page.wait_for_timeout(180)
+                end = target["x"] + target["width"] - 5
+                for step in range(1, 11):
+                    cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x + (end - x) * step / 10, "y": y}]})
+                    page.wait_for_timeout(20)
+                page.wait_for_timeout(200)
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            page.wait_for_function("document.querySelector('#rooms [data-sort-room]').dataset.sortRoom === 'Living room'")
+            self.assertEqual(page.request.get(self.server.url + "/api/v1/state").json()["rooms"],
+                             ["Living room", "Kitchen", "Bedroom"])
+            page.reload()
+            page.wait_for_selector('#rooms [data-sort-room="Living room"]')
+            self.assertEqual(page.eval_on_selector_all("#rooms [data-sort-room]", "els => els.map(e => e.dataset.sortRoom)"),
+                             ["Living room", "Kitchen", "Bedroom"])
+            page.set_viewport_size({"width": 393, "height": 852})
+            page.evaluate("document.querySelector('#rooms').scrollLeft = 0")
+            button = page.locator('#rooms [data-room="Living room"]').bounding_box()
+            x, y = button["x"] + button["width"] / 2, button["y"] + button["height"] / 2
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+            for step in range(1, 9):
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x - 140 * step / 8, "y": y}]})
+                page.wait_for_timeout(20)
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            page.wait_for_function("document.querySelector('#rooms').scrollLeft > 0")
+            self.assertEqual(page.locator(".room-sort-ghost").count(), 0)
+            self.assertEqual(page.request.get(self.server.url + "/api/v1/state").json()["rooms"],
+                             ["Living room", "Kitchen", "Bedroom"])
+        finally:
+            page.request.put(self.server.url + "/api/v1/rooms", data={"rooms": original})
+
+    def test_room_drag_does_not_remove_a_concurrently_added_room(self):
+        page = self.page
+        page.set_viewport_size({"width": 1280, "height": 720})
+        original = page.request.get(self.server.url + "/api/v1/state").json()
+        try:
+            grip = page.locator('#rail [data-room-grip="Kitchen"]').bounding_box()
+            target = page.locator('#rail [data-sort-room="Living room"]').bounding_box()
+            page.mouse.move(grip["x"] + 24, grip["y"] + 24)
+            page.mouse.down()
+            page.mouse.move(target["x"] + target["width"] - 24, target["y"] + 5, steps=12)
+            page.wait_for_selector(".room-sort-ghost")
+            latest = [*original["rooms"], "New office"]
+            page.request.put(self.server.url + "/api/v1/rooms",
+                             data={"rooms": latest, "expected_rooms": original["rooms"]})
+            page.wait_for_function("async () => (await import('/js/store.js')).store.rooms.includes('New office')")
+            page.mouse.up()
+            page.wait_for_selector("text=Rooms changed on another screen.")
+            page.wait_for_selector('#rail [data-room="New office"]')
+            self.assertEqual(page.eval_on_selector_all("#rail [data-sort-room]", "els => els.map(e => e.dataset.sortRoom)"), latest)
+            state = page.request.get(self.server.url + "/api/v1/state").json()
+            self.assertEqual(state["rooms"], latest)
+            self.assertEqual({d["id"]: d["room"] for d in state["devices"]},
+                             {d["id"]: d["room"] for d in original["devices"]})
+        finally:
+            page.mouse.up()
             page.request.put(self.server.url + "/api/v1/rooms", data={"rooms": original["rooms"]})
 
     def test_energy_chart_for_metering_plug(self):

@@ -25,6 +25,7 @@ web/
     ├── profiles.js Settings → Profiles (admins) and Settings → Your profile
     ├── grid.js     shared responsive positions, collision checks, drag/resize and arrow keys
     ├── room-layout.js per-profile room tile layouts and their editor
+    ├── room-sort.js three-line room grips, touch sorting, keyboard announcements and persistence
     ├── home.js     the Home page: widgets (clock, other places' clocks, weather, scenes, rooms)
     │               and edit mode (hold to move, drag a corner to resize, hide, Done)
     ├── tiles.js    device tiles: tap = on/off, long-press or "…" = controls (+ haptics)
@@ -96,13 +97,20 @@ web/
   remembered on each screen. Home has no repeated visible brand/page headings:
   its heading remains available to screen readers, with the status count and
   actions visible. Room page titles remain visible.
-- **Room management.** Admins can add a room in the sidebar and use **Arrange rooms**
-  to move rooms up/down with 48 px keyboard-accessible buttons. The same actions
-  are available above portrait room tabs and in Settings → Rooms. Order is shared
+- **Room management.** Admins can add a room in the sidebar and drag the always-visible
+  three-line grips to reorder rooms. The same grips work in portrait room tabs
+  and Settings → Rooms; focus a grip and use arrow keys for keyboard ordering.
+  Handles are at least 48 px and leave normal scrolling/navigation outside them alone. Order is shared
   across profiles and all room navigation; Home/All rooms/Other are not reorderable.
   Empty rooms remain visible to admins with an Add device action. Members receive
   only rooms containing their shared devices, including in the API. Stale room-list
   saves are rejected rather than removing another screen's new room.
+
+Room dragging reuses [SortableJS 1.15.7](https://github.com/SortableJS/Sortable/tree/1.15.7),
+served locally from `vendor/sortablejs/Sortable.min.js` (45,478 bytes; no CDN,
+framework or build step). Its unmodified MIT license and copyright notice are
+included in `vendor/sortablejs/LICENSE`. The app retains its own room permissions,
+keyboard behavior and guarded persistence; the library only handles dragging.
 - **Tap = do the obvious thing** (toggle). Long-press or "…" = full controls (with a
   short vibration where the browser supports it). TVs, and devices with no on/off like
   a robot vacuum, open their controls on tap so they're never switched by accident.

@@ -20,7 +20,7 @@ import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEdit
 import { startAuth } from "./auth.js";
 import "./profiles.js";      // Settings → Profiles
 import { roomTiles, setupRoomEditor, startRoomEditing, stopRoomEditing, isRoomEditing } from "./room-layout.js";
-import { roomGrip, syncRoomSorters, isSortingRooms } from "./room-sort.js";
+import { roomGrip, roomEditButton, roomRenameButton, syncRoomSorters, isSortingRooms, isEditingRooms, toggleRoomEditing, showRoomRename } from "./room-sort.js";
 import { applyTypography } from "./typography.js";
 import { setupVoice, closeVoice, isVoiceOpen } from "./voice.js";
 
@@ -67,6 +67,7 @@ function renderTabs() {
   const el = $("#rooms");
   const order = tabOrder();
   const admin = store.me?.role === "admin";
+  const editingRooms = admin && isEditingRooms();
   el.hidden = !order.length || store.view !== "rooms";
   const tab = (id) =>
     `<button class="room" role="tab" data-room="${esc(id)}" aria-selected="${store.room === id}">${
@@ -74,10 +75,11 @@ function renderTabs() {
   const actual = order.filter((r) => r !== "all" && r !== OTHER);
   setMarkup(el, `${order.includes("all") ? tab("all") : ""}
     <div class="room-sort-tabs" ${admin ? 'data-room-sort="horizontal"' : ""}>${actual.map((r) =>
-      `<div class="room-tab" data-sort-room="${esc(r)}">${tab(r)}${admin ? roomGrip(r) : ""}</div>`).join("")}</div>
+      `<div class="room-tab${editingRooms ? " editing-rooms" : ""}" data-sort-room="${esc(r)}">${tab(r)}${editingRooms ? roomRenameButton(r) + roomGrip(r) : ""}</div>`).join("")}</div>
     ${order.includes(OTHER) ? tab(OTHER) : ""}`);
   updateRoomCounts(el, onCount);
   $("#room-tools").hidden = store.view !== "rooms" || store.me?.role !== "admin";
+  setMarkup($("#room-tools"), `<span>Rooms</span>${roomEditButton()}${editingRooms ? '<button class="btn small" data-add-room>Add room</button>' : ""}`);
   syncRoomSorters();
 }
 
@@ -86,7 +88,8 @@ function renderRail() {
   const order = tabOrder();
   const home = store.view === "home";
   const admin = store.me?.role === "admin";
-  if (!admin) addingRoom = false;
+  const editingRooms = admin && isEditingRooms();
+  if (!editingRooms) addingRoom = false;
   const item = (id) => {
     const sel = !home && store.room === id;
     return `<button class="rail-item" role="tab" data-room="${esc(id)}" aria-selected="${sel}">${roomIcon(id)}<span>${
@@ -94,15 +97,15 @@ function renderRail() {
   };
   setMarkup($("#rail"), `
     <button class="rail-item" data-nav="home" aria-current="${home ? "page" : "false"}">${svg("home")}<span>Home</span></button>
-    <p class="rail-label">Rooms</p>
+    <div class="rail-room-heading"><p class="rail-label">Rooms</p>${admin ? roomEditButton() : ""}</div>
     <div class="rail-rooms" role="tablist" aria-orientation="vertical" aria-label="Rooms">
       ${order.includes("all") ? item("all") : ""}
       <div class="room-sort-rail" ${admin ? 'data-room-sort="vertical"' : ""}>${order.filter((r) => r !== "all" && r !== OTHER).map((room) =>
-        `<div class="rail-room-row" data-sort-room="${esc(room)}">${item(room)}${admin ? roomGrip(room) : ""}</div>`).join("")}</div>
+        `<div class="rail-room-row${editingRooms ? " editing-rooms" : ""}" data-sort-room="${esc(room)}">${item(room)}${editingRooms ? roomGrip(room) + roomRenameButton(room) : ""}</div>`).join("")}</div>
       ${order.includes(OTHER) ? item(OTHER) : ""}
     </div>
     <div class="rail-foot">
-      ${admin ? `<button class="rail-item" data-add-room aria-expanded="${addingRoom}">${icon("plus")}<span>Add room</span></button>` : ""}
+      ${editingRooms ? `<button class="rail-item" data-add-room aria-expanded="${addingRoom}">${icon("plus")}<span>Add room</span></button>` : ""}
       ${addingRoom ? roomAddForm("rail-add-room") : ""}
       <button class="rail-item" data-add-device>${icon("plus")}<span>Add a device</span></button>
       <button class="rail-item" data-open-settings>${svg("settings")}<span>Settings</span></button>
@@ -344,6 +347,14 @@ function setupChrome() {
   document.addEventListener("click", async (e) => {
     const t = e.target;
     if (!t.closest("#app")) return;
+    if (t.closest("[data-edit-rooms]") && canNavigate()) {
+      addingRoom = false;
+      const scope = t.closest("#rail") ? "#rail" : "#room-tools";
+      toggleRoomEditing();
+      return document.querySelector(`${scope} [data-edit-rooms]`)?.focus();
+    }
+    const rename = t.closest("[data-rename-room]");
+    if (rename && canNavigate()) return showRoomRename(rename.dataset.renameRoom);
     if (t.closest("[data-add-room]") && canNavigate()) {
       if (!wide()) return openSettings("rooms", "add");
       addingRoom = !addingRoom; renderRail();

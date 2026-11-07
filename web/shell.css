@@ -40,11 +40,18 @@ html[data-view="home"] .topbar { min-height: 48px; }
 /* ---------- room rail (iPad, landscape panel) ---------- */
 .rail { display: none; }
 .rail-label { margin: 18px 14px 6px; color: var(--haze); font-size: max(11px, calc(13px * var(--text-scale))); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+.rail-room-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0; }
+.rail-room-heading .rail-label { margin: 12px 14px; }
+.rail-room-heading .btn { padding-inline: 12px; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); }
 .rail-room-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; flex-shrink: 0; }
 .rail-room-row .rail-item { padding-inline: 10px; gap: 8px; }
 .rail-room-row .rail-item > .i { width: 20px; height: 20px; }
 .rail-room-row .rail-item > span:not(.count) { white-space: normal; overflow-wrap: anywhere; }
+.rail-room-row.editing-rooms .room-rename { grid-column: 1 / -1; justify-self: start; margin: 0 0 6px 10px; }
+.room-tab.editing-rooms { display: grid; grid-template-columns: auto 48px; }
+.room-tab.editing-rooms .room-grip { grid-column: 2; grid-row: 1 / 3; }
+.room-tab.editing-rooms .room-rename { grid-column: 1; justify-self: start; }
 .room-sort-rail { display: flex; flex-direction: column; gap: 4px; }
 .room-sort-tabs, .room-tab { display: flex; align-items: center; flex: none; gap: 4px; }
 .room-sort-tabs { gap: 8px; }
@@ -56,6 +63,14 @@ html[data-view="home"] .topbar { min-height: 48px; }
 .rail-add-room { padding: 8px 2px; }
 .rail-add-room .btn { width: 100%; margin-top: 6px; }
 .room-tools { display: flex; gap: 8px; margin-bottom: 12px; }
+.room-tools > span { align-self: center; margin-right: auto; }
+.room-settings-tools { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.room-name-dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); overflow: auto;
+  padding: 22px; border: 1px solid var(--line); border-radius: 24px; background: var(--dusk); color: var(--paper); }
+.room-name-dialog::backdrop { background: rgb(0 0 0 / .55); }
+.room-name-dialog h2 { margin: 0 0 16px; }
+.room-name-dialog p { color: var(--haze); }
+.room-name-dialog .room-rename-error { color: var(--ember); }
 .room-empty { padding: 28px 12px; }
 .room-settings-row { flex-wrap: wrap; }
 @media (max-width: 480px) { .room-settings-row > .grow { flex-basis: 100%; } }

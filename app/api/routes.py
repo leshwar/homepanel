@@ -204,7 +204,7 @@ async def put_rooms(request):
     body = await _body(request)
     if "rooms" not in body:
         raise AdapterError("Include the room names to save.")
-    return {"rooms": _svc(request).set_rooms(body["rooms"], body.get("expected_rooms"))}
+    return {"rooms": _svc(request).set_rooms(body["rooms"], body.get("expected_rooms"), body.get("rename"))}
 
 
 @handle_errors

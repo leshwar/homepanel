@@ -98,14 +98,17 @@ web/
   remembered on each screen. Home has no repeated visible brand/page headings:
   its heading remains available to screen readers, with the status count and
   actions visible. Room page titles remain visible.
-- **Room management.** Admins can add a room in the sidebar and drag the always-visible
-  three-line grips to reorder rooms. The same grips work in portrait room tabs
-  and Settings → Rooms; focus a grip and use arrow keys for keyboard ordering.
+- **Room management.** Rooms starts in normal navigation mode. Admins choose **Edit**
+  beside Rooms to reveal Rename, Add room and three-line reorder grips; **Done**
+  hides the editing controls and disables sorting. The same mode works in portrait
+  room tabs and Settings → Rooms; focus a grip and use arrow keys for keyboard ordering.
   Handles are at least 48 px and leave normal scrolling/navigation outside them alone. Order is shared
   across profiles and all room navigation; Home/All rooms/Other are not reorderable.
   Empty rooms remain visible to admins with an Add device action. Members receive
   only rooms containing their shared devices, including in the API. Stale room-list
   saves are rejected rather than removing another screen's new room.
+  Renaming keeps room order, device membership and every profile's saved tile layout.
+  A conflicting existing layout is never silently overwritten.
 
 Room dragging reuses [SortableJS 1.15.7](https://github.com/SortableJS/Sortable/tree/1.15.7),
 served locally from `vendor/sortablejs/Sortable.min.js` (45,478 bytes; no CDN,

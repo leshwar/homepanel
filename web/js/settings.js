@@ -3,7 +3,7 @@
 
 import { api } from "./api.js";
 import { store, reload, addRoom, saveRooms } from "./store.js";
-import { roomGrip, syncRoomSorters, isSortingRooms } from "./room-sort.js";
+import { roomGrip, roomEditButton, roomRenameButton, syncRoomSorters, isSortingRooms, isEditingRooms, toggleRoomEditing, showRoomRename } from "./room-sort.js";
 import { $, esc, icon, kindIcon, toast } from "./util.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame } from "./photoframe.js";
@@ -297,15 +297,17 @@ const VIEWS = {
   },
 
   rooms(focus) {
+    const editing = isEditingRooms();
     page("Rooms", `
-      <p class="group-label">Drag the handles to reorder rooms. With a keyboard, focus a handle and use the arrow keys.</p>
+      <div class="room-settings-tools">${roomEditButton()}</div>
+      ${editing ? '<p class="group-label">Drag the handles to reorder rooms. With a keyboard, focus a handle and use the arrow keys.</p>' : ""}
       <div class="list" data-room-sort="vertical">${store.rooms.map((r, i) => `
         <div class="row room-settings-row" data-sort-room="${esc(r)}"><span class="grow"><span class="title">${esc(r)}</span></span>
-          <button class="btn small" data-room-layout="${esc(r)}" aria-label="Edit ${esc(r)} tiles">Edit tiles</button>
-          ${roomGrip(r)}
-          <button class="btn small danger" data-room-del="${i}" aria-label="Delete ${esc(r)}">${icon("trash")}</button></div>`).join("")}</div>
-      ${roomAddForm()}`);
-    if (focus === "add") {
+          ${editing ? `<button class="btn small" data-room-layout="${esc(r)}" aria-label="Edit ${esc(r)} tiles">Edit tiles</button>
+          ${roomRenameButton(r)}${roomGrip(r)}
+          <button class="btn small danger" data-room-del="${i}" aria-label="Delete ${esc(r)}">${icon("trash")}</button>` : ""}</div>`).join("")}</div>
+      ${editing ? roomAddForm() : ""}`);
+    if (focus === "add" && editing) {
       const input = $("#settings [data-room-add] input");
       input.focus();
       input.scrollIntoView({ block: "center" });
@@ -721,6 +723,8 @@ async function useMyLocation(btn) {
 
 root.addEventListener("click", async (e) => {
   const t = (sel) => e.target.closest(sel);
+  if (t("[data-edit-rooms]")) { toggleRoomEditing(); return $("#settings [data-edit-rooms]")?.focus(); }
+  if (t("[data-rename-room]")) return showRoomRename(t("[data-rename-room]").dataset.renameRoom);
   const roomLayout = t("[data-room-layout]");
   if (roomLayout) return document.dispatchEvent(new CustomEvent("hp:edit-room", { detail: roomLayout.dataset.roomLayout }));
   if (t("[data-back]")) return back();

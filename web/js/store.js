@@ -108,19 +108,34 @@ export function roomGroups() {
   return groups;
 }
 
-export async function saveRooms(rooms, expected = [...store.rooms]) {
+export async function saveRooms(rooms, expected = [...store.rooms], rename) {
   if (store.me?.role !== "admin") throw new Error("Only an admin can change rooms.");
-  await api.setRooms(rooms, expected);
+  await api.setRooms(rooms, expected, rename);
   await reload();
 }
 
-export async function addRoom(name) {
+function roomName(name) {
   const room = String(name || "").trim();
   if (!room) throw new Error("Give the room a name.");
   if (room.length > 24) throw new Error("Keep the room name to 24 characters.");
-  if (store.rooms.includes(room)) throw new Error("That room already exists.");
   if (room === "all") throw new Error('Choose a name other than "all"; that opens All rooms.');
+  return room;
+}
+
+export async function addRoom(name) {
+  const room = roomName(name);
+  if (store.rooms.includes(room)) throw new Error("That room already exists.");
   await saveRooms([...store.rooms, room]);
+  return room;
+}
+
+export async function renameRoom(old, name) {
+  const room = roomName(name), expected = [...store.rooms], selected = store.room === old;
+  if (!expected.includes(old)) throw new Error("That room is no longer available. Reload and try again.");
+  if (room === old) return room;
+  if (expected.includes(room)) throw new Error("That room already exists.");
+  await saveRooms(expected.map((r) => r === old ? room : r), expected, { from: old, to: room });
+  if (selected) setRoom(room);
   return room;
 }
 

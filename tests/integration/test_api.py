@@ -75,6 +75,23 @@ class ApiTests(unittest.TestCase):
         finally:
             self.call("PUT", "/rooms", {"rooms": rooms})
 
+    def test_room_rename_preserves_devices_and_layout_and_rejects_stale_requests(self):
+        original = self.call("GET", "/state")[1]
+        rooms = original["rooms"]
+        renamed = ["Study" if r == "Bedroom" else r for r in rooms]
+        try:
+            status, result = self.call("PUT", "/rooms", {
+                "rooms": renamed, "expected_rooms": rooms, "rename": {"from": "Bedroom", "to": "Study"}})
+            self.assertEqual((status, result["rooms"]), (200, renamed))
+            state = self.call("GET", "/state")[1]
+            self.assertEqual({d["id"]: d["room"] for d in state["devices"]},
+                             {d["id"]: "Study" if d["room"] == "Bedroom" else d["room"] for d in original["devices"]})
+            self.assertEqual(state["settings"]["home_layout"], original["settings"]["home_layout"])
+            self.assertEqual(self.call("PUT", "/rooms", {
+                "rooms": rooms, "expected_rooms": rooms, "rename": {"from": "Study", "to": "Bedroom"}})[0], 400)
+        finally:
+            self.call("PUT", "/rooms", {"rooms": rooms, "rename": {"from": "Study", "to": "Bedroom"}})
+
     def test_all_off_for_devices_without_a_room(self):
         self.call("PATCH", "/devices/kt-kettle", {"room": ""})
         try:

@@ -210,6 +210,7 @@ class UITests(unittest.TestCase):
         try:
             self.page.click("#open-settings")
             self.page.click("[data-go=rooms]")
+            self.page.click("#settings [data-edit-rooms]")
             self.page.fill("input[name=room]", "Office")
             self.page.click("[data-room-add] button[type=submit]")
             self.page.wait_for_selector('#settings .room-settings-row .title:text-is("Office")')
@@ -224,6 +225,7 @@ class UITests(unittest.TestCase):
         page.set_viewport_size({"width": 1280, "height": 720})
         original = page.request.get(self.server.url + "/api/v1/state").json()
         try:
+            page.click("#rail [data-edit-rooms]")
             page.click("#rail [data-add-room]")
             page.fill("#rail [data-room-add] input", "  Empty office  ")
             page.click("#rail [data-room-add] button[type=submit]")
@@ -245,12 +247,14 @@ class UITests(unittest.TestCase):
                 self.assertGreaterEqual(button.bounding_box()["height"], 48)
             page.reload()
             page.wait_for_selector('#rail [data-room="Empty office"]')
+            self.assertEqual(page.locator("[data-room-grip]").count(), 0)
             self.assertEqual(page.eval_on_selector_all("#rail [data-room]", "els => els.map(e => e.dataset.room)"),
                              ["all", *expected])
             page.click('#rail [data-nav="home"]')
             self.assertEqual(page.eval_on_selector_all("[data-go-room]", "els => els.map(e => e.dataset.goRoom)"), expected)
             page.set_viewport_size({"width": 393, "height": 852})
             page.click('#dock [data-nav="rooms"]')
+            page.click("#room-tools [data-edit-rooms]")
             self.assertTrue(page.locator("#room-tools [data-add-room]").is_visible())
             page.click("#room-tools [data-add-room]")
             page.wait_for_selector("#settings [data-room-add] input:focus")
@@ -270,6 +274,7 @@ class UITests(unittest.TestCase):
         original = page.request.get(self.server.url + "/api/v1/state").json()["rooms"]
         try:
             page.set_viewport_size({"width": 1280, "height": 720})
+            page.click("#rail [data-edit-rooms]")
             page.wait_for_selector('#rail [data-room-grip="Kitchen"]')
             self.assertEqual(page.evaluate("Sortable.version"), "1.15.7")
             grip = page.locator('#rail [data-room-grip="Kitchen"]').bounding_box()
@@ -306,6 +311,7 @@ class UITests(unittest.TestCase):
                              ["Living room", "Kitchen", "Bedroom"])
             page.reload()
             page.wait_for_selector('#rooms [data-sort-room="Living room"]')
+            self.assertEqual(page.locator("[data-room-grip]").count(), 0)
             self.assertEqual(page.eval_on_selector_all("#rooms [data-sort-room]", "els => els.map(e => e.dataset.sortRoom)"),
                              ["Living room", "Kitchen", "Bedroom"])
             page.set_viewport_size({"width": 393, "height": 852})
@@ -329,6 +335,7 @@ class UITests(unittest.TestCase):
         page.set_viewport_size({"width": 1280, "height": 720})
         original = page.request.get(self.server.url + "/api/v1/state").json()
         try:
+            page.click("#rail [data-edit-rooms]")
             grip = page.locator('#rail [data-room-grip="Kitchen"]').bounding_box()
             target = page.locator('#rail [data-sort-room="Living room"]').bounding_box()
             page.mouse.move(grip["x"] + 24, grip["y"] + 24)
@@ -350,6 +357,49 @@ class UITests(unittest.TestCase):
         finally:
             page.mouse.up()
             page.request.put(self.server.url + "/api/v1/rooms", data={"rooms": original["rooms"]})
+
+    def test_room_edit_is_opt_in_and_rename_keeps_devices_and_tile_layout(self):
+        page = self.page
+        page.set_viewport_size({"width": 1280, "height": 720})
+        original = page.request.get(self.server.url + "/api/v1/state").json()
+        layout_before = original["settings"].get("room_layouts", {}).get("Bedroom")
+        layout = {"widgets": [{"id": "bd-lamp", "size": "2x2",
+                               "positions": {"4": {"x": 2, "y": 2, "size": "2x2"}}}]}
+        try:
+            page.request.put(self.server.url + "/api/v1/profiles/me/rooms/layout", data={"room": "Bedroom", "layout": layout})
+            page.reload()
+            page.wait_for_selector("#rail [data-edit-rooms]")
+            self.assertEqual(page.locator("#rail [data-edit-rooms]").inner_text(), "Edit")
+            self.assertEqual(page.locator("[data-room-grip], [data-rename-room], #rail [data-add-room]").count(), 0)
+            self.assertTrue(page.locator("#rail [data-room-sort]").evaluate("e => Sortable.get(e).option('disabled')"))
+            page.click("#rail [data-edit-rooms]")
+            self.assertFalse(page.locator("#rail [data-room-sort]").evaluate("e => Sortable.get(e).option('disabled')"))
+            page.click('#rail [data-room="Bedroom"]')
+            ids = page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id).sort()")
+            saved_layout = page.request.get(self.server.url + "/api/v1/state").json()["settings"]["room_layouts"]["Bedroom"]
+            page.click('#rail [data-rename-room="Bedroom"]')
+            page.fill(".room-name-dialog input", "Study")
+            page.click(".room-name-dialog button[type=submit]")
+            page.wait_for_selector(".room-name-dialog", state="hidden")
+            page.wait_for_selector('#title:text-is("Study")')
+            state = page.request.get(self.server.url + "/api/v1/state").json()
+            self.assertEqual(state["rooms"], ["Living room", "Study", "Kitchen"])
+            self.assertEqual(state["settings"]["room_layouts"]["Study"], saved_layout)
+            self.assertNotIn("Bedroom", state["settings"]["room_layouts"])
+            self.assertEqual(page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id).sort()"), ids)
+            page.click("#rail [data-edit-rooms]")
+            self.assertEqual(page.locator("[data-room-grip], [data-rename-room], #rail [data-add-room]").count(), 0)
+            self.assertTrue(page.locator("#rail [data-room-sort]").evaluate("e => Sortable.get(e).option('disabled')"))
+            page.reload()
+            page.wait_for_selector('#title:text-is("Study")')
+            self.assertEqual(page.locator("[data-room-grip]").count(), 0)
+        finally:
+            current = page.request.get(self.server.url + "/api/v1/state").json()["rooms"]
+            if "Study" in current:
+                page.request.put(self.server.url + "/api/v1/rooms", data={
+                    "rooms": original["rooms"], "expected_rooms": current,
+                    "rename": {"from": "Study", "to": "Bedroom"}})
+            page.request.put(self.server.url + "/api/v1/profiles/me/rooms/layout", data={"room": "Bedroom", "layout": layout_before})
 
     def test_energy_chart_for_metering_plug(self):
         self.tile("kt-fridge").locator("[data-more]").click()
@@ -1256,6 +1306,7 @@ class UITests(unittest.TestCase):
         page.set_viewport_size({"width": 1280, "height": 720})
         page.click('#rail [data-open-settings]')
         page.click('[data-go="rooms"]')
+        page.click("#settings [data-edit-rooms]")
         page.click('[data-room-layout="Kitchen"]')
         page.wait_for_selector("#settings", state="hidden")
         page.wait_for_selector(".tiles.editing")

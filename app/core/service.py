@@ -914,7 +914,7 @@ class HomeService:
         return {"message": result.get("message", "Done"), "account": self.account_public(adapter_id)}
 
     # --- rooms, scenes, settings -------------------------------------------
-    def set_rooms(self, rooms: list[str], expected: list[str] | None = None) -> list[str]:
+    def set_rooms(self, rooms: list[str], expected: list[str] | None = None, rename: dict | None = None) -> list[str]:
         if expected is not None and expected != self.store.rooms:
             raise AdapterError("Rooms changed on another screen. Reload and try again.")
         if not isinstance(rooms, list) or not all(isinstance(r, str) for r in rooms):
@@ -924,9 +924,33 @@ class HomeService:
             r = str(r).strip()
             if r and r not in clean:
                 clean.append(r)
+        old = new = None
+        if rename is not None:
+            if not isinstance(rename, dict) or not all(isinstance(rename.get(k), str) for k in ("from", "to")):
+                raise AdapterError("A room rename needs its old and new names.")
+            old, new = rename["from"], rename["to"].strip()
+            if old not in self.store.rooms:
+                raise AdapterError("That room is no longer available. Reload and try again.")
+            if not new or len(new) > 24 or (new == "all" and new != old):
+                raise AdapterError('Choose a room name of 1 to 24 characters, other than "all".')
+            if new != old and new in self.store.rooms:
+                raise AdapterError("That room already exists.")
+            if clean != [new if r == old else r for r in self.store.rooms]:
+                raise AdapterError("Rename one room without removing or reordering the others.")
+            if old != new:
+                for profile in self.store.profiles:
+                    layouts = profile.get("room_layouts", {})
+                    if old in layouts and new in layouts:
+                        raise AdapterError("A saved room layout already uses that name. Choose another name.")
+                for profile in self.store.profiles:
+                    layouts = profile.get("room_layouts", {})
+                    if old in layouts:
+                        layouts[new] = layouts.pop(old)
         self.store.rooms = clean
         for d in self.store.devices.values():
-            if d.room and d.room not in clean:
+            if old is not None and new is not None and d.room == old:
+                d.room = new
+            elif d.room and d.room not in clean:
                 d.room = ""
         self.store.save()
         self._publish_layout()

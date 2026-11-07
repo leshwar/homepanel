@@ -237,6 +237,12 @@ Response (always 200 unless the body has no `text`):
 | POST | `/scenes/{id}/run` | — → `{"ok": n, "failed": [messages]}` |
 | PUT | `/settings` | admin: `dim_after_seconds`, `clock_24h`, `home_name`, `temperature_unit`, `latitude`, `longitude`, `presence`, `background` (`sky` (default: follows the weather and time of day)/`ocean`/`aurora`/`night`), `home_layout` (the shared default Home page for profiles that haven't made their own, see below; `null` = the built-in default), `glass_transparency` (0–100), `glass_effect` (blur on/off), `clock_face` (`digital`/`analog`/`words`/`date`/`night`), `place_name` (shown on the clock, max 40 characters), `weather_enabled` (opt-in), `temperature_unit` (`C`/`F`) |
 
+To rename a room, `PUT /rooms` also accepts `rename: {"from": "Bedroom", "to": "Study"}`.
+Send the full current list with only that name replaced, plus `expected_rooms`.
+The server validates first, then moves device memberships and per-profile room
+layout keys in the same save. It rejects duplicate names, stale lists and layout
+key collisions rather than dropping devices or overwriting layouts.
+
 `home_layout` is one object per profile, the same on every screen that profile uses.
 `font_size` is a shared admin-managed display setting: `"small"`, `"medium"`
 (default), or `"large"`. Other values are rejected without changing settings.

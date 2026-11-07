@@ -130,6 +130,8 @@ class SignInApiTests(unittest.TestCase):
             owner.call("PUT", "/rooms", {"rooms": ["Empty office", *original]})
             self.assertEqual(sam.call("GET", "/state")[1]["rooms"], ["Bedroom", "Kitchen"])
             self.assertEqual(sam.call("PUT", "/rooms", {"rooms": ["Mine"]})[0], 403)
+            self.assertEqual(sam.call("PUT", "/rooms", {"rooms": ["Study", "Kitchen"],
+                                                       "rename": {"from": "Bedroom", "to": "Study"}})[0], 403)
             self.assertEqual(owner.call("GET", "/state")[1]["rooms"], ["Empty office", *original])
         finally:
             owner.call("PUT", "/rooms", {"rooms": original})

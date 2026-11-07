@@ -110,7 +110,7 @@ function zoneWidget(w, now) {
 
 function weatherWidget() {
   const wx = currentWeather();
-  const state = weatherStatus();
+  const state = weatherStatus() === "updating" ? "ready" : weatherStatus();
   if (state !== "ready" || !wx) {
     const message = state === "loading" ? "Loading weather..." : state === "unavailable"
       ? "Weather is unavailable. Check the connection and try again."

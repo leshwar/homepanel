@@ -34,11 +34,12 @@ export function refreshWeather(force = false) {
   }
   const k = [s.latitude, s.longitude, s.temperature_unit].join();
   if (!force && k === key && Date.now() - fetchedAt < 10 * 60e3) return;
+  const updating = k === key && weather && ["ready", "updating"].includes(status);
   key = k;
   fetchedAt = Date.now();
   const id = ++requestId;
-  status = "loading";
-  changed();
+  status = updating ? "updating" : "loading";
+  if (!updating) changed();  // keep the known scene moving while its next reading loads
   api.weather()
     .then((w) => {
       if (id !== requestId) return;

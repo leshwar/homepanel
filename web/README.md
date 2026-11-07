@@ -50,10 +50,11 @@ web/
   slow drifting clouds, rain, snow or stars. Weather is opt-in (Settings → Location and
   presence) and comes from the panel's own server; without it the sky follows the clock.
   Motion is transform-only and stops for "reduce motion".
-- **Weather tile.** Sun rays or a moon/stars, clouds, rain, snow, fog and a gentle
-  storm glow fill the tile behind high-contrast captions, independently of the
+- **Weather tile.** Soft sun rays or a moon/stars, clouds, rain, snow, fog and a gentle
+  storm glow fill the tile behind text drawn directly in the scene, independently of the
   chosen page background. Effects clip to the rounded tile at every size and
-  never intercept touches. They pause offscreen, in background tabs and during
+  never intercept touches. Scene-aware text colors and restrained shadows keep
+  labels readable without caption panels, pills or a scrim. They pause offscreen, in background tabs and during
   editing; reduced motion uses a still scene. Unconfigured, loading and unavailable
   weather have explicit messages and no invented scene; unavailable weather has Retry.
 - **Glass over a scene.** Or a static background (`.backdrop` in `index.html`:

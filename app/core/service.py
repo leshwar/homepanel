@@ -255,9 +255,10 @@ class HomeService:
         self._soon: dict[str, asyncio.TimerHandle] = {}   # pushed changes waiting to refresh
         self._failures: dict[str, int] = {}
         self._adapter_backoff: dict[str, tuple[float, str]] = {}
+        self._provider_locks: dict[str, asyncio.Lock] = {}
         self._found: dict[tuple[str, str], Found] = {}
         self._found_ips: dict[str, Counter] = {}     # per brand: how many results the last search found at each address
-        self._middleware: list[Middleware] = [mw_access, mw_validate, mw_normalize, mw_log, self._mw_adapter_backoff, self._mw_in_order,
+        self._middleware: list[Middleware] = [mw_access, mw_validate, mw_normalize, mw_log, self._mw_in_order, self._mw_adapter_backoff,
                                               mw_timeout_retry]
         self._queues: dict[str, asyncio.Lock] = {}      # per device: commands run one at a time
         self._commands_done: dict[str, int] = {}        # per device: commands finished (to spot stale reads)
@@ -280,6 +281,12 @@ class HomeService:
         self._middleware.insert(len(self._middleware) if index is None else index, middleware)
 
     async def _with_adapter_backoff(self, adapter_id, call, timeout=None):
+        if getattr(ADAPTERS.get(adapter_id), "failure_backoff", 0):
+            async with self._provider_locks.setdefault(adapter_id, asyncio.Lock()):
+                return await self._provider_call(adapter_id, call, timeout)
+        return await self._provider_call(adapter_id, call, timeout)
+
+    async def _provider_call(self, adapter_id, call, timeout):
         until, message = self._adapter_backoff.get(adapter_id, (0, ""))
         remaining = until - time.monotonic()
         if remaining > 0:

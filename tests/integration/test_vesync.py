@@ -79,5 +79,13 @@ class VeSyncApiTests(unittest.TestCase):
                         self.assertTrue(page.locator("#sheet").evaluate("e => e.scrollWidth<=e.clientWidth"))
                     self.assertEqual(errors, [])
                     browser.close()
+            purifier = FakeManager.instances[-1].devices.air_purifiers[0]
+            purifier.fail = True
+            purifier.last_response.error_type = "rate_limit_error"
+            self.assertEqual(owner.call("POST", f"/devices/{did}/command", {"action": "power", "value": False})[0], 400)
+            calls = len(purifier.calls)
+            status, error, _ = owner.call("POST", f"/devices/{did}/command", {"action": "power", "value": False})
+            self.assertEqual(status, 400); self.assertIn("Retry in", error["error"])
+            self.assertEqual(len(purifier.calls), calls)
         finally:
             owner.call("DELETE", f"/devices/{did}")

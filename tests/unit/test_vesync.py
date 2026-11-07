@@ -1,4 +1,5 @@
 """VeSync v3 contracts and Core300S mapping using fake SDK objects only."""
+import asyncio
 import inspect
 import tempfile
 import unittest
@@ -149,6 +150,19 @@ class VeSyncTests(unittest.IsolatedAsyncioTestCase):
         purifier.state.pm25 = float("nan")
         with self.assertRaisesRegex(AdapterError, "invalid reading"):
             await self.adapter.refresh(self.device)
+
+    async def test_concurrent_provider_calls_observe_new_cooldown_before_sending(self):
+        service = HomeService(self.tmp.name)
+        calls = []
+        async def limited():
+            calls.append(True)
+            await asyncio.sleep(.01)
+            raise AdapterBackoff("Wait before retrying.", 60)
+        results = await asyncio.gather(
+            service._with_adapter_backoff("vesync", limited),
+            service._with_adapter_backoff("vesync", limited), return_exceptions=True)
+        self.assertEqual(len(calls), 1)
+        self.assertTrue(all(isinstance(result, AdapterError) for result in results))
 
     def test_pinned_sdk_has_the_async_contract_and_core300s_model(self):
         from importlib.metadata import version

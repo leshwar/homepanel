@@ -43,8 +43,8 @@ need the owner's approval. Details: [docs/CI_AND_BRANCH_RULES.md](docs/CI_AND_BR
    individual full suites. Fix failures and rerun affected checks after later edits.
 5. Push and open a pull request using the template; include screenshots for UI
    changes and the device models you tested for adapter changes.
-6. CI runs lint, unit tests, integration tests and a Docker build. When it's green
-   and approved, the owner merges. Merging to `main` publishes a new Docker image.
+6. CI runs lint, unit tests and integration tests, including native startup smoke.
+   When it's green and approved, the owner merges. Merging to `main` publishes a source archive.
 
 ## Tests (required)
 

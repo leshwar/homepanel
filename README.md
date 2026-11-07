@@ -142,9 +142,9 @@ is easier there).
 
 Server-only (no screen): `./scripts/install.sh --no-kiosk`.
 
-Prefer Docker? `docker compose up -d --build` runs the server (host networking,
-so device search works on the Pi). Try it on any computer with
-`make docker-demo`. Details and Mac caveats: [docs/DOCKER.md](docs/DOCKER.md).
+HomePanel runs natively with Python; no container runtime is needed.
+Use `make wt-demo b=feature/x` for an isolated branch preview on a free loopback
+port when the real-device panel already uses 8080. See [development and deployment](docs/DEVELOPMENT.md).
 
 ## Voice commands
 
@@ -176,8 +176,8 @@ not an AI service. See `POST /api/v1/voice` in [docs/API.md](docs/API.md#voice-c
 The panel is a web page, so any phone, tablet or laptop on the same Wi-Fi can use
 it: open the panel's address in Safari or Chrome. The address is shown in
 **Settings → Diagnostics** and in the log at start-up, for example
-`http://192.168.1.20:8080`. (In Docker on a Mac, use your Mac's address from
-System Settings → Wi-Fi → Details, with the port you opened, e.g. `:8081`.)
+`http://192.168.1.20:8080`. On a Mac, the address is also available in
+System Settings → Wi-Fi → Details.
 
 Choose your profile (enter its password only if one is set). Members only see the
 devices shared with them; admins manage devices and settings. Use a VPN such as
@@ -245,9 +245,9 @@ make test-integration   # real server, simulated devices, browser UI
 make lint
 ```
 
-Every pull request runs lint, unit tests, integration tests and a Docker build;
+Every pull request runs lint, unit tests and integration tests, including native startup smoke;
 pull requests that change code must include both kinds of tests. Merges to
-`main` publish a Docker image for the Pi. See [docs/CI_AND_BRANCH_RULES.md](docs/CI_AND_BRANCH_RULES.md).
+`main` publish a source archive. See [docs/CI_AND_BRANCH_RULES.md](docs/CI_AND_BRANCH_RULES.md).
 
 ## Status
 

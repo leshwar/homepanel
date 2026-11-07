@@ -26,8 +26,8 @@ and `make test-integration`, or repeat full suites after every edit/commit.
 If something fails, fix it and rerun affected checks. Later product edits
 invalidate affected results; rerun the full pass only for broad changes or
 failures that need it. Required CI still checks the final PR revision before
-merge; retain its Python compatibility matrix, browser checks and Docker smoke
-test. CI is independent verification, not a reason to remove useful coverage.
+merge; retain its Python compatibility matrix, browser checks and native startup
+smoke coverage. CI is independent verification, not a reason to remove useful coverage.
 
 `make test-unit`, `make test-integration` and `make test-ui` remain convenient
 subset commands. `python -m unittest discover -s tests -t .` is an alternative

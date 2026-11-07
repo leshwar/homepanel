@@ -20,7 +20,7 @@ from ..core.adapter import AdapterError
 from ..core import logs as logmod
 from ..core.logs import ring
 from ..core.photos import MAX_UPLOAD_BYTES, PhotoError
-from ..core.net import in_container, phone_url
+from ..core.net import phone_url
 from ..core.profiles import AuthError, ProfileError, RateLimited, current_viewer
 from ..core.service import HomeService
 from .auth import COOKIE, client_address, read_cookie
@@ -407,7 +407,7 @@ async def get_logs(request):
 
 @handle_errors
 async def health(request):
-    """Without a session only "it's running" (for the kiosk script and Docker's health check)."""
+    """Without a session only "it's running" (for the kiosk and service health checks)."""
     svc = _svc(request)
     viewer = current_viewer.get()
     if viewer is None:
@@ -416,10 +416,7 @@ async def health(request):
     return {"ok": True, "time": time.time(), "uptime_s": round(time.time() - request.app.state.started, 1),
             "devices": len(devices), "online": sum(1 for d in devices if d.state.get("online")),
             "adapters": sorted(svc.adapters), "unavailable": svc.unavailable, "unsupported": svc.unsupported, "demo": svc.demo,
-            "in_container": in_container(),
-            # where to open the panel on a phone (unknown inside Docker: the container's
-            # address isn't the computer's, so the UI explains how to find it)
-            "phone_url": None if in_container() else phone_url(getattr(request.app.state, "port", 8080))}
+            "phone_url": phone_url(getattr(request.app.state, "port", 8080))}
 
 
 # --- sign-in and profiles ------------------------------------------------------------

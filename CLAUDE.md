@@ -14,7 +14,7 @@ make test-integration  # tests/integration: real server, fake devices, browser U
 make test       # both, once on the final revision before merge
 make check-tests  # PR rule: app/ or web/ changes need a unit AND an integration test
 make lint       # ruff
-make docker-demo  # demo in Docker → http://localhost:8081 (CI also builds and smoke-tests the image)
+make wt-demo b=feature/x  # native branch demo on a free loopback port
 python -m unittest discover -s tests -t .    # tests without pytest
 ```
 

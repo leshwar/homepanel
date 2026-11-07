@@ -62,7 +62,7 @@ curl -b hp.txt http://homepanel.local:8080/api/v1/state
 |---|---|---|
 | GET | `/state` | Everything the UI needs: `devices`, `rooms`, `scenes`, `settings`, `adapters`, `demo` |
 | GET | `/events` | Server-Sent Events stream (see below) |
-| GET | `/health` | `{ok, uptime_s, devices, online, adapters, unavailable, demo, in_container, phone_url}` signed in — `phone_url` is the address to open on a phone on the same Wi-Fi (`null` inside Docker, where it can't be known); just `{ok, time, sign_in}` without a session |
+| GET | `/health` | `{ok, time, uptime_s, devices, online, adapters, unavailable, unsupported, demo, phone_url}` signed in — `phone_url` is the address to open on a phone on the same Wi-Fi (`null` when no LAN address can be found); just `{ok, time, sign_in}` without a session |
 | GET | `/logs?level=WARNING` | Last 300 log records `{time, level, logger, message}` |
 | GET | `/logs?format=text` | The full log file as a download |
 

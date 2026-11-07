@@ -23,7 +23,7 @@ from starlette.staticfiles import StaticFiles
 from .api.auth import AuthMiddleware
 from .api.routes import routes as api_routes
 from .core.logs import setup_logging
-from .core.net import in_container, phone_url
+from .core.net import phone_url
 from .core.service import HomeService
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -83,7 +83,7 @@ def create_app(data_dir: str, demo: bool = False, port: int = 8080, sign_in: boo
         log.info("HomePanel ready: %d devices, adapters: %s%s", len(service.store.devices),
                  ", ".join(sorted(service.adapters)) or "none",
                  f" (unavailable: {', '.join(sorted(service.unavailable))})" if service.unavailable else "")
-        url = None if in_container() else phone_url(port)
+        url = phone_url(port)
         if url:
             log.info("To use it on a phone or tablet on the same Wi-Fi, open %s", url)
         yield

@@ -14,7 +14,7 @@ without a session. Members get an allow-list of routes; anything new is admin-on
 until it is added here.
 
 Demo mode without --sign-in: requests with no session act as the first admin, so
-`make dev` and the Docker demo open straight to the panel. Signing in to another
+`make dev` and worktree demos open straight to the panel. Signing in to another
 profile still works (and is how the demo shows per-profile devices).
 """
 from __future__ import annotations

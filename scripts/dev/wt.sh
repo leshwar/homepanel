@@ -5,7 +5,7 @@
 #   ./scripts/dev/wt.sh new  ui/better-remote   # new branch from the latest main, in .worktrees/ui-better-remote
 #   ./scripts/dev/wt.sh get  ui/glass-look      # check out an existing branch (e.g. a PR) in its own folder
 #   ./scripts/dev/wt.sh list                    # all worktrees
-#   ./scripts/dev/wt.sh demo ui/glass-look      # run that branch's demo in Docker on its own port
+#   ./scripts/dev/wt.sh demo ui/glass-look      # run that branch's native demo on its own port
 #   ./scripts/dev/wt.sh path ui/glass-look      # print the folder (cd "$(./scripts/dev/wt.sh path x)")
 #   ./scripts/dev/wt.sh remove ui/glass-look    # delete the folder (the branch itself is kept)
 #   ./scripts/dev/wt.sh prune                   # remove folders whose branches were merged into main
@@ -26,16 +26,6 @@ free_port() {
     if ! (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null; then echo "$p"; return; fi
   done
   echo "No free port between 8081 and 8099" >&2; exit 1
-}
-
-# Find Docker even when it isn't on PATH (Docker Desktop on a Mac).
-use_docker() {
-  for d in "$(dirname "$(command -v docker 2>/dev/null || echo /nonexistent/x)")" "$HOME/.docker/bin" \
-           /usr/local/bin /opt/homebrew/bin /Applications/Docker.app/Contents/Resources/bin; do
-    if [ -x "$d/docker" ]; then export PATH="$d:$HOME/.docker/bin:$PATH"; break; fi
-  done
-  command -v docker >/dev/null || { echo "Docker isn't installed. Install Docker Desktop: https://docs.docker.com/desktop/"; exit 1; }
-  docker info >/dev/null 2>&1 || { echo "Docker isn't running. Open Docker Desktop (open -a Docker), wait for 'Engine running', then try again."; exit 1; }
 }
 
 cmd="${1:-help}"; branch="${2:-}"
@@ -74,12 +64,12 @@ case "$cmd" in
     need "$branch" demo
     dest="$(path_for "$branch")"
     [ -d "$dest" ] || { echo "No worktree for $branch. Create it with: $0 get $branch"; exit 1; }
-    use_docker
+    python="$dest/.venv/bin/python"
+    [ -x "$python" ] || { echo "Run make setup in $dest first."; exit 1; }
     port="${HOMEPANEL_DEMO_PORT:-$(free_port)}"
     echo "Demo of $branch → http://localhost:$port   (Ctrl+C to stop)"
-    # Runs compose directly (not the branch's Makefile), so older branches work too.
-    cd "$dest" && HOMEPANEL_DEMO_PORT="$port" \
-      docker compose -p "homepanel-$(slug "$branch" | tr 'A-Z.' 'a-z-')" --profile demo up --build demo
+    cd "$dest"
+    exec "$python" -m app.main --demo --debug --host 127.0.0.1 --port "$port"
     ;;
   remove)
     need "$branch" remove

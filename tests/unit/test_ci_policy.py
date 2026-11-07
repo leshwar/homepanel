@@ -1,10 +1,21 @@
 """Unit tests for the pull-request rule that requires unit and integration tests."""
 import unittest
+from pathlib import Path
 
 from scripts.ci.check_tests_included import is_code, missing_tests
 
 
 class TestPolicy(unittest.TestCase):
+    def test_native_pipeline_keeps_required_checks_and_source_artifact(self):
+        workflow = (Path(__file__).resolve().parents[2] / ".github/workflows/ci.yml").read_text()
+        self.assertIn("needs: [lint, tests-included, unit, integration]", workflow)
+        self.assertIn('python-version: ["3.11", "3.13"]', workflow)
+        self.assertIn('REQUIRE_UI_TESTS: "1"', workflow)
+        self.assertIn("git archive --format=tar.gz", workflow)
+        self.assertNotIn("docker/", workflow)
+        self.assertNotIn("docker build", workflow)
+        self.assertNotIn("packages: write", workflow)
+
     def test_docs_only_needs_no_tests(self):
         self.assertEqual(missing_tests(["README.md", "docs/API.md", "scripts/install.sh", ".github/workflows/ci.yml"]), [])
 

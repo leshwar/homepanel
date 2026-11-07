@@ -35,7 +35,6 @@ export function applySnapshot(s) {
   store.me = s.me || null;
   store.profiles = s.profiles || [];
   store.demo = s.demo;
-  store.inContainer = !!s.in_container;
   if (store.room !== "all" && store.room !== OTHER && !store.rooms.includes(store.room)) store.room = "all";
   emit("all");
 }

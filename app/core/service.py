@@ -32,7 +32,7 @@ from .adapter import (ADAPTERS, Action, AdapterError, Cap, Clean, Device, Device
 from .automations import Automations
 from .history import History
 from .layout import LayoutError, clean_layout, clean_room_layout, default_layout, migrate_layout
-from .net import in_container, normalize_mac, parse_color
+from .net import normalize_mac, parse_color
 from .photos import DevicePictures, PhotoLibrary
 from .presence import Presence
 from .profiles import ADMIN, MEMBER, Profiles, Sessions, Viewer, current_viewer, hash_secret, sees
@@ -444,7 +444,6 @@ class HomeService:
             "me": self.profiles.public(viewer.profile) if viewer else None,
             "profiles": [self.profiles.public(p) for p in self.profiles.items] if viewer and viewer.is_admin else [],
             "demo": self.demo,
-            "in_container": in_container(),
         }
 
     def visible_devices(self) -> list[Device]:

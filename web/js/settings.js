@@ -3,7 +3,7 @@
 
 import { api } from "./api.js";
 import { store, reload, addRoom, saveRooms } from "./store.js";
-import { roomGrip, roomEditButton, roomRenameButton, syncRoomSorters, isSortingRooms, isEditingRooms, toggleRoomEditing, showRoomRename } from "./room-sort.js";
+import { roomGrip, roomEditButton, roomNameField, roomNameHelp, editableRoomNames, syncRoomSorters, isSortingRooms, isEditingRooms, isEditingRoomName, canLeaveRoomNames, toggleRoomEditing } from "./room-sort.js";
 import { $, esc, icon, kindIcon, toast } from "./util.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame } from "./photoframe.js";
@@ -34,10 +34,14 @@ function close() { $("#settings").hidden = true; stack = []; dropPreview(); }
 function dropPreview() { previewWallpaper(null); previewTiles(null); previewTypography(null); }
 export const closeSettings = close;
 export function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; if (view === "add") searchAll = {}; render(); $("#settings").scrollTop = 0; }
-export function back() { if (stack.at(-1)?.view === "display") dropPreview(); stack.pop(); stack.length ? render() : close(); }
+export function back() {
+  if (!canLeaveRoomNames()) return;
+  if (stack.at(-1)?.view === "display") dropPreview();
+  stack.pop(); stack.length ? render() : close();
+}
 
 export function refreshSettings() {
-  if (!isSettingsOpen() || isSortingRooms()) return;
+  if (!isSettingsOpen() || isSortingRooms() || isEditingRoomName()) return;
   const top = stack.at(-1);
   if (top && ["home", "devices", "scenes", "rooms", "automations", "location", "profiles"].includes(top.view)) render();
 }
@@ -299,12 +303,12 @@ const VIEWS = {
     const editing = isEditingRooms();
     page("Rooms", `
       <div class="room-settings-tools">${roomEditButton()}</div>
-      ${editing ? '<p class="group-label">Drag the handles to reorder rooms. With a keyboard, focus a handle and use the arrow keys.</p>' : ""}
-      <div class="list" data-room-sort="vertical">${store.rooms.map((r, i) => `
-        <div class="row room-settings-row" data-sort-room="${esc(r)}"><span class="grow"><span class="title">${esc(r)}</span></span>
+      ${editing ? roomNameHelp() + '<p class="group-label">Drag the handles to reorder rooms. With a keyboard, focus a handle and use the arrow keys.</p>' : ""}
+      <div class="list" data-room-sort="vertical">${(editing ? editableRoomNames(store.rooms) : store.rooms).map((r) => `
+        <div class="row room-settings-row" data-sort-room="${esc(r)}">${editing ? roomNameField(r) : `<span class="grow"><span class="title">${esc(r)}</span></span>`}
           ${editing ? `<button class="btn small" data-room-layout="${esc(r)}" aria-label="Edit ${esc(r)} tiles">Edit tiles</button>
-          ${roomRenameButton(r)}${roomGrip(r)}
-          <button class="btn small danger" data-room-del="${i}" aria-label="Delete ${esc(r)}">${icon("trash")}</button>` : ""}</div>`).join("")}</div>
+          ${roomGrip(r)}
+          <button class="btn small danger" data-room-del="${store.rooms.indexOf(r)}" aria-label="Delete ${esc(r)}" ${store.rooms.includes(r) ? "" : "disabled"}>${icon("trash")}</button>` : ""}</div>`).join("")}</div>
       ${editing ? roomAddForm() : ""}`);
     if (focus === "add" && editing) {
       const input = $("#settings [data-room-add] input");
@@ -725,8 +729,12 @@ async function useMyLocation(btn) {
 
 root.addEventListener("click", async (e) => {
   const t = (sel) => e.target.closest(sel);
-  if (t("[data-edit-rooms]")) { toggleRoomEditing(); return $("#settings [data-edit-rooms]")?.focus(); }
-  if (t("[data-rename-room]")) return showRoomRename(t("[data-rename-room]").dataset.renameRoom);
+  if (t("[data-edit-rooms]")) {
+    if (await toggleRoomEditing("#settings")) $("#settings [data-edit-rooms]")?.focus();
+    return;
+  }
+  if (t("[data-cancel-room-names], [data-room-name], [data-room-grip]")) return;
+  if (!canLeaveRoomNames()) return;
   const roomLayout = t("[data-room-layout]");
   if (roomLayout) return document.dispatchEvent(new CustomEvent("hp:edit-room", { detail: roomLayout.dataset.roomLayout }));
   if (t("[data-back]")) return back();
@@ -890,6 +898,7 @@ root.addEventListener("submit", async (e) => {
       toast(`Watching ${v.name.trim()}'s phone`); await reload(); return render();
     }
     if (form.matches("[data-room-add]")) {
+      if (!canLeaveRoomNames()) return;
       const room = await addRoom(formValues(form).room);
       toast(`${room} added`); return render();
     }

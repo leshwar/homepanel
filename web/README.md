@@ -102,8 +102,12 @@ web/
   its heading remains available to screen readers, with the status count and
   actions visible. Room page titles remain visible.
 - **Room management.** Rooms starts in normal navigation mode. Admins choose **Edit**
-  beside Rooms to reveal Rename, Add room and three-line reorder grips; **Done**
-  hides the editing controls and disables sorting. The same mode works in portrait
+  beside Rooms to edit room names directly, add rooms and use three-line reorder grips.
+  Enter saves a name; **Done** saves pending names, hides the editing controls and
+  disables sorting. Invalid names stay editable with an inline error. Escape cancels
+  one name; Cancel name edits discards all unsaved names. Save or cancel names before
+  dragging or navigating away. Live updates preserve text and selection while typing.
+  The same mode works in portrait
   room tabs and Settings → Rooms; focus a grip and use arrow keys for keyboard ordering.
   Handles are at least 48 px and leave normal scrolling/navigation outside them alone. Order is shared
   across profiles and all room navigation; Home/All rooms/Other are not reorderable.

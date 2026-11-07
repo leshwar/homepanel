@@ -60,6 +60,74 @@ class RenderTests(unittest.TestCase):
             assert.equal(setMarkup(el, ''), false);
             assert.deepEqual(writes, ['<button>Kitchen</button>', '<button>Bedroom</button>', '']);
         """)
+    def test_inline_drafts_done_errors_cancel_and_profile_permissions(self):
+        source = (SOURCE.parent / "room-sort.js").read_text()
+        source = re.sub(r"^import .*?;\n", "", source, flags=re.MULTILINE)
+        source = """const {store, renameRoom, emit, esc, toast} = globalThis.testHelpers;
+const saveRooms = () => {}, moveRoom = () => {}, invalidateMarkup = () => {};
+""" + source
+        module = "data:text/javascript;base64," + base64.b64encode(source.encode()).decode()
+        result = subprocess.run([NODE, "--input-type=module", "-e", """
+            import assert from 'node:assert/strict';
+            const handlers = {}, messages = [], writes = [];
+            globalThis.document = {
+              activeElement: null, querySelector: () => null, querySelectorAll: () => [],
+              addEventListener: (event, fn) => {handlers[event] = fn;}
+            };
+            globalThis.CSS = {escape: x => x};
+            globalThis.matchMedia = () => ({matches: false, addEventListener() {}});
+            const store = {me: {id:'admin', role:'admin'}, rooms:['Bedroom','Kitchen']};
+            globalThis.testHelpers = {
+              store, emit() {}, toast: message => messages.push(message),
+              esc: value => String(value).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;'),
+              async renameRoom(old, value) {
+                const name = value.trim();
+                if (!name) throw new Error('Give the room a name.');
+                if (store.rooms.includes(name) && name !== old) throw new Error('That room already exists.');
+                if (!store.rooms.includes(old)) throw new Error('Room is no longer available.');
+                store.rooms = store.rooms.map(r => r === old ? name : r);
+                writes.push([old, name]); return name;
+              }
+            };
+            const mod = await import(process.argv[1]);
+            assert.equal(mod.isEditingRooms(), false);
+            await mod.toggleRoomEditing('#rail');
+            assert.equal(mod.isEditingRooms(), true);
+            const field = room => ({dataset:{roomName:room}, closest() {return this;}});
+            const input = field('Bedroom');
+            const type = value => {input.value = value; handlers.input({target:input});};
+            type('Kitchen');
+            assert.equal(mod.canLeaveRoomNames(), false);
+            assert.equal(await mod.toggleRoomEditing('#rail'), false);
+            assert.equal(mod.isEditingRooms(), true);
+            assert.match(mod.roomNameField('Bedroom'), /That room already exists/);
+            assert.match(mod.roomNameField('Bedroom'), /value="Kitchen"/);
+            assert.equal(writes.length, 0);
+            type('<Study>');
+            assert.match(mod.roomNameField('Bedroom'), /value="&lt;Study>"/);
+            handlers.keydown({target:input, key:'Escape', preventDefault(){}, stopImmediatePropagation(){}});
+            assert.equal(mod.canLeaveRoomNames(), true);
+            assert.match(mod.roomNameField('Bedroom'), /value="Bedroom"/);
+            type('Study');
+            const kitchen = field('Kitchen'); kitchen.value = 'Cooking';
+            handlers.input({target:kitchen});
+            assert.equal(await mod.toggleRoomEditing('#rail'), true);
+            assert.deepEqual(writes, [['Bedroom','Study'],['Kitchen','Cooking']]);
+            assert.equal(mod.isEditingRooms(), false);
+            await mod.toggleRoomEditing('#rail');
+            input.dataset.roomName = 'Study'; type('Pending');
+            store.rooms = ['Office','Cooking'];
+            assert.deepEqual(mod.editableRoomNames(store.rooms), ['Office','Cooking','Study']);
+            assert.equal(await mod.toggleRoomEditing('#rail'), false);
+            assert.match(mod.roomNameField('Study'), /no longer available/);
+            store.me = {id:'member', role:'member'};
+            mod.syncRoomSorters();
+            assert.equal(mod.isEditingRooms(), false);
+            assert.deepEqual(mod.editableRoomNames(store.rooms), store.rooms);
+            assert.equal(await mod.toggleRoomEditing('#rail'), false);
+            assert.equal(writes.length, 2);
+        """, module], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_cache_belongs_to_the_element_not_the_markup(self):
         self.run_js("""

@@ -9,22 +9,128 @@ const sorters = new Map();
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 reducedMotion.addEventListener("change", () => syncRoomSorters());
 let dragging = false, saving = false, editingProfile = null;
+const nameDrafts = new Map();
+let refreshingNames = false;
 export const isSortingRooms = () => dragging || saving;
 export const isEditingRooms = () => store.me?.role === "admin" && editingProfile === store.me.id;
+export const isEditingRoomName = () => !refreshingNames && isEditingRooms()
+  && (nameDrafts.size > 0 || document.activeElement?.matches("[data-room-name]"));
+// Keep a removed room's unsaved field visible until it is explicitly canceled.
+export const editableRoomNames = (rooms) => [...new Set([...rooms, ...nameDrafts.keys()])];
 
-export function toggleRoomEditing() {
-  if (store.me?.role !== "admin" || isSortingRooms()) return;
+export async function toggleRoomEditing(scope) {
+  if (store.me?.role !== "admin" || isSortingRooms()) return false;
+  if (isEditingRooms() && !await commitNames(scope)) return false;
   editingProfile = isEditingRooms() ? null : store.me.id;
-  if (!isEditingRooms()) document.querySelector(".room-name-dialog")?.close();
   emit("all");
   syncRoomSorters();
+  return true;
 }
 
 export const roomEditButton = () => `<button class="btn small" type="button" data-edit-rooms
   aria-pressed="${isEditingRooms()}">${isEditingRooms() ? "Done" : "Edit"}</button>`;
 
-export const roomRenameButton = (room) => `<button type="button" class="btn small room-rename"
-  data-rename-room="${esc(room)}" aria-label="Rename ${esc(room)}">Rename</button>`;
+export const roomNameField = (room) => `<span class="room-name-field">
+  <input data-room-name="${esc(room)}" value="${esc(nameDrafts.get(room)?.value ?? room)}"
+    aria-label="Room name: ${esc(room)}" aria-describedby="room-name-help"
+    aria-invalid="${!!nameDrafts.get(room)?.error}" maxlength="24" required autocomplete="off">
+  <span class="room-name-error" role="alert" ${nameDrafts.get(room)?.error ? "" : "hidden"}>${esc(nameDrafts.get(room)?.error || "")}</span></span>`;
+
+export const roomNameHelp = () => `<div class="room-name-help">
+  <p>Enter or Done saves names. Escape cancels a name. Save names before dragging.</p>
+  <button class="btn small" type="button" data-cancel-room-names ${nameDrafts.size ? "" : "hidden"}>Cancel name edits</button></div>`;
+
+export function canLeaveRoomNames() {
+  if (!isEditingRooms() || !nameDrafts.size) return true;
+  toast("Save room names with Enter or Done, or cancel the name edits.", true);
+  return false;
+}
+
+function refreshNames(scope, room) {
+  syncNameFields();
+  refreshingNames = true;
+  try { emit("all"); } finally { refreshingNames = false; }
+  syncRoomSorters();
+  document.querySelector(`${scope} [data-room-name="${CSS.escape(room)}"]`)?.focus();
+}
+
+function syncNameFields() {
+  for (const input of document.querySelectorAll("[data-room-name]")) {
+    const room = input.dataset.roomName, draft = nameDrafts.get(room);
+    if (input.value !== (draft?.value ?? room)) input.value = draft?.value ?? room;
+    input.disabled = saving;
+    input.setAttribute("aria-invalid", String(!!draft?.error));
+    const error = input.nextElementSibling;
+    error.textContent = draft?.error || "";
+    error.hidden = !draft?.error;
+  }
+  for (const button of document.querySelectorAll("[data-cancel-room-names]")) {
+    button.hidden = !nameDrafts.size;
+    button.disabled = saving;
+  }
+  syncRoomSorters();
+}
+
+async function commitNames(scope, onlyRoom) {
+  if (!isEditingRooms() || isSortingRooms()) return false;
+  let focus = onlyRoom || "", success = true;
+  saving = true;
+  syncNameFields();
+  try {
+    for (const [room, draft] of [...nameDrafts]) {
+      if (onlyRoom && room !== onlyRoom) continue;
+      try {
+        focus = await renameRoom(room, draft.value);
+        nameDrafts.delete(room);
+        announce(`Room name saved: ${focus}`);
+      } catch (error) {
+        draft.error = error.message;
+        focus = room;
+        success = false;
+        announce(error.message);
+        toast(error.message, true);
+        break;
+      }
+    }
+  } finally {
+    saving = false;
+    refreshNames(scope, focus);
+  }
+  return success;
+}
+
+document.addEventListener("input", (e) => {
+  const input = e.target.closest("[data-room-name]");
+  if (!input || !isEditingRooms() || saving) return;
+  const room = input.dataset.roomName;
+  if (input.value === room) nameDrafts.delete(room);
+  else nameDrafts.set(room, { value: input.value, error: "" });
+  syncNameFields();
+});
+
+document.addEventListener("keydown", (e) => {
+  const input = e.target.closest("[data-room-name]");
+  if (!input || e.isComposing || !["Enter", "Escape"].includes(e.key)) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  if (!isEditingRooms() || saving) return;
+  if (e.key === "Enter") commitNames(scopeOf(input), input.dataset.roomName);
+  else {
+    nameDrafts.delete(input.dataset.roomName);
+    refreshNames(scopeOf(input), input.dataset.roomName);
+    announce("Room name edit canceled.");
+  }
+}, true);
+
+document.addEventListener("click", (e) => {
+  const cancel = e.target.closest("[data-cancel-room-names]");
+  if (!cancel || !isEditingRooms() || saving) return;
+  const scope = scopeOf(cancel);
+  nameDrafts.clear();
+  refreshNames(scope, "");
+  document.querySelector(`${scope === "#rooms" ? "#room-tools" : scope} [data-edit-rooms]`)?.focus();
+  announce("Room name edits canceled.");
+});
 
 export const roomGrip = (room) => `<button type="button" class="room-grip" data-room-grip="${esc(room)}"
   aria-label="Reorder ${esc(room)}" aria-describedby="room-sort-help" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
@@ -70,7 +176,7 @@ function keyMove(e) {
   if (!grip || !step) return;
   e.preventDefault();
   e.stopPropagation();
-  if (isSortingRooms() || !isEditingRooms()) return;
+  if (isSortingRooms() || !isEditingRooms() || !canLeaveRoomNames()) return;
   const room = grip.dataset.roomGrip, i = store.rooms.indexOf(room);
   if (i + step < 0 || i + step >= store.rooms.length) return announce(`${room} is already ${step < 0 ? "first" : "last"}.`);
   commitOrder(() => moveRoom(room, step), room, scopeOf(grip));
@@ -79,7 +185,7 @@ function keyMove(e) {
 export function syncRoomSorters() {
   if (editingProfile !== null && (store.me?.role !== "admin" || editingProfile !== store.me.id)) {
     editingProfile = null;
-    document.querySelector(".room-name-dialog")?.close();
+    nameDrafts.clear();
   }
   for (const [list, sorter] of sorters) {
     if (!list.isConnected || store.me?.role !== "admin") {
@@ -87,7 +193,7 @@ export function syncRoomSorters() {
       list.removeEventListener("keydown", keyMove);
       sorters.delete(list);
     } else {
-      sorter.option("disabled", saving || !isEditingRooms());
+      sorter.option("disabled", saving || !isEditingRooms() || nameDrafts.size > 0);
       sorter.option("animation", reducedMotion.matches ? 0 : 150);
     }
   }
@@ -111,7 +217,7 @@ export function syncRoomSorters() {
       ghostClass: "room-sort-ghost",
       chosenClass: "room-sort-chosen",
       fallbackClass: "room-sort-drag",
-      disabled: saving || !isEditingRooms(),
+      disabled: saving || !isEditingRooms() || nameDrafts.size > 0,
       onStart() {
         dragging = true;
         expected = [...store.rooms];
@@ -135,41 +241,4 @@ export function syncRoomSorters() {
     sorters.set(list, sorter);
     list.addEventListener("keydown", keyMove);
   }
-}
-
-export function showRoomRename(room) {
-  if (!isEditingRooms() || isSortingRooms()) return;
-  document.querySelector(".room-name-dialog")?.close();
-  const dialog = document.createElement("dialog");
-  dialog.className = "room-name-dialog";
-  dialog.setAttribute("aria-labelledby", "room-rename-title");
-  dialog.innerHTML = `<form>
-    <h2 id="room-rename-title">Rename room</h2>
-    <label class="field"><span>Room name</span><input name="room" value="${esc(room)}" maxlength="24" required></label>
-    <p>Devices and tile layouts will stay in this room.</p>
-    <p class="room-rename-error" role="alert"></p>
-    <div class="btn-row"><button type="button" class="btn" data-cancel>Cancel</button>
-      <button type="submit" class="btn primary">Rename room</button></div>
-  </form>`;
-  dialog.addEventListener("close", () => dialog.remove());
-  dialog.addEventListener("keydown", (e) => { if (e.key === "Escape") e.stopPropagation(); });
-  dialog.querySelector("[data-cancel]").addEventListener("click", () => dialog.close());
-  dialog.querySelector("form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const form = e.target, input = form.elements.room, controls = [...form.querySelectorAll("button, input")];
-    controls.forEach((el) => { el.disabled = true; });
-    try {
-      const name = await renameRoom(room, input.value);
-      toast(`Room renamed to ${name}`);
-      announce(`Room renamed to ${name}`);
-      dialog.close();
-    } catch (error) {
-      dialog.querySelector(".room-rename-error").textContent = error.message;
-      controls.forEach((el) => { el.disabled = false; });
-      input.focus();
-    }
-  });
-  document.body.append(dialog);
-  dialog.showModal();
-  dialog.querySelector("input").select();
 }

@@ -20,7 +20,7 @@ import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEdit
 import { startAuth } from "./auth.js";
 import "./profiles.js";      // Settings → Profiles
 import { roomTiles, setupRoomEditor, startRoomEditing, stopRoomEditing, isRoomEditing } from "./room-layout.js";
-import { roomGrip, roomEditButton, roomRenameButton, syncRoomSorters, isSortingRooms, isEditingRooms, toggleRoomEditing, showRoomRename } from "./room-sort.js";
+import { roomGrip, roomEditButton, roomNameField, roomNameHelp, editableRoomNames, syncRoomSorters, isSortingRooms, isEditingRooms, isEditingRoomName, canLeaveRoomNames, toggleRoomEditing } from "./room-sort.js";
 import { applyTypography } from "./typography.js";
 import { setupVoice, closeVoice, isVoiceOpen } from "./voice.js";
 
@@ -28,8 +28,9 @@ const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matche
 const wide = () => matchMedia("(min-width: 768px)").matches;
 let addingRoom = false, savingRooms = false;
 const editing = () => isEditing() || isRoomEditing();
-function canNavigate() {
+function canNavigate(allowRoomNames = false) {
   if (isSortingRooms()) { toast("Finish moving the room first."); return false; }
+  if (!allowRoomNames && !canLeaveRoomNames()) return false;
   if (!editing()) return true;
   toast("Save or cancel your layout changes first.");
   return false;
@@ -73,13 +74,14 @@ function renderTabs() {
     `<button class="room" role="tab" data-room="${esc(id)}" aria-selected="${store.room === id}">${
       esc(id === "all" ? "All" : roomLabel(id))}${countBadge(id)}</button>`;
   const actual = order.filter((r) => r !== "all" && r !== OTHER);
+  const names = editingRooms ? editableRoomNames(actual) : actual;
   setMarkup(el, `${order.includes("all") ? tab("all") : ""}
-    <div class="room-sort-tabs" ${admin ? 'data-room-sort="horizontal"' : ""}>${actual.map((r) =>
-      `<div class="room-tab${editingRooms ? " editing-rooms" : ""}" data-sort-room="${esc(r)}">${tab(r)}${editingRooms ? roomRenameButton(r) + roomGrip(r) : ""}</div>`).join("")}</div>
+    <div class="room-sort-tabs" ${admin ? 'data-room-sort="horizontal"' : ""}>${names.map((r) =>
+      `<div class="room-tab${editingRooms ? " editing-rooms" : ""}" data-sort-room="${esc(r)}">${editingRooms ? roomNameField(r) + roomGrip(r) : tab(r)}</div>`).join("")}</div>
     ${order.includes(OTHER) ? tab(OTHER) : ""}`);
   updateRoomCounts(el, onCount);
   $("#room-tools").hidden = store.view !== "rooms" || store.me?.role !== "admin";
-  setMarkup($("#room-tools"), `<span>Rooms</span>${roomEditButton()}${editingRooms ? '<button class="btn small" data-add-room>Add room</button>' : ""}`);
+  setMarkup($("#room-tools"), `<span>Rooms</span>${roomEditButton()}${editingRooms ? '<button class="btn small" data-add-room>Add room</button>' + roomNameHelp() : ""}`);
   syncRoomSorters();
 }
 
@@ -89,6 +91,8 @@ function renderRail() {
   const home = store.view === "home";
   const admin = store.me?.role === "admin";
   const editingRooms = admin && isEditingRooms();
+  const actual = order.filter((r) => r !== "all" && r !== OTHER);
+  const names = editingRooms ? editableRoomNames(actual) : actual;
   if (!editingRooms) addingRoom = false;
   const item = (id) => {
     const sel = !home && store.room === id;
@@ -98,10 +102,11 @@ function renderRail() {
   setMarkup($("#rail"), `
     <button class="rail-item" data-nav="home" aria-current="${home ? "page" : "false"}">${svg("home")}<span>Home</span></button>
     <div class="rail-room-heading"><p class="rail-label">Rooms</p>${admin ? roomEditButton() : ""}</div>
+    ${editingRooms ? roomNameHelp() : ""}
     <div class="rail-rooms" role="tablist" aria-orientation="vertical" aria-label="Rooms">
       ${order.includes("all") ? item("all") : ""}
-      <div class="room-sort-rail" ${admin ? 'data-room-sort="vertical"' : ""}>${order.filter((r) => r !== "all" && r !== OTHER).map((room) =>
-        `<div class="rail-room-row${editingRooms ? " editing-rooms" : ""}" data-sort-room="${esc(room)}">${item(room)}${editingRooms ? roomGrip(room) + roomRenameButton(room) : ""}</div>`).join("")}</div>
+      <div class="room-sort-rail" ${admin ? 'data-room-sort="vertical"' : ""}>${names.map((room) =>
+        `<div class="rail-room-row${editingRooms ? " editing-rooms" : ""}" data-sort-room="${esc(room)}">${editingRooms ? roomNameField(room) + roomGrip(room) : item(room)}</div>`).join("")}</div>
       ${order.includes(OTHER) ? item(OTHER) : ""}
     </div>
     <div class="rail-foot">
@@ -120,7 +125,7 @@ function renderDock() {
 }
 
 function renderNav() {
-  if (isSortingRooms()) return;
+  if (isSortingRooms() || isEditingRoomName()) return;
   const order = tabOrder();
   if (store.room !== "all" && !order.includes(store.room)) { setRoom("all"); return; }   // its devices moved away
   renderTabs();
@@ -347,14 +352,12 @@ function setupChrome() {
   document.addEventListener("click", async (e) => {
     const t = e.target;
     if (!t.closest("#app")) return;
-    if (t.closest("[data-edit-rooms]") && canNavigate()) {
+    if (t.closest("[data-edit-rooms]") && canNavigate(true)) {
       addingRoom = false;
       const scope = t.closest("#rail") ? "#rail" : "#room-tools";
-      toggleRoomEditing();
-      return document.querySelector(`${scope} [data-edit-rooms]`)?.focus();
+      if (await toggleRoomEditing(scope === "#rail" ? scope : "#rooms")) document.querySelector(`${scope} [data-edit-rooms]`)?.focus();
+      return;
     }
-    const rename = t.closest("[data-rename-room]");
-    if (rename && canNavigate()) return showRoomRename(rename.dataset.renameRoom);
     if (t.closest("[data-add-room]") && canNavigate()) {
       if (!wide()) return openSettings("rooms", "add");
       addingRoom = !addingRoom; renderRail();

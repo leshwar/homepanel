@@ -7,7 +7,7 @@ export const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
 
 export const icon = (name, cls = "") => `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
 
-export const KIND_ICON = { light: "bulb", plug: "plug", switch: "switch", tv: "tv", fan: "fan", speaker: "speaker", vacuum: "vacuum", other: "power" };
+export const KIND_ICON = { light: "bulb", plug: "plug", switch: "switch", tv: "tv", fan: "fan", purifier: "fan", speaker: "speaker", vacuum: "vacuum", other: "power" };
 export const kindIcon = (d) => d.icon || KIND_ICON[d.kind] || "power";
 // TVs and speakers share the media controls: volume, mute, inputs.
 export const isMedia = (d) => d.kind === "tv" || d.kind === "speaker";
@@ -64,6 +64,9 @@ export function statusText(d, apps = []) {
   if (s.online == null && s.on == null && s.activity == null) return "Connecting…";
   if (d.kind === "vacuum") return vacuumText(s);
   if (!s.on) return "Off";
+  if (d.kind === "purifier") {
+    return (d.meta?.fan_modes || []).find(mode => mode.id === s.fan_mode)?.name || "On";
+  }
   if (d.kind === "light") {
     const effect = s.color_mode === "effect" && (d.meta?.effects || []).find((e) => e.id === s.effect);
     const what = effect ? effect.name : s.color_mode === "music" ? "Music" : "On";

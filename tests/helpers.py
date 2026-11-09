@@ -16,12 +16,12 @@ def free_port() -> int:
 
 class DemoServer:
     """Runs the real HomePanel server (demo mode) in a background thread.
-    sign_in=True asks for sign-in like a real panel (demo PINs: Owner 1234, Sam 2468)."""
+    sign_in=True shows the profile picker (Owner password: homepanel; Sam: one tap)."""
 
     def __init__(self, data_dir: str, sign_in: bool = False):
         self.port = free_port()
         self.url = f"http://127.0.0.1:{self.port}"
-        self.app = create_app(data_dir, demo=True, sign_in=sign_in)
+        self.app = create_app(data_dir, demo=True, port=self.port, sign_in=sign_in)
         self.server = make_server(self.app, "127.0.0.1", self.port, log_config=None)
         self.thread = threading.Thread(target=self.server.run, daemon=True)
 

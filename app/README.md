@@ -10,8 +10,9 @@ app/
 │   ├── adapter.py     the DeviceAdapter interface + shared vocabulary (Kind, Cap, Action, Key)
 │   ├── service.py     HomeService: registry, polling, commands + middleware, scenes, events
 │   ├── store.py       saves devices/rooms/scenes/accounts/profiles/settings to data/homepanel.json
-│   ├── profiles.py    profiles, scrypt PIN/password hashes, sessions (data/sessions.json), rate limits,
+│   ├── profiles.py    one-tap profiles, optional scrypt passwords, sessions (data/sessions.json), rate limits,
 │   │                  the current viewer and what they may see
+│   ├── layout.py      Home/room layout validation, responsive positions and overlap checks
 │   ├── voice.py       voice commands: sentence → generic commands (rules today; Parser is the seam for others)
 │   ├── automations.py schedules: time of day, sunrise/sunset, presence → scene / all off / command
 │   ├── sun.py         sunrise/sunset calculation (no internet)
@@ -43,9 +44,10 @@ app/
 ## Running
 
 ```bash
-python -m app.main --demo --debug     # pretend devices
 python -m app.main                    # real devices
 python -m app.main --help             # all options (host, port, data dir, logs dir)
 ```
 
 Environment variables: `HOMEPANEL_HOST`, `HOMEPANEL_PORT`, `HOMEPANEL_DATA`, `HOMEPANEL_LOGS`.
+Use the existing native 8080 service when already installed; do not launch a
+parallel preview. Simulated adapters and temporary servers are internal test infrastructure.

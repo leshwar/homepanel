@@ -6,8 +6,8 @@ with a fixed key every LG sound bar shares (the protocol the LG Sound Bar app an
 Home Assistant's lg_soundbar integration use). No account or pairing.
 
 The protocol is small, so it is implemented here with asyncio rather than through
-the `temescal` library Home Assistant uses (unmaintained since 2022, blocking
-sockets with a listener thread). Only `cryptography` is needed for AES.
+the `temescal` library Home Assistant uses (blocking sockets with a listener
+thread). Only `cryptography` is needed for AES.
 
 Each message on the wire: 0x10, a 4-byte big-endian length, then the AES-256-CBC
 ciphertext (PKCS#7 padding) of a JSON object such as
@@ -37,11 +37,13 @@ INPUT_NAMES = ["Wi-Fi", "Bluetooth", "Portable", "Aux", "Optical", "CP", "HDMI",
                "Optical 2", "HDMI 2", "HDMI 3", "LG TV", "Mic", "Chromecast", "Optical / HDMI ARC",
                "LG Optical", "FM", "USB", "USB 2", "HDMI eARC"]
 # Sound mode ("equaliser") numbers, in protocol order. Newer models report higher
-# numbers too; those are shown as "Sound mode N".
+# numbers too; their names are not documented by that protocol table.
+# Reference: mjg59/python-temescal, revision 7460c04, temescal/__init__.py.
 SOUND_MODE_NAMES = ["Standard", "Bass", "Flat", "Boost", "Treble and bass", "User EQ", "Music", "Cinema",
                     "Night", "News", "Voice", "ia Sound", "Adaptive sound control", "Movie", "Bass blast",
                     "Dolby Atmos", "DTS Virtual:X", "Bass boost plus", "DTS:X", "AI Sound Pro",
                     "Clear voice", "Sports", "Game"]
+FORMAT_MODES = {15, 16, 18}  # codec/format-dependent names, not guaranteed ordinary EQ presets
 # Inputs that are the same socket under another name. A sound bar may report, say,
 # eARC (20) as the current input while offering "Optical / HDMI ARC" (15) in its list.
 SAME_INPUT = ((15, 20, 7, 16, 4, 9), (6, 10, 11), (18, 19), (1, 2), (0, 14, 8))
@@ -54,11 +56,11 @@ def _name(names: list[str], i: int, fallback: str) -> str:
 
 
 def input_name(i: int) -> str:
-    return _name(INPUT_NAMES, i, "Input")
+    return _name(INPUT_NAMES, i, "Device-reported input")
 
 
 def sound_mode_name(i: int) -> str:
-    return _name(SOUND_MODE_NAMES, i, "Sound mode")
+    return _name(SOUND_MODE_NAMES, i, "Device-reported mode")
 
 
 def shown_input(current: int | None, offered: list[int]) -> int | None:
@@ -175,7 +177,7 @@ class LGSoundbarAdapter(DeviceAdapter):
     manual_fields = [
         Field("name", "Name", required=True, placeholder="Living room sound bar"),
         Field("ip", "IP address", required=True,
-              help="LG Sound Bar or ThinQ app → your sound bar → Settings → Information, or your router's device list."),
+              help="LG Soundbar app → your sound bar → Settings → Information, or your router's device list."),
     ]
 
     def __init__(self, account, data_dir):
@@ -282,7 +284,14 @@ class LGSoundbarAdapter(DeviceAdapter):
 
         modes = [int(i) for i in eq.get("ai_eq_list") or []]
         if modes:
-            device.meta["sound_modes"] = [{"id": str(i), "name": sound_mode_name(i)} for i in modes]
+            device.meta["sound_modes"] = [
+                {"id": str(i), "name": sound_mode_name(i),
+                 **({"advanced": True} if i in FORMAT_MODES or not 0 <= i < len(SOUND_MODE_NAMES) else {})}
+                for i in modes]
+        if str(device.meta.get("model", "")).upper().startswith("S95TR"):
+            device.meta["playback_help"] = (
+                "For Spotify, start music in the Spotify app on your phone, open Devices and choose this speaker. "
+                "Use the same Wi-Fi for the first connection. Music sound mode changes EQ; it does not start playback.")
         if eq.get("i_curr_eq") is not None:
             state["sound_mode"] = str(eq["i_curr_eq"])
         return state

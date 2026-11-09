@@ -1,7 +1,6 @@
 """
 HomePanel entry point.
 
-    python -m app.main --demo          # try it with pretend devices
     python -m app.main                 # real devices on your Wi-Fi
     python -m app.main --debug         # verbose logs (logs/homepanel.log)
 """
@@ -11,6 +10,7 @@ import argparse
 import contextlib
 import logging
 import os
+import sys
 import time
 
 from starlette.applications import Starlette
@@ -23,7 +23,7 @@ from starlette.staticfiles import StaticFiles
 from .api.auth import AuthMiddleware
 from .api.routes import routes as api_routes
 from .core.logs import setup_logging
-from .core.net import in_container, phone_url
+from .core.net import phone_url
 from .core.service import HomeService
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -69,8 +69,8 @@ async def index(request):
 
 
 def create_app(data_dir: str, demo: bool = False, port: int = 8080, sign_in: bool | None = None) -> Starlette:
-    """sign_in: require signing in. Always on with real devices; in demo mode only when
-    asked (--sign-in), so the demo opens straight to the panel."""
+    """Native devices always use profiles. The demo/sign_in parameters support
+    isolated automated fixtures using this same application implementation."""
     service = HomeService(data_dir, demo=demo)
     sign_in = True if not demo else bool(sign_in)
 
@@ -83,7 +83,7 @@ def create_app(data_dir: str, demo: bool = False, port: int = 8080, sign_in: boo
         log.info("HomePanel ready: %d devices, adapters: %s%s", len(service.store.devices),
                  ", ".join(sorted(service.adapters)) or "none",
                  f" (unavailable: {', '.join(sorted(service.unavailable))})" if service.unavailable else "")
-        url = None if in_container() else phone_url(port)
+        url = phone_url(port)
         if url:
             log.info("To use it on a phone or tablet on the same Wi-Fi, open %s", url)
         yield
@@ -120,18 +120,27 @@ def make_server(app: Starlette, host: str, port: int, **config):
     return Server(uvicorn.Config(app, host=host, port=port, **config))
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="HomePanel smart home controller")
     p.add_argument("--host", default=os.environ.get("HOMEPANEL_HOST", "0.0.0.0"))
     p.add_argument("--port", type=int, default=int(os.environ.get("HOMEPANEL_PORT", "8080")))
     p.add_argument("--data", default=os.environ.get("HOMEPANEL_DATA", os.path.join(ROOT, "data")),
                    help="Where settings, devices and tokens are stored")
     p.add_argument("--logs", default=os.environ.get("HOMEPANEL_LOGS", os.path.join(ROOT, "logs")))
-    p.add_argument("--demo", action="store_true", help="Use pretend devices (no hardware needed)")
+    # Kept for isolated subprocess tests, never a second user-facing app on 8080.
+    p.add_argument("--demo", action="store_true", help=argparse.SUPPRESS)
     p.add_argument("--sign-in", action="store_true", default=os.environ.get("HOMEPANEL_SIGN_IN") == "1",
-                   help="Demo mode: ask for sign-in like a real panel (Owner PIN 1234, Sam PIN 2468)")
+                   help=argparse.SUPPRESS)
     p.add_argument("--debug", action="store_true", help="Verbose logging")
-    args = p.parse_args()
+    argv = sys.argv[1:] if argv is None else argv
+    args = p.parse_args(argv)
+    if args.demo:
+        explicit_data = any(arg == "--data" or arg.startswith("--data=") for arg in argv)
+        if args.port == 8080 or args.host not in ("127.0.0.1", "::1", "localhost") or not explicit_data:
+            p.error("Simulated fixtures are internal tests: use loopback, a non-8080 port and explicit temporary --data. "
+                    "The user-facing panel is the native app on 8080.")
+        if os.path.exists(os.path.join(args.data, "homepanel.json")):
+            p.error("Test fixtures cannot use an existing household data directory.")
 
     log_path = setup_logging(args.logs, args.debug)
     log.info("Logging to %s", log_path)

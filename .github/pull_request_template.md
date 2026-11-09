@@ -4,11 +4,11 @@
 ## Tests (required for changes to app/ or web/)
 - [ ] Unit test added/updated in `tests/unit/`
 - [ ] Integration test added/updated in `tests/integration/`
-- [ ] `make test-unit` and `make test-integration` pass locally
+- [ ] `REQUIRE_UI_TESTS=1 make test` passes on the final revision (unit + integration, once)
 - [ ] `make lint` passes
 
 ## Checked by hand
-- [ ] Tried it in `make dev` (UI changes: screenshot in portrait 720×1280)
+- [ ] Checked the authorized native 8080 deployment (UI evidence: actual profile/settings, no secret fields)
 - [ ] Tested with real hardware: <!-- brand + model, or "n/a" -->
 
 ## Docs

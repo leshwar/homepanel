@@ -70,9 +70,14 @@ class UITests(unittest.TestCase):
         self.page.wait_for_function("(() => { const s = document.querySelector('#sheet');"
                                     " return s && !s.hidden && s.getAnimations().every(a => a.playState !== 'running'); })()")
 
-    def test_tap_toggles_plug(self):
+    def test_tile_opens_controls_and_explicit_power_toggles_plug(self):
         self.page.wait_for_function("document.querySelector('.tile[data-id=\"kt-kettle\"] .tile-status').textContent === 'Off'")
         self.tile("kt-kettle").locator(".tile-name").click()
+        self.page.wait_for_selector('#sheet[data-device-id="kt-kettle"]:not([hidden])')
+        self.assertFalse(self.tile("kt-kettle").evaluate("el=>el.classList.contains('on')"))
+        self.page.click("#sheet [data-close]")
+        self.page.wait_for_selector("#sheet", state="hidden")
+        self.tile("kt-kettle").locator('[data-quick-action="power"]').click()
         self.page.wait_for_function("document.querySelector('.tile[data-id=\"kt-kettle\"]').classList.contains('on')")
 
     def test_tv_tap_opens_remote_not_power(self):
@@ -83,26 +88,26 @@ class UITests(unittest.TestCase):
     def test_sound_bar_opens_media_controls_and_picks_sound_mode(self):
         self.page.wait_for_selector('.tile[data-id="lr-soundbar"].wide')
         self.tile("lr-soundbar").locator(".tile-name").click()
-        self.page.wait_for_selector('[data-sound-mode="cinema"]')
+        self.page.click('[data-control-section="speaker-options"] > summary')
+        self.page.wait_for_selector('[data-speaker-select="set_sound_mode"]')
         self.assertTrue(self.tile("lr-soundbar").evaluate("el => el.classList.contains('on')"))  # tap didn't turn it off
         self.assertEqual(self.page.locator(".dpad").count(), 0)       # no TV remote for a speaker
-        self.assertTrue(self.page.locator('[data-input="bt"]').is_visible())
-        self.page.locator('[data-sound-mode="cinema"]').click()
-        self.page.wait_for_selector('[data-sound-mode="cinema"][aria-pressed="true"]')
-        box = self.page.locator('[data-sound-mode="cinema"]').bounding_box()
+        self.assertTrue(self.page.locator('[data-speaker-select="set_input"]').is_visible())
+        self.page.select_option('[data-speaker-select="set_sound_mode"]', "cinema")
+        self.page.wait_for_function("document.querySelector('[data-speaker-select=\"set_sound_mode\"]').value === 'cinema'")
+        box = self.page.locator('[data-speaker-select="set_sound_mode"]').bounding_box()
         self.assertGreaterEqual(box["height"], 48)
-        # the remote's speaker layout: power, name and mute on top, a volume bar, no keys or touchpad
+        # A labeled speaker panel, without TV keys or touchpad.
         sheet = self.page.locator("#sheet")
-        for sel in (".remote-top [data-power]", ".remote-top [data-mute]", '.vol-bar [data-act="volume_up"]'):
+        for sel in (".speaker-controls [data-power]", ".speaker-controls [data-mute]", '.speaker-volume [data-act="volume_up"]'):
             self.assertEqual(sheet.locator(sel).count(), 1, sel)
         for sel in ("[data-mode]", "#touchpad", "[data-key]", "[data-app]"):
             self.assertEqual(sheet.locator(sel).count(), 0, sel)
-        self.page.click('#sheet [data-input="bt"]')
-        self.page.wait_for_selector('#sheet [data-input="bt"][aria-pressed="true"]')
+        self.page.select_option('#sheet [data-speaker-select="set_input"]', "bt")
+        self.page.wait_for_function("document.querySelector('[data-speaker-select=\"set_input\"]').value === 'bt'")
 
     def test_brightness_pill(self):
-        # Ceiling light starts at 80%. Dragging the pill down by half its height dims it to 30%;
-        # a tap without dragging switches it off and on.
+        # Brightness applies on release; power now has its own explicit button.
         self.tile("lr-ceiling").locator("[data-more]").click()
         self.sheet_settled()
         box = self.page.locator("#bri").bounding_box()
@@ -116,19 +121,26 @@ class UITests(unittest.TestCase):
         self.page.wait_for_function("document.querySelector('#bri-val').textContent === '30%'")
         self.page.wait_for_function(
             "document.querySelector('.tile[data-id=\"lr-ceiling\"] .tile-status').textContent === 'On, 30%'")
-        self.page.locator("#bri").click()                                # tap = off
+        self.page.locator("#bri").click()
+        self.assertEqual(self.page.inner_text("#bri-val"), "30%")
+        self.page.locator("#sheet [data-power]").click()
         self.page.wait_for_function("document.querySelector('#bri-val').textContent === 'Off'")
         self.page.wait_for_function("!document.querySelector('.tile[data-id=\"lr-ceiling\"]').classList.contains('on')")
-        self.page.locator("#bri").click()                                # tap again = back on
+        self.page.locator("#sheet [data-power]").click()
         self.page.wait_for_function("document.querySelector('#bri-val').textContent === '30%'")
         # this light has white temperature only: a warm-to-cool pill, no color wheel
         self.assertEqual(self.page.locator("#sheet #wheel").count(), 0)
+        self.page.click('[data-control-section="light-color"] > summary')
         ct = self.page.locator("#sheet #ct")
-        ct.click(position={"x": ct.bounding_box()["width"] / 2, "y": 4})  # top = coolest
+        ct.focus()
+        ct.press("End")
+        for _ in range(15):
+            ct.press("ArrowUp")
         self.page.wait_for_function("document.querySelector('#sheet #ct').getAttribute('aria-valuenow') > 6000")
 
     def test_light_color_wheel_and_presets(self):
         self.tile("lr-lamp").locator("[data-more]").click()
+        self.page.click('[data-control-section="light-color"] > summary')
         # Locator clicks wait for the sheet to finish sliding in, so the spot is where we mean it.
         wheel = self.page.locator("#sheet #wheel")
         wheel.click(position={"x": wheel.bounding_box()["width"] / 2, "y": 3})   # top edge of the wheel = red
@@ -137,8 +149,11 @@ class UITests(unittest.TestCase):
                                     ".getPropertyValue('--glow'); return s.trim() === '255 0 0'; })()")
         self.page.click('#sheet [data-color="#5ee07a"]')
         self.page.wait_for_selector('#sheet [data-color="#5ee07a"][aria-pressed="true"]')
-        # white strip: tapping the warm end switches back to white light
-        self.page.locator("#sheet .temp-strip").click(position={"x": 6, "y": 26})
+        # White presets are explicit choices; a slider track tap cannot jump.
+        self.page.click('#sheet [data-kelvin="2700"]')
+        self.page.locator("#sheet .temp-strip").focus()
+        self.page.locator("#sheet .temp-strip").press("ArrowLeft")
+        self.page.locator("#sheet .temp-strip").press("ArrowLeft")
         self.page.wait_for_function("document.querySelector('#sheet .temp-strip').getAttribute('aria-valuenow') < 2400")
         self.page.wait_for_selector("#sheet .wheel-thumb.idle")
         self.page.wait_for_timeout(1800)                                   # the follow-up refresh keeps white
@@ -150,6 +165,7 @@ class UITests(unittest.TestCase):
     def test_light_effects_pick_a_scene_music_and_strip_parts(self):
         self.tile("lr-strip").locator("[data-more]").click()
         sheet = self.page.locator("#sheet")
+        self.page.click('[data-control-section="scenes"] > summary')
         self.page.wait_for_selector("#sheet:not([hidden]) [data-effect]")
         # search narrows the chips without redrawing the sheet, then a tap picks the scene
         self.page.fill("#sheet .fx-search", "sun")
@@ -165,10 +181,12 @@ class UITests(unittest.TestCase):
         self.assertEqual(sheet.locator(".fx-group-name").all_text_contents(), ["Scenes", "DIY", "Snapshots"])
         self.assertEqual(sheet.locator("[data-fx-group]:visible").count(), 1)     # only the group with a match
         # music: pick a mode; the scene is no longer the active one
+        self.page.click('[data-control-section="music"] > summary')
         self.page.click('#sheet [data-music-mode="spectrum"]')
         self.page.wait_for_selector('#sheet [data-music-mode="spectrum"][aria-pressed="true"]')
         self.assertEqual(sheet.locator('[data-effect][aria-pressed="true"]').count(), 0)
         # strip parts: a color first asks for parts; tap two parts, then a color
+        self.page.click('[data-control-section="segments"] > summary')
         self.page.click('#sheet [data-seg-color="#4f7bff"]')
         self.page.wait_for_selector("#toast:not([hidden])")
         self.assertIn("Tap the parts", self.page.inner_text("#toast"))
@@ -178,6 +196,7 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector('#sheet [data-seg="3"].lit')
         self.assertEqual(sheet.locator(".seg-part.lit").count(), 2)
         # a toggle switches and stays switched after the follow-up refresh
+        self.page.click('[data-control-section="light-options"] > summary')
         pressed = self.page.get_attribute('#sheet [data-toggle="sync"]', "aria-pressed")
         self.page.click('#sheet [data-toggle="sync"]')
         want = "false" if pressed == "true" else "true"
@@ -194,6 +213,7 @@ class UITests(unittest.TestCase):
         for w, h in ((393, 852), (820, 1180), (1280, 720)):
             page = self.open(width=w, height=h, view="rooms")
             page.locator('.tile[data-id="lr-strip"] [data-more]').click()
+            page.click('[data-control-section="segments"] > summary')
             page.wait_for_selector("#sheet:not([hidden]) [data-seg]")
             wide = page.evaluate("document.documentElement.scrollWidth > innerWidth"
                                  " || document.querySelector('#sheet').scrollWidth > document.querySelector('#sheet').clientWidth")
@@ -201,27 +221,309 @@ class UITests(unittest.TestCase):
             # lights without effects don't get the sections
             page.click("#sheet [data-close]")
             page.locator('.tile[data-id="lr-lamp"] [data-more]').click()
+            page.click('[data-control-section="light-color"] > summary')
             page.wait_for_selector("#sheet:not([hidden]) #wheel")
             self.assertEqual(page.locator("#sheet .fx").count(), 0)
             page.close()
 
     def test_add_room_and_open_add_flow(self):
+        original = self.page.request.get(self.server.url + "/api/v1/state").json()["rooms"]
+        try:
+            self.page.click("#open-settings")
+            self.page.click("[data-go=rooms]")
+            self.page.click("#settings [data-edit-rooms]")
+            self.page.fill("input[name=room]", "Office")
+            self.page.click("[data-room-add] button[type=submit]")
+            self.page.wait_for_selector('#settings [data-room-name="Office"]')
+            self.page.click("[data-back]")
+            self.page.click("[data-go=add]")
+            self.page.wait_for_selector("text=Shelly")
+        finally:
+            self.page.request.put(self.server.url + "/api/v1/rooms", data={"rooms": original})
+
+    def test_weather_data_attribution_is_visible_in_location_settings(self):
         self.page.click("#open-settings")
-        self.page.click("[data-go=rooms]")
-        self.page.fill("input[name=room]", "Office")
-        self.page.click("[data-room-add] button[type=submit]")
-        self.page.wait_for_selector("text=Office")
-        self.page.click("[data-back]")
-        self.page.click("[data-go=add]")
-        self.page.wait_for_selector("text=Shelly")
+        self.page.click('[data-go="location"]')
+        source = self.page.locator('#settings a[href="https://open-meteo.com/"]')
+        self.assertTrue(source.is_visible())
+        self.assertEqual(source.get_attribute("rel"), "noopener")
+        self.assertTrue(self.page.locator('#settings a[href="https://creativecommons.org/licenses/by/4.0/"]').is_visible())
+
+    def test_sidebar_adds_empty_rooms_and_reorders_with_accessible_controls(self):
+        page = self.page
+        page.set_viewport_size({"width": 1280, "height": 720})
+        original = page.request.get(self.server.url + "/api/v1/state").json()
+        try:
+            page.click("#rail [data-edit-rooms]")
+            page.click("#rail [data-add-room]")
+            page.fill("#rail [data-room-add] input", "  Empty office  ")
+            page.click("#rail [data-room-add] button[type=submit]")
+            page.wait_for_selector('#rail [data-room-name="Empty office"]')
+            page.wait_for_selector('#title:text-is("Empty office")')
+            self.assertTrue(page.locator(".room-empty").is_visible())
+            self.assertEqual(page.locator("#grid .tile").count(), 0)
+            self.assertEqual(page.locator("[data-arrange-rooms], [data-room-step], [data-room-move]").count(), 0)
+            page.locator('#rail [data-room-grip="Empty office"]').focus()
+            page.keyboard.press("ArrowUp")
+            page.wait_for_selector("text=Room order saved")
+            expected = ["Living room", "Bedroom", "Empty office", "Kitchen"]
+            self.assertEqual(page.request.get(self.server.url + "/api/v1/state").json()["rooms"], expected)
+            self.assertEqual(page.locator('#rail [data-room="all"]').count(), 1)
+            self.assertEqual(page.locator('#rail [data-room-grip="all"], #rail [data-room-grip=""]').count(), 0)
+            self.assertIn("Empty office moved to position 3", page.inner_text("#room-sort-status"))
+            for button in page.locator("#rail [data-room-grip]").all():
+                self.assertGreaterEqual(button.bounding_box()["width"], 48)
+                self.assertGreaterEqual(button.bounding_box()["height"], 48)
+            page.reload()
+            page.wait_for_selector('#rail [data-room="Empty office"]')
+            self.assertEqual(page.locator("[data-room-grip]").count(), 0)
+            self.assertEqual(page.eval_on_selector_all("#rail [data-room]", "els => els.map(e => e.dataset.room)"),
+                             ["all", *expected])
+            page.click('#rail [data-nav="home"]')
+            self.assertEqual(page.eval_on_selector_all("[data-go-room]", "els => els.map(e => e.dataset.goRoom)"), expected)
+            page.set_viewport_size({"width": 393, "height": 852})
+            page.click('#dock [data-nav="rooms"]')
+            page.click("#room-tools [data-edit-rooms]")
+            self.assertTrue(page.locator("#room-tools [data-add-room]").is_visible())
+            page.click("#room-tools [data-add-room]")
+            page.wait_for_selector("#room-tools [data-room-add] input:focus")
+            page.fill("#room-tools [data-room-add] input", "Empty office")
+            page.click("#room-tools [data-room-add] button[type=submit]")
+            page.wait_for_selector("text=That room already exists.")
+            self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), 393)
+            saved = page.request.get(self.server.url + "/api/v1/state").json()
+            self.assertEqual({d["id"]: d["room"] for d in saved["devices"]},
+                             {d["id"]: d["room"] for d in original["devices"]})
+            self.assertEqual(saved["settings"]["home_layout"], original["settings"]["home_layout"])
+        finally:
+            page.request.put(self.server.url + "/api/v1/rooms", data={"rooms": original["rooms"]})
+
+    def test_room_grips_support_mouse_touch_and_normal_navigation(self):
+        page = self.page
+        original = page.request.get(self.server.url + "/api/v1/state").json()["rooms"]
+        try:
+            page.set_viewport_size({"width": 1280, "height": 720})
+            page.click("#rail [data-edit-rooms]")
+            page.wait_for_selector('#rail [data-room-grip="Kitchen"]')
+            self.assertEqual(page.evaluate("Sortable.version"), "1.15.7")
+            grip = page.locator('#rail [data-room-grip="Kitchen"]').bounding_box()
+            target = page.locator('#rail [data-sort-room="Living room"]').bounding_box()
+            with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith("/api/v1/rooms")):
+                page.mouse.move(grip["x"] + 24, grip["y"] + 24)
+                page.mouse.down()
+                page.mouse.move(target["x"] + target["width"] - 24, target["y"] + 5, steps=12)
+                page.wait_for_selector(".room-sort-ghost")
+                page.wait_for_timeout(200)
+                page.mouse.up()
+            page.wait_for_function("document.querySelector('#rail [data-sort-room]').dataset.sortRoom === 'Kitchen'")
+            self.assertEqual(page.request.get(self.server.url + "/api/v1/state").json()["rooms"],
+                             ["Kitchen", "Living room", "Bedroom"])
+            page.click("#rail [data-edit-rooms]")
+            page.locator('#rail [data-room="Kitchen"]').click()
+            self.assertEqual(page.inner_text("#title"), "Kitchen")
+            page.set_viewport_size({"width": 720, "height": 1280})
+            page.click("#room-tools [data-edit-rooms]")
+            page.wait_for_selector('#rooms [data-room-grip="Kitchen"]')
+            grip = page.locator('#rooms [data-room-grip="Kitchen"]').bounding_box()
+            target = page.locator('#rooms [data-sort-room="Living room"]').bounding_box()
+            cdp = page.context.new_cdp_session(page)
+            x, y = grip["x"] + 24, grip["y"] + 24
+            with page.expect_response(lambda r: r.request.method == "PUT" and r.url.endswith("/api/v1/rooms")):
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+                page.wait_for_timeout(180)
+                end = target["y"] + target["height"] - 5
+                for step in range(1, 11):
+                    cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": y + (end - y) * step / 10}]})
+                    page.wait_for_timeout(20)
+                page.wait_for_timeout(200)
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            page.wait_for_function("document.querySelector('#rooms [data-sort-room]').dataset.sortRoom === 'Living room'")
+            self.assertEqual(page.request.get(self.server.url + "/api/v1/state").json()["rooms"],
+                             ["Living room", "Kitchen", "Bedroom"])
+            page.reload()
+            page.wait_for_selector('[data-room-picker]')
+            self.assertEqual(page.locator("[data-room-grip]").count(), 0)
+            self.assertEqual(page.eval_on_selector_all("[data-room-picker] option", "els => els.map(e => e.value)"),
+                             ["all", "Living room", "Kitchen", "Bedroom"])
+            page.set_viewport_size({"width": 393, "height": 852})
+            page.select_option("[data-room-picker]", "all")
+            page.evaluate("window.scrollTo(0,0)")
+            button = page.locator("#grid .tile").first.bounding_box()
+            x, y = button["x"] + button["width"] / 2, button["y"] + button["height"] / 2
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+            for step in range(1, 9):
+                cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": y - 140 * step / 8}]})
+                page.wait_for_timeout(20)
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+            page.wait_for_function("window.scrollY > 0")
+            self.assertEqual(page.locator(".room-sort-ghost").count(), 0)
+            self.assertEqual(page.request.get(self.server.url + "/api/v1/state").json()["rooms"],
+                             ["Living room", "Kitchen", "Bedroom"])
+        finally:
+            page.request.put(self.server.url + "/api/v1/rooms", data={"rooms": original})
+
+    def test_room_drag_does_not_remove_a_concurrently_added_room(self):
+        page = self.page
+        page.set_viewport_size({"width": 1280, "height": 720})
+        original = page.request.get(self.server.url + "/api/v1/state").json()
+        try:
+            page.click("#rail [data-edit-rooms]")
+            grip = page.locator('#rail [data-room-grip="Kitchen"]').bounding_box()
+            target = page.locator('#rail [data-sort-room="Living room"]').bounding_box()
+            page.mouse.move(grip["x"] + 24, grip["y"] + 24)
+            page.mouse.down()
+            page.mouse.move(target["x"] + target["width"] - 24, target["y"] + 5, steps=12)
+            page.wait_for_selector(".room-sort-ghost")
+            latest = [*original["rooms"], "New office"]
+            page.request.put(self.server.url + "/api/v1/rooms",
+                             data={"rooms": latest, "expected_rooms": original["rooms"]})
+            page.wait_for_function("async () => (await import('/js/store.js')).store.rooms.includes('New office')")
+            page.mouse.up()
+            page.wait_for_selector("text=Rooms changed on another screen.")
+            page.wait_for_selector('#rail [data-room-name="New office"]')
+            self.assertEqual(page.eval_on_selector_all("#rail [data-sort-room]", "els => els.map(e => e.dataset.sortRoom)"), latest)
+            state = page.request.get(self.server.url + "/api/v1/state").json()
+            self.assertEqual(state["rooms"], latest)
+            self.assertEqual({d["id"]: d["room"] for d in state["devices"]},
+                             {d["id"]: d["room"] for d in original["devices"]})
+        finally:
+            page.mouse.up()
+            page.request.put(self.server.url + "/api/v1/rooms", data={"rooms": original["rooms"]})
+
+    def test_room_edit_is_opt_in_and_rename_keeps_devices_and_tile_layout(self):
+        page = self.page
+        page.set_viewport_size({"width": 1280, "height": 720})
+        original = page.request.get(self.server.url + "/api/v1/state").json()
+        layout_before = original["settings"].get("room_layouts", {}).get("Bedroom")
+        layout = {"widgets": [{"id": "bd-lamp", "size": "2x2",
+                               "positions": {"4": {"x": 2, "y": 2, "size": "2x2"}}}]}
+        try:
+            page.request.put(self.server.url + "/api/v1/profiles/me/rooms/layout", data={"room": "Bedroom", "layout": layout})
+            page.reload()
+            page.wait_for_selector("#rail [data-edit-rooms]")
+            self.assertEqual(page.locator("#rail [data-edit-rooms]").inner_text(), "Edit")
+            self.assertEqual(page.locator("[data-room-grip], [data-room-name], #rail [data-add-room]").count(), 0)
+            self.assertTrue(page.locator("#rail [data-room-sort]").evaluate("e => Sortable.get(e).option('disabled')"))
+            page.click('#rail [data-room="Bedroom"]')
+            page.click("#rail [data-edit-rooms]")
+            self.assertFalse(page.locator("#rail [data-room-sort]").evaluate("e => Sortable.get(e).option('disabled')"))
+            ids = page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id).sort()")
+            saved_layout = page.request.get(self.server.url + "/api/v1/state").json()["settings"]["room_layouts"]["Bedroom"]
+            page.fill('#rail [data-room-name="Bedroom"]', "Study")
+            page.press('#rail [data-room-name="Bedroom"]', "Enter")
+            page.wait_for_selector('#rail [data-room-name="Study"]')
+            page.wait_for_selector('#title:text-is("Study")')
+            state = page.request.get(self.server.url + "/api/v1/state").json()
+            self.assertEqual(state["rooms"], ["Living room", "Study", "Kitchen"])
+            self.assertEqual(state["settings"]["room_layouts"]["Study"], saved_layout)
+            self.assertNotIn("Bedroom", state["settings"]["room_layouts"])
+            self.assertEqual(page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id).sort()"), ids)
+            page.click("#rail [data-edit-rooms]")
+            self.assertEqual(page.locator("[data-room-grip], [data-room-name], #rail [data-add-room]").count(), 0)
+            self.assertTrue(page.locator("#rail [data-room-sort]").evaluate("e => Sortable.get(e).option('disabled')"))
+            page.reload()
+            page.wait_for_selector('#title:text-is("Study")')
+            self.assertEqual(page.locator("[data-room-grip]").count(), 0)
+        finally:
+            current = page.request.get(self.server.url + "/api/v1/state").json()["rooms"]
+            if "Study" in current:
+                page.request.put(self.server.url + "/api/v1/rooms", data={
+                    "rooms": original["rooms"], "expected_rooms": current,
+                    "rename": {"from": "Study", "to": "Bedroom"}})
+            page.request.put(self.server.url + "/api/v1/profiles/me/rooms/layout", data={"room": "Bedroom", "layout": layout_before})
+
+    def test_inline_room_names_save_cancel_validate_and_survive_live_updates(self):
+        page = self.page
+        original = page.request.get(self.server.url + "/api/v1/state").json()["rooms"]
+        try:
+            for width, scope, tools in ((1280, "#rail", "#rail"), (393, "#rooms", "#room-tools"),
+                                         (720, "#settings", "#settings")):
+                with self.subTest(width=width, scope=scope):
+                    page.set_viewport_size({"width": width, "height": 900})
+                    if scope == "#settings":
+                        page.click("#open-settings")
+                        page.click('[data-go="rooms"]')
+                    page.click(f"{tools} [data-edit-rooms]")
+                    field = page.locator(f'{scope} [data-room-name="Bedroom"]')
+                    self.assertEqual(page.locator("[data-rename-room], .room-name-dialog").count(), 0)
+                    self.assertEqual(page.locator('[data-room-name="all"], [data-room-name=""]').count(), 0)
+                    field.fill("Not saved")
+                    field.evaluate("e => e.setSelectionRange(2, 5)")
+                    page.evaluate("async () => (await import('/js/store.js')).reload()")
+                    self.assertEqual(field.input_value(), "Not saved")
+                    self.assertEqual(field.evaluate("e => [e.selectionStart, e.selectionEnd]"), [2, 5])
+                    self.assertTrue(page.locator(f"{scope} [data-room-sort]").evaluate("e => Sortable.get(e).option('disabled')"))
+                    self.assertEqual(page.locator(".room-sort-ghost").count(), 0)
+                    field.press("Escape")
+                    self.assertEqual(field.input_value(), "Bedroom")
+                    self.assertTrue(field.is_visible())
+                    field.fill("Cancel by touch")
+                    page.locator(f"{tools} [data-cancel-room-names]").click()
+                    self.assertEqual(field.input_value(), "Bedroom")
+                    for invalid, message in (("  ", "Give the room a name."), ("Kitchen", "That room already exists."),
+                                             ("all", 'Choose a name other than "all"')):
+                        field.fill(invalid)
+                        page.click(f"{tools} [data-edit-rooms]")
+                        page.wait_for_selector(f'{scope} [data-room-name="Bedroom"][aria-invalid="true"]')
+                        self.assertEqual(field.input_value(), invalid)
+                        self.assertIn(message, field.locator("..").inner_text())
+                        self.assertTrue(field.evaluate("e => e === document.activeElement"))
+                        self.assertEqual(page.locator(f"{tools} [data-edit-rooms]").inner_text(), "Done")
+                    field.fill("Study")
+                    page.click(f"{tools} [data-edit-rooms]")
+                    page.wait_for_selector(f"{tools} [data-edit-rooms]:text-is('Edit')")
+                    self.assertEqual(page.locator("[data-room-name]").count(), 0)
+                    state = page.request.get(self.server.url + "/api/v1/state").json()
+                    self.assertIn("Study", state["rooms"])
+                    self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
+                    page.request.put(self.server.url + "/api/v1/rooms", data={
+                        "rooms": original, "expected_rooms": state["rooms"],
+                        "rename": {"from": "Study", "to": "Bedroom"}})
+                    if scope == "#settings":
+                        page.click("#settings [data-back]")
+                        page.click("#settings [data-back]")
+                    page.wait_for_function("async () => (await import('/js/store.js')).store.rooms.includes('Bedroom')")
+        finally:
+            state = page.request.get(self.server.url + "/api/v1/state").json()
+            if "Study" in state["rooms"]:
+                page.request.put(self.server.url + "/api/v1/rooms", data={
+                    "rooms": original, "rename": {"from": "Study", "to": "Bedroom"}})
+
+    def test_inline_room_name_retains_removed_draft_and_rejects_stale_save(self):
+        page = self.page
+        page.set_viewport_size({"width": 1280, "height": 720})
+        original = page.request.get(self.server.url + "/api/v1/state").json()["rooms"]
+        try:
+            page.click("#rail [data-edit-rooms]")
+            field = page.locator('#rail [data-room-name="Bedroom"]')
+            field.fill("Study")
+            current = ["Office" if r == "Bedroom" else r for r in original]
+            page.request.put(self.server.url + "/api/v1/rooms", data={
+                "rooms": current, "expected_rooms": original,
+                "rename": {"from": "Bedroom", "to": "Office"}})
+            page.wait_for_function("async () => (await import('/js/store.js')).store.rooms.includes('Office')")
+            self.assertEqual(field.input_value(), "Study")
+            page.click("#rail [data-edit-rooms]")
+            page.wait_for_selector('#rail [data-room-name="Bedroom"][aria-invalid="true"]')
+            self.assertEqual(field.input_value(), "Study")
+            self.assertIn("no longer available", field.locator("..").inner_text())
+            self.assertEqual(page.request.get(self.server.url + "/api/v1/state").json()["rooms"], current)
+            field.press("Escape")
+            self.assertEqual(field.count(), 0)
+            page.wait_for_selector('#rail [data-room-name="Office"]')
+        finally:
+            current = page.request.get(self.server.url + "/api/v1/state").json()["rooms"]
+            if "Office" in current:
+                page.request.put(self.server.url + "/api/v1/rooms", data={
+                    "rooms": original, "rename": {"from": "Office", "to": "Bedroom"}})
 
     def test_energy_chart_for_metering_plug(self):
         self.tile("kt-fridge").locator("[data-more]").click()
         self.page.wait_for_selector(".bars .bar")
         self.assertEqual(self.page.locator(".bars .bar").count(), 7)
 
-    def tab(self, name):
-        return self.page.locator("#rooms .room", has_text=name)
+    def pick_room(self, name):
+        self.page.select_option("[data-room-picker]", "all" if name == "All rooms" else "" if name == "Other" else name)
 
     def swipe(self, dx):
         box = self.page.locator("#grid .tile").first.bounding_box()
@@ -234,15 +536,14 @@ class UITests(unittest.TestCase):
     def shown_ids(self):
         return set(self.page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id)"))
 
-    def test_room_tabs_switch_swipe_and_remember(self):
-        names = self.page.eval_on_selector_all("#rooms .room", "els => els.map(e => e.firstChild.textContent)")
-        self.assertEqual(names, ["All", "Living room", "Bedroom", "Kitchen"])
-        for b in self.page.locator("#rooms .room").all():
-            self.assertGreaterEqual(b.bounding_box()["height"], 48)            # touch target
+    def test_room_picker_switches_swipes_and_remembers(self):
+        names = self.page.locator("[data-room-picker] option").all_text_contents()
+        self.assertEqual(names, ["All rooms", "Living room", "Bedroom", "Kitchen"])
+        self.assertGreaterEqual(self.page.locator("[data-room-picker]").bounding_box()["height"], 48)
         self.assertEqual(self.page.locator(".room-section").count(), 3)       # "All" = every room, with headings
 
-        self.tab("Kitchen").click()
-        self.page.wait_for_function("document.querySelector('#rooms [aria-selected=true]').textContent.startsWith('Kitchen')")
+        self.pick_room("Kitchen")
+        self.page.wait_for_function("document.querySelector('[data-room-picker]').value === 'Kitchen'")
         self.assertEqual(self.shown_ids(), {"kt-pendant", "kt-kettle", "kt-fridge"})
         self.assertEqual((self.page.inner_text("#title"), self.page.inner_text("#subtitle")), ("Kitchen", "1 of 3 on"))
 
@@ -252,15 +553,20 @@ class UITests(unittest.TestCase):
 
         kettle_on = self.tile("kt-kettle").evaluate("el => el.classList.contains('on')")
         self.swipe(200)                                                        # swipe right = previous room
-        self.page.wait_for_function("document.querySelector('#rooms [aria-selected=true]').textContent.startsWith('Bedroom')")
+        self.page.wait_for_function("document.querySelector('[data-room-picker]').value === 'Bedroom'")
         self.assertEqual(self.shown_ids(), {"bd-lamp", "bd-tv", "bd-fan"})
         self.swipe(-200)                                                       # and back
-        self.page.wait_for_function("document.querySelector('#rooms [aria-selected=true]').textContent.startsWith('Kitchen')")
+        self.page.wait_for_function("document.querySelector('[data-room-picker]').value === 'Kitchen'")
         self.assertEqual(kettle_on, self.tile("kt-kettle").evaluate("el => el.classList.contains('on')"))  # not a tap
 
-        self.tab("All").click()
+        self.pick_room("All rooms")
+        self.tile("lr-lamp").locator("[data-more]").focus()
+        self.tile("lr-lamp").locator("[data-more]").press("Enter")
+        self.page.wait_for_selector('#sheet[data-device-id="lr-lamp"]:not([hidden])')
+        self.page.click("#sheet [data-close]")
+        self.page.wait_for_selector("#sheet", state="hidden")
         self.page.locator(".room-title", has_text="Bedroom").click()          # a heading in "All" opens its tab
-        self.page.wait_for_function("document.querySelector('#rooms [aria-selected=true]').textContent.startsWith('Bedroom')")
+        self.page.wait_for_function("document.querySelector('[data-room-picker]').value === 'Bedroom'")
 
     def test_other_tab_nudges_to_pick_a_room_and_turns_off_just_those(self):
         api = "(path, body, method = 'POST') => fetch('/api/v1' + path, {method, headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)})"
@@ -268,8 +574,8 @@ class UITests(unittest.TestCase):
         try:
             self.page.evaluate(f"({api})('/devices/bd-fan/command', {{action: 'power', value: true}})")
             self.page.reload()
-            self.page.wait_for_selector("#rooms .room:has-text('Other')")
-            self.tab("Other").click()
+            self.page.wait_for_selector('[data-room-picker] option[value=""]', state="attached")
+            self.pick_room("Other")
             self.page.wait_for_selector(".nudge")
             self.assertEqual(self.shown_ids(), {"bd-fan"})
             self.page.wait_for_selector('.tile.on[data-id="bd-fan"]')
@@ -449,11 +755,12 @@ class UITests(unittest.TestCase):
         mac = self.page.evaluate("fetch('/api/v1/state').then(r => r.json()).then(s => s.devices.find(d => d.id === 'lr-tv').mac)")
         self.assertEqual(mac, "64:E4:A5:03:04:05")
 
-    def test_demo_mode_explains_how_to_add_real_devices(self):
+    def test_internal_fixtures_direct_real_device_use_to_the_canonical_app(self):
         self.page.click("#open-settings")
         self.page.click("[data-go=add]")
         self.page.click("[data-arg=shelly]")          # a brand with no extra libraries, so always available
-        self.page.wait_for_selector("text=You're in demo mode")
+        self.page.wait_for_selector("text=Internal test fixtures, not household data.")
+        self.assertIn("native panel on port 8080", self.page.locator("#settings .note").inner_text())
 
     def test_diagnostics_says_where_to_open_on_a_phone(self):
         self.page.click("#open-settings")
@@ -483,11 +790,13 @@ class UITests(unittest.TestCase):
         self.page.locator('.tile[data-id="lr-vacuum"]').click()
         self.page.wait_for_function("(() => { const i = document.querySelector('#sheet .vac-map img');"
                                     " return i && i.complete && i.naturalWidth > 0; })()")      # the map loaded
+        self.page.click('[data-control-section="vac-rooms"] > summary')
         self.page.click('#sheet [data-room-pick="2"]')
         self.page.click('#sheet [data-room-pick="3"]')
         self.page.wait_for_selector("#sheet [data-clean-rooms] >> text=Clean 2 rooms")
         self.page.click("#sheet [data-clean-rooms]")
         self.page.wait_for_selector("#sheet [data-clean=pause]")
+        self.page.click('[data-control-section="vac-options"] > summary')
         self.page.click('#sheet [data-suction="quiet"]')
         self.page.wait_for_selector('#sheet [data-suction="quiet"][aria-pressed="true"]')
         self.page.click("#sheet [data-locate]")
@@ -534,17 +843,17 @@ class UITests(unittest.TestCase):
 
     def open_tv(self, did):
         self.tile(did).locator("[data-more]").click()
-        self.page.wait_for_selector("#sheet:not([hidden]) .remote-top")
+        self.page.wait_for_selector("#sheet:not([hidden]) .device-head")
         if self.page.locator("#sheet .tv-off").count():
-            self.page.click("#sheet .tv-off [data-power]")
+            self.page.click("#sheet [data-power]")
         self.page.wait_for_selector("#sheet .remote")
 
     def test_remote_layout_and_modes(self):
         sent = self.commands()
         self.open_tv("lr-tv")                       # demo "Samsung TV": no pointer
-        top = self.page.locator("#sheet .remote-top")
+        top = self.page.locator("#sheet .device-power")
         self.assertEqual(top.locator("[data-power]").count(), 1)
-        self.assertIn("Samsung TV", top.locator(".tv-pill").inner_text())
+        self.assertIn("Samsung TV", self.page.locator("#sheet .device-head h2").inner_text())
         self.assertEqual(top.locator("[data-mute]").count(), 1)
         for key in ("MENU", "SOURCE", "EXIT", "CHANNEL_LIST", "UP", "OK", "HOME", "BACK"):
             self.assertEqual(self.page.locator(f'#sheet [data-key="{key}"]').count(), 1, key)
@@ -558,6 +867,7 @@ class UITests(unittest.TestCase):
         self.page.wait_for_function("document.querySelector('#sheet [data-mode=numbers]').getAttribute('aria-pressed') === 'true'")
         self.page.click("#sheet [data-mode=dpad]")
         self.page.wait_for_selector("#sheet .dpad")
+        self.page.click('[data-control-section="apps"] > summary')
         self.page.click("#sheet [data-app]:not([aria-pressed=true]) >> nth=0")
         self.page.wait_for_function("() => true")
         self.page.wait_for_timeout(300)
@@ -566,16 +876,18 @@ class UITests(unittest.TestCase):
         self.assertIn(("volume_up", None), actions)
         self.assertIn(("key", "7"), actions)
         self.assertTrue(any(a == "launch_app" for a, _ in actions))
+        self.page.click('[data-control-section="remote-more"] > summary')
         for sel in ("[data-key=MENU]", "[data-key=UP]", "[data-act=volume_up]", "[data-mode=dpad]", "[data-app]"):
             box = self.page.locator(f"#sheet {sel}").first.bounding_box()
             self.assertGreaterEqual(min(box["width"], box["height"]), 48, sel)
 
-    def test_remote_fits_a_phone_without_scrolling(self):
+    def test_remote_fits_a_phone_with_accessible_primary_controls_and_close(self):
         self.page.set_viewport_size({"width": 393, "height": 852})
         self.open_tv("lr-tv")
         self.page.wait_for_timeout(350)               # sheet animation
-        fits = self.page.evaluate("(() => { const s = document.querySelector('#sheet');"
-                                  " return s.scrollHeight <= s.clientHeight + 1 && s.getBoundingClientRect().top >= 0; })()")
+        fits = self.page.evaluate("(() => { const s = document.querySelector('#sheet').getBoundingClientRect();"
+                                  " const pad = document.querySelector('#sheet .dpad').getBoundingClientRect();"
+                                  " return s.top >= 0 && pad.top >= s.top && pad.bottom <= s.bottom; })()")
         self.assertTrue(fits)
         width = self.page.evaluate("document.querySelector('#sheet').scrollWidth <= 393")
         self.assertTrue(width)
@@ -625,15 +937,17 @@ class UITests(unittest.TestCase):
         self.page.set_viewport_size({"width": 393, "height": 852})
         self.tile("lr-vacuum").click()
         self.page.wait_for_selector("#sheet .vac")
+        self.page.click('[data-control-section="vac-options"] > summary')
         opts = self.page.locator("#sheet .opts")
         self.assertIn("Suction", opts.inner_text())
         self.assertIn("Mode", opts.inner_text())
-        self.assertIn("Station", opts.inner_text())
+        self.assertIn("Dock actions", opts.inner_text())
         self.assertEqual(opts.locator("[data-clean-mode] svg").count(), 3)          # every mode has an icon
         self.page.click('#sheet [data-clean-mode="mop"]')
         self.page.wait_for_selector('#sheet [data-clean-mode="mop"][aria-pressed="true"]')
         self.page.click('#sheet [data-clean-mode="vacuum"]')
         self.page.wait_for_selector('#sheet [data-clean-mode="vacuum"][aria-pressed="true"]')
+        self.page.click('[data-control-section="station"] > summary')
         self.page.click('#sheet [data-station="empty_dustbin"]')
         self.page.wait_for_selector("text=Empty dustbin: sent to the station")
         # parts wear stays folded behind one Maintenance row
@@ -643,6 +957,7 @@ class UITests(unittest.TestCase):
         self.page.click("#sheet .maint-row")
         part.wait_for(state="visible")
         # picking rooms turns the main button into "Clean 1 room"; Clear undoes it
+        self.page.click('[data-control-section="vac-rooms"] > summary')
         self.page.click('#sheet [data-room-pick="2"]')
         self.page.wait_for_selector("#sheet .vac-main >> text=Clean 1 room")
         self.page.click("#sheet [data-rooms-clear]")
@@ -846,6 +1161,78 @@ class UITests(unittest.TestCase):
     def order(self, page):
         return page.eval_on_selector_all(".home-grid > .widget", "els => els.map(e => e.dataset.wid)")
 
+    def test_home_headings_are_not_visible_but_status_navigation_and_room_titles_remain(self):
+        page = self.home()
+        try:
+            for width, height in ((720, 1280), (1280, 720)):
+                with self.subTest(width=width):
+                    page.set_viewport_size({"width": width, "height": height})
+                    page.wait_for_timeout(100)
+                    self.assertEqual(page.locator("#rail .rail-head").count(), 0)
+                    self.assertEqual(page.get_by_role("heading", name="Home", exact=True).count(), 1)
+                    title = page.locator("#title")
+                    self.assertEqual(title.evaluate("e => getComputedStyle(e).clipPath"), "inset(50%)")
+                    self.assertLessEqual(title.bounding_box()["height"], 1)
+                    self.assertRegex(page.inner_text("#subtitle"), r"^(Everything is off|[0-9]+ (thing is|things are) on)$")
+                    self.assertLessEqual(page.locator(".topbar").bounding_box()["height"], 80 if width < 768 else 48)
+                    for control in ("#voice-btn", "#edit-home", "#all-off", "#open-frame", "#profile-btn"):
+                        self.assertTrue(page.locator(control).is_visible())
+                        self.assertGreaterEqual(page.locator(control).bounding_box()["height"], 48)
+                    nav = '#rail [data-nav="home"]' if width >= 768 else '#dock [data-nav="home"]'
+                    self.assertTrue(page.locator(nav).is_visible())
+                    if width >= 768:
+                        self.assertLessEqual(page.locator(nav).bounding_box()["y"], 24)
+                    self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
+                    page.click('[data-go-room="Kitchen"]')
+                    page.wait_for_selector('#title:text-is("Kitchen")')
+                    self.assertEqual(title.evaluate("e => getComputedStyle(e).clipPath"), "none")
+                    self.assertGreater(title.bounding_box()["height"], 20)
+                    self.assertTrue(page.locator('[data-room-off="Kitchen"]').is_visible())
+                    page.click(nav)
+                    page.wait_for_function("document.documentElement.dataset.view === 'home'")
+        finally:
+            page.close()
+
+    def drag_to_cell(self, page, selector, x, y, cancel=False):
+        box = page.locator(selector)
+        box.scroll_into_view_if_needed()
+        metrics = box.evaluate("""el => {
+            const r = el.getBoundingClientRect(), grid = el.parentElement, g = grid.getBoundingClientRect();
+            const cs = getComputedStyle(grid);
+            return {left:r.left, top:r.top, x:g.left, y:g.top,
+              stepX:parseFloat(cs.gridTemplateColumns) + parseFloat(cs.columnGap),
+              stepY:parseFloat(cs.gridAutoRows) + parseFloat(cs.rowGap)};
+        }""")
+        page.mouse.move(metrics["left"] + 55, metrics["top"] + 55)
+        page.mouse.down()
+        page.wait_for_timeout(250)
+        page.mouse.move(metrics["x"] + x * metrics["stepX"] + 55,
+                        metrics["y"] + y * metrics["stepY"] + 55, steps=6)
+        self.assertEqual(page.locator(".grid-drop-target").count(), 1)
+        self.assertTrue(box.evaluate("""async el => {
+            await (await import('/js/store.js')).reload();
+            return el.isConnected && !!el.closest('[data-grid-gesture]');
+        }"""))
+        if cancel:
+            box.evaluate("el => el.parentElement.dispatchEvent(new PointerEvent('pointercancel', {bubbles:true, pointerId:1}))")
+        page.mouse.up()
+        self.assertEqual(page.locator(".grid-drop-target").count(), 0)
+
+    def placements(self, page, selector=".home-grid > .widget"):
+        return page.eval_on_selector_all(selector, """els => Object.fromEntries(els.map(el =>
+          [el.dataset.wid, {column:el.style.gridColumnStart, row:el.style.gridRowStart,
+                           size:[...el.classList].find(c => c.startsWith('s-'))}]))""")
+
+    def assert_grid_fits(self, page, selector):
+        self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
+        boxes = page.locator(selector).evaluate_all("""els => els.map(el => {
+          const r = el.getBoundingClientRect(); return {x:r.x, y:r.y, right:r.right, bottom:r.bottom};
+        })""")
+        for i, a in enumerate(boxes):
+            for b in boxes[i + 1:]:
+                self.assertFalse(a["x"] < b["right"] - 1 and b["x"] < a["right"] - 1
+                                 and a["y"] < b["bottom"] - 1 and b["y"] < a["bottom"] - 1, (a, b))
+
     def test_home_page_has_clocks_and_rooms_but_no_devices(self):
         page = self.home(timezone_id="America/Denver")
         try:
@@ -865,7 +1252,7 @@ class UITests(unittest.TestCase):
 
             page.click('[data-go-room="Kitchen"]')                              # Rooms widget opens that room
             page.wait_for_function("document.documentElement.dataset.view === 'rooms'")
-            page.wait_for_selector('#rooms [aria-selected="true"]:has-text("Kitchen")')
+            page.wait_for_function("document.querySelector('[data-room-picker]').value === 'Kitchen'")
             ids = set(page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id)"))
             self.assertEqual(ids, {"kt-pendant", "kt-kettle", "kt-fridge"})
             page.click('#dock [data-nav="home"]')
@@ -924,12 +1311,13 @@ class UITests(unittest.TestCase):
         result = page.evaluate("""async () => {
             const {store, upsertDevice} = await import('/js/store.js');
             const tile = document.querySelector('.tile[data-id="kt-kettle"]');
+            const opener = tile.querySelector('[data-more]');
             const nav = document.querySelector('#rail [data-room="Kitchen"]');
-            tile.focus();
+            opener.focus();
             const device = structuredClone(store.devices.get('lr-lamp'));
             device.state.on = !device.state.on;
             upsertDevice(device);
-            const focusKept = document.activeElement === tile;
+            const focusKept = document.activeElement === opener;
             nav.focus();
             device.state.brightness = 43;
             upsertDevice(device);
@@ -998,30 +1386,32 @@ class UITests(unittest.TestCase):
             self.long_press(page, '.widget[data-wid="clock"]')                 # long press the page = edit
             page.wait_for_selector(".home.editing .editbar")
             page.click('.widget[data-wid="scenes"] [data-hide]')
+            before = self.placements(page)
+            self.drag_to_cell(page, '.widget[data-wid="weather"]', 2, 2)
             page.click('.widget[data-wid="weather"] [data-resize]')            # a tap on the corner: next size
             self.assertIn("s-2x2", page.get_attribute('.widget[data-wid="weather"]', "class"))
             page.click('.widget[data-wid="zone-us"] [data-menu]')
             page.select_option("[data-zone-pick]", "America/Chicago")
-            page.click('[data-size-pick="2x1"]')
+            page.click('[data-size-pick="1x1"]')
             page.click(".wmenu button.btn[data-menu-close]")
-            a = page.locator('.widget[data-wid="clock"]').bounding_box()       # hold the clock and drag it down
-            t = page.locator('.widget[data-wid="rooms"]').bounding_box()
-            page.mouse.move(a["x"] + 50, a["y"] + 50)
-            page.mouse.down()
-            page.wait_for_timeout(350)
-            page.mouse.move(t["x"] + t["width"] / 2, t["y"] + t["height"] / 2, steps=10)
-            page.mouse.up()
-            self.assertNotEqual(self.order(page)[0], "clock")
-            moved = self.order(page)
+            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 2)         # occupied: don't displace Rooms
+            self.assertEqual(self.placements(page)["clock"], before["clock"])
+            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 4, cancel=True)
+            self.assertEqual(self.placements(page)["clock"], before["clock"])
+            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 4)         # empty space, not another tile
+            moved = self.placements(page)
+            self.assertEqual(moved["clock"]["row"], "5")
+            self.assertEqual(moved["rooms"], before["rooms"])                 # the other tiles stay put
+            self.assert_grid_fits(page, ".home-grid > .widget")
             page.click("[data-edit-done]")
             page.wait_for_selector("text=Home page saved")
 
             other = self.home(width=1180, height=820)                           # another screen: same Home page
             try:
-                self.assertEqual(self.order(other), moved)
+                self.assertEqual(self.placements(other), moved)
                 self.assertEqual(other.locator('.widget[data-wid="scenes"]').count(), 0)
                 self.assertIn("s-2x2", other.get_attribute('.widget[data-wid="weather"]', "class"))
-                self.assertIn("s-2x1", other.get_attribute('.widget[data-wid="zone-us"]', "class"))
+                self.assertIn("s-1x1", other.get_attribute('.widget[data-wid="zone-us"]', "class"))
                 self.assertEqual(other.get_attribute('.widget[data-wid="zone-us"] .w-zone', "data-zone"), "America/Chicago")
             finally:
                 other.close()
@@ -1035,10 +1425,70 @@ class UITests(unittest.TestCase):
             page.wait_for_selector('.widget[data-wid="scenes"]')
             page.click("[data-edit-cancel]")
             page.wait_for_selector(".home:not(.editing)")
-            self.assertEqual(self.order(page), moved)
+            self.assertEqual(self.placements(page), moved)
+            saved = page.evaluate("async () => (await (await import('/js/api.js')).api.state()).settings.home_layout")
+            for width, height in ((393, 852), (1280, 720), (720, 1280)):
+                page.set_viewport_size({"width": width, "height": height})
+                page.wait_for_timeout(100)
+                self.assert_grid_fits(page, ".home-grid > .widget")
+                self.assertEqual(page.evaluate("async () => (await (await import('/js/api.js')).api.state()).settings.home_layout"), saved)
+            self.assertEqual(self.placements(page), moved)
         finally:
             page.evaluate("fetch('/api/v1/profiles/me/layout', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: '{\"home_layout\": null}'})")
             page.close()
+
+    def test_room_settings_edit_tiles_resize_save_cancel_and_live_updates(self):
+        page = self.page
+        page.set_viewport_size({"width": 1280, "height": 720})
+        page.click('#rail [data-open-settings]')
+        page.click('[data-go="rooms"]')
+        page.click("#settings [data-edit-rooms]")
+        page.click('[data-room-layout="Kitchen"]')
+        page.wait_for_selector("#settings", state="hidden")
+        page.wait_for_selector(".tiles.editing")
+        # Portrait provides room to drag down into unused grid cells.
+        page.set_viewport_size({"width": 720, "height": 1280})
+        page.wait_for_timeout(100)
+        selector = '.room-tile[data-wid="kt-pendant"]'
+        before = self.placements(page, ".room-tile")
+        state_before = page.locator('.tile[data-id="kt-pendant"]').get_attribute("data-on")
+        try:
+            self.drag_to_cell(page, selector, 2, 2)
+            page.click(selector + " [data-resize]")
+            page.click(selector + " [data-resize]")
+            self.assertIn("s-2x2", page.get_attribute(selector, "class"))
+            moved = self.placements(page, ".room-tile")
+            self.assertEqual(moved["kt-pendant"]["row"], "3")
+            self.assertEqual(moved["kt-kettle"], before["kt-kettle"])
+            self.assertEqual(page.locator('.tile[data-id="kt-pendant"]').get_attribute("data-on"), state_before)
+            page.evaluate("""async () => {
+              const {store, upsertDevice} = await import('/js/store.js');
+              upsertDevice({...store.devices.get('kt-pendant')});
+            }""")
+            self.assertEqual(self.placements(page, ".room-tile"), moved)
+            for handle in page.locator(".tiles.editing .w-resize, .tiles.editing .w-menu").all():
+                self.assertGreaterEqual(handle.bounding_box()["width"], 48)
+                self.assertGreaterEqual(handle.bounding_box()["height"], 48)
+            page.click("[data-room-done]")
+            page.wait_for_selector("text=Kitchen layout saved")
+            page.reload()
+            page.wait_for_selector(selector)
+            self.assertEqual(self.placements(page, ".room-tile"), moved)
+            page.click('[data-edit-room="Kitchen"]')
+            page.click(selector + " [data-room-options]")
+            page.click('[data-room-size="1x1"]')
+            page.click("[data-room-options-close].btn")
+            page.click("[data-room-cancel]")
+            self.assertEqual(self.placements(page, ".room-tile"), moved)
+            saved = page.evaluate("async () => (await (await import('/js/api.js')).api.state()).settings.room_layouts")
+            for width, height in ((393, 852), (1280, 720), (720, 1280)):
+                page.set_viewport_size({"width": width, "height": height})
+                page.wait_for_timeout(100)
+                self.assert_grid_fits(page, ".room-tile")
+            self.assertEqual(self.placements(page, ".room-tile"), moved)
+            self.assertEqual(page.evaluate("async () => (await (await import('/js/api.js')).api.state()).settings.room_layouts"), saved)
+        finally:
+            page.evaluate("async () => (await import('/js/api.js')).api.saveRoomLayout('Kitchen', null)")
 
     def test_sky_background_follows_the_weather(self):
         source = FakeWeatherSource(temperature=28.4, code=71)                 # snow
@@ -1134,11 +1584,11 @@ class UITests(unittest.TestCase):
         page = self.home(width=393, height=852, is_mobile=True)
         try:
             page.click('#dock [data-nav="rooms"]')
-            page.wait_for_selector("#rooms:not([hidden])")
-            tabs = page.eval_on_selector_all("#rooms .room", "els => els.map(e => e.firstChild.textContent)")
-            self.assertEqual(tabs, ["All", "Living room", "Bedroom", "Kitchen"])
-            page.click('#rooms [data-room="Kitchen"]')
-            page.wait_for_selector('#rooms [data-room="Kitchen"][aria-selected="true"]')
+            page.wait_for_selector("[data-room-picker]")
+            self.assertEqual(page.locator("[data-room-picker] option").all_text_contents(),
+                             ["All rooms", "Living room", "Bedroom", "Kitchen"])
+            page.select_option("[data-room-picker]", "Kitchen")
+            page.wait_for_function("document.querySelector('[data-room-picker]').value === 'Kitchen'")
             self.assertEqual(self.shown(page), {"kt-pendant", "kt-kettle", "kt-fridge"})
         finally:
             page.close()
@@ -1148,7 +1598,7 @@ class UITests(unittest.TestCase):
 @unittest.skipIf(sync_playwright is None, "playwright not installed")
 class SignedInRoomsTests(unittest.TestCase):
     """With sign-in on, a member only gets rooms that have devices they can see.
-    Demo member Sam (PIN 2468) sees bd-fan, bd-lamp, bd-tv and kt-pendant: no Living room."""
+    Demo member Sam sees bd-fan, bd-lamp, bd-tv and kt-pendant: no Living room."""
 
     @classmethod
     def setUpClass(cls):
@@ -1178,7 +1628,7 @@ class SignedInRoomsTests(unittest.TestCase):
         try:
             page.goto(f"{self.server.url}/")
             status = page.evaluate("""fetch('/api/v1/auth/sign-in', {method: 'POST', headers: {'Content-Type': 'application/json'},
-                                      body: JSON.stringify({profile_id: 'sam', pin: '2468'})}).then(r => r.status)""")
+                                      body: JSON.stringify({profile_id: 'sam'})}).then(r => r.status)""")
             self.assertEqual(status, 200)
             page.add_init_script("localStorage.setItem('view', '\"home\"')")
             page.reload()

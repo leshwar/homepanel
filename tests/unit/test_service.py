@@ -3,6 +3,7 @@
 Run:  python -m unittest discover -s tests -v      (or: make test / pytest)
 """
 import asyncio
+import copy
 import os
 import shutil
 import tempfile
@@ -11,6 +12,7 @@ import unittest
 from app.core.adapter import (Action, AdapterError, Cap, DeviceAdapter, Field,
                               Found, Kind, register)
 from app.core.service import HomeService
+from app.core.profiles import Viewer, current_viewer
 
 
 # A fake brand, registered exactly like a real adapter. Proves a new brand plugs in
@@ -138,6 +140,85 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(again.store.rooms, ["Den", "Porch"])
         self.assertTrue(any(d.name == "Lamp" for d in again.store.devices.values()))
         self.assertEqual(oct(os.stat(again.store.path).st_mode & 0o777), "0o600")
+
+    async def test_room_order_and_empty_rooms_persist_without_changing_devices_or_layouts(self):
+        before_rooms = list(self.svc.store.rooms)
+        assignments = {d.id: d.room for d in self.svc.store.devices.values()}
+        self.svc.store.profiles[0]["room_layouts"] = {"Bedroom": {"widgets": [{"id": "bd-lamp", "size": "2x2"}]}}
+        profiles = copy.deepcopy(self.svc.store.profiles)
+        rooms = [*reversed(before_rooms), "Office"]
+        self.assertEqual(self.svc.set_rooms(rooms, expected=before_rooms), rooms)
+        self.assertEqual({d.id: d.room for d in self.svc.store.devices.values()}, assignments)
+        self.assertEqual(self.svc.store.profiles, profiles)
+        again = HomeService(self.dir, demo=True)
+        self.assertEqual(again.store.rooms, rooms)
+        self.assertEqual(again.store.profiles, profiles)
+        with self.assertRaisesRegex(AdapterError, "changed on another screen"):
+            self.svc.set_rooms(before_rooms, expected=before_rooms)
+        for bad in ("Office", None, [123]):
+            with self.assertRaises(AdapterError):
+                self.svc.set_rooms(bad)
+        self.assertEqual(self.svc.store.rooms, rooms)
+
+    async def test_member_room_names_exclude_hidden_and_empty_rooms(self):
+        self.svc.set_rooms(["Office", "Kitchen", "Living room", "Bedroom"])
+        token = current_viewer.set(Viewer(self.svc.profiles.get("sam")))
+        try:
+            self.assertEqual(self.svc.snapshot()["rooms"], ["Kitchen", "Bedroom"])
+        finally:
+            current_viewer.reset(token)
+        self.assertEqual(self.svc.snapshot()["rooms"], ["Office", "Kitchen", "Living room", "Bedroom"])
+
+    async def test_room_rename_moves_membership_and_all_profile_layouts_atomically(self):
+        before_rooms = list(self.svc.store.rooms)
+        bedroom_ids = {d.id for d in self.svc.store.devices.values() if d.room == "Bedroom"}
+        layouts = {"widgets": [{"id": "bd-lamp", "size": "2x2", "positions": {"4": {"x": 2, "y": 2, "size": "2x2"}}}]}
+        for profile in self.svc.store.profiles:
+            profile["room_layouts"] = {"Bedroom": copy.deepcopy(layouts)}
+        home_layouts = [copy.deepcopy(p.get("home_layout")) for p in self.svc.store.profiles]
+        rooms = ["Living room", "Study", "Kitchen"]
+        self.svc.set_rooms(rooms, expected=before_rooms, rename={"from": "Bedroom", "to": "Study"})
+        self.assertEqual({d.id for d in self.svc.store.devices.values() if d.room == "Study"}, bedroom_ids)
+        for profile in self.svc.store.profiles:
+            self.assertEqual(profile["room_layouts"], {"Study": layouts})
+        self.assertEqual([p.get("home_layout") for p in self.svc.store.profiles], home_layouts)
+        again = HomeService(self.dir, demo=True)
+        self.assertEqual(again.store.rooms, rooms)
+        self.assertEqual(again.store.profiles, self.svc.store.profiles)
+        before = copy.deepcopy(self.svc.store.profiles)
+        for replacement, rename in [
+            (["Living room", "Kitchen"], {"from": "Study", "to": "Kitchen"}),
+            (["Living room", "Other name"], {"from": "Study", "to": "Other name"}),
+            (rooms, {"from": "Missing", "to": "Office"}),
+        ]:
+            with self.assertRaises(AdapterError):
+                self.svc.set_rooms(replacement, expected=rooms, rename=rename)
+            self.assertEqual(self.svc.store.rooms, rooms)
+            self.assertEqual(self.svc.store.profiles, before)
+        self.svc.store.profiles[0]["room_layouts"]["Office"] = {"widgets": [{"id": "bd-fan", "size": "1x1"}]}
+        before = copy.deepcopy(self.svc.store.profiles)
+        with self.assertRaisesRegex(AdapterError, "saved room layout"):
+            self.svc.set_rooms(["Living room", "Office", "Kitchen"], expected=rooms,
+                               rename={"from": "Study", "to": "Office"})
+        self.assertEqual(self.svc.store.profiles, before)
+        self.assertEqual({d.id for d in self.svc.store.devices.values() if d.room == "Study"}, bedroom_ids)
+
+    async def test_font_size_is_validated_persisted_and_shared_without_resetting_settings(self):
+        self.assertEqual(self.svc.settings()["font_size"], "medium")
+        original_profiles = copy.deepcopy(self.svc.store.profiles)
+        original_layout = copy.deepcopy(self.svc.settings()["home_layout"])
+        for size in ("small", "medium", "large"):
+            self.svc.update_settings({"font_size": size})
+            again = HomeService(self.dir, demo=True)
+            self.assertEqual(again.settings()["font_size"], size)
+            self.assertEqual(again.display_settings()["font_size"], size)
+        before = copy.deepcopy(self.svc.store.settings)
+        for invalid in ("huge", 0, None, [], {}):
+            with self.assertRaisesRegex(AdapterError, "Font size"):
+                self.svc.update_settings({"font_size": invalid, "home_name": "Should not change"})
+            self.assertEqual(self.svc.store.settings, before)
+        self.assertEqual(self.svc.store.profiles, original_profiles)
+        self.assertEqual(self.svc.settings()["home_layout"], original_layout)
 
     async def test_custom_middleware(self):
         seen = []

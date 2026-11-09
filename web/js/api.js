@@ -40,10 +40,8 @@ async function call(method, path, body) {
 export const api = {
   // sign-in and profiles
   session: () => call("GET", "/auth/session"),
-  signIn: (body) => call("POST", "/auth/sign-in", body),       // {profile_id, pin} | {profile_id, password} | {email, password}
-  setup: (body) => call("POST", "/auth/setup", body),
-  signOut: (forget = false) => call("POST", "/auth/sign-out", { forget }),
-  lock: () => call("POST", "/auth/lock"),
+  signIn: (body) => call("POST", "/auth/sign-in", body),       // {profile_id} | {profile_id/email, password}
+  signOut: () => call("POST", "/auth/sign-out", {}),
   setPanel: (panel) => call("POST", "/auth/panel", { panel }),
   profiles: () => call("GET", "/profiles"),
   addProfile: (p) => call("POST", "/profiles", p),
@@ -51,6 +49,7 @@ export const api = {
   deleteProfile: (id) => call("DELETE", `/profiles/${encodeURIComponent(id)}`),
   updateMe: (p) => call("PATCH", "/profiles/me", p),
   saveLayout: (layout) => call("PUT", "/profiles/me/layout", { home_layout: layout }),   // null = back to the default
+  saveRoomLayout: (room, layout) => call("PUT", "/profiles/me/rooms/layout", { room, layout }),
 
   state: () => call("GET", "/state"),
   health: () => call("GET", "/health"),
@@ -75,7 +74,7 @@ export const api = {
   saveAccount: (adapter, values) => call("PUT", `/adapters/${adapter}/account`, values),
   accountAction: (adapter, action) => call("POST", `/adapters/${adapter}/actions/${action}`),
 
-  setRooms: (rooms) => call("PUT", "/rooms", { rooms }),
+  setRooms: (rooms, expected_rooms, rename) => call("PUT", "/rooms", { rooms, expected_rooms, rename }),
   saveScene: (scene) => call("POST", "/scenes", scene),
   deleteScene: (id) => call("DELETE", `/scenes/${id}`),
   runScene: (id) => call("POST", `/scenes/${id}/run`),
@@ -91,6 +90,26 @@ export const api = {
   lookupLocation: (coords = {}) => call("POST", "/location/lookup", coords),
 
   photos: () => call("GET", "/photos"),
+  photoLibrary: () => call("GET", "/photo-library"),
+  connectPhotoLibrary: (values) => call("PUT", "/photo-library", values),
+  disconnectPhotoLibrary: () => call("DELETE", "/photo-library"),
+  photoAlbums: () => call("GET", "/photo-library/albums"),
+  selectPhotoAlbums: (values) => call("PUT", "/photo-library/source", values),
+  nextLibraryPhoto: async (signal) => {
+    let response;
+    try { response = await fetch(`${BASE}/photo-library/next`, { credentials: "same-origin", signal, cache: "no-store" }); }
+    catch (error) {
+      if (error.name === "AbortError") throw error;
+      throw new ApiError("Cannot reach the panel's photo service.");
+    }
+    if (!response.ok) {
+      const data = await response.json().catch(() => null);
+      if (response.status === 401) signinNeeded(data);
+      throw new ApiError(data?.error || "Photo previews are unavailable.", response.status);
+    }
+    return { blob: await response.blob(), token: response.headers.get("X-Photo-Token"),
+      generation: response.headers.get("X-Photo-Generation") };
+  },
   deletePhoto: (id) => call("DELETE", `/photos/${encodeURIComponent(id)}`),
   uploadPhoto: (file) => sendFile("POST", `/photos?name=${encodeURIComponent(file.name || "photo")}`, file),
 

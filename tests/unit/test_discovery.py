@@ -12,10 +12,6 @@ class Helpers(unittest.TestCase):
         self.assertFalse(net.is_multicast("192.168.1.20"))
         self.assertFalse(net.is_multicast("not-an-ip"))
 
-    def test_in_container_is_a_bool(self):
-        self.assertIsInstance(net.in_container(), bool)
-
-
 class LGScanFallback(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.saved = {n: getattr(lg_tv, n) for n in ("ssdp_search", "local_subnet_hosts", "scan_ports",

@@ -13,6 +13,7 @@
   <link rel="apple-touch-icon" href="/icon-180.png">
   <link rel="manifest" href="/manifest.webmanifest">
   <title>HomePanel</title>
+  <link rel="preload" href="/fonts/manrope-variable.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="/app.css">
   <link rel="stylesheet" href="/controls.css">
   <link rel="stylesheet" href="/photoframe.css">
@@ -117,6 +118,12 @@
       </header>
 
       <nav class="rooms" id="rooms" role="tablist" aria-label="Rooms" hidden></nav>
+      <div class="room-tools" id="room-tools" role="toolbar" aria-label="Rooms" hidden>
+        <button class="btn small" data-add-room>Add room</button>
+      </div>
+      <p class="visually-hidden" id="room-sort-help">Drag the three-line handle to reorder a room, or focus it and use the arrow keys.</p>
+      <p class="visually-hidden" id="room-name-help">Edit the room name. Enter saves this name, Done saves all names, and Escape cancels this name. Cancel name edits discards all unsaved names.</p>
+      <span class="visually-hidden" id="room-sort-status" role="status" aria-live="polite"></span>
       <section class="home" id="home" aria-label="Home page"></section>
       <main class="grid" id="grid" aria-live="polite" hidden></main>
     </div>
@@ -135,7 +142,7 @@
 
   <!-- bottom sheet for device detail / TV remote -->
   <div class="scrim" id="scrim" hidden></div>
-  <section class="sheet" id="sheet" role="dialog" aria-modal="true" hidden></section>
+  <section class="sheet" id="sheet" role="dialog" aria-modal="true" tabindex="-1" hidden></section>
 
   <!-- profile menu (js/auth.js): switch profile, your profile, sign out -->
   <div class="profile-menu" id="profile-menu" role="menu" aria-label="Profile" hidden></div>

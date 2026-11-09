@@ -40,7 +40,7 @@ Every device is described the same way, whatever the brand:
 
 | Concept | Values | Defined in |
 |---|---|---|
-| **Kind** — what it is | `light`, `plug`, `switch`, `tv`, `fan`, `speaker`, `other` | `Kind` |
+| **Kind** — what it is | `light`, `plug`, `switch`, `tv`, `fan`, `purifier`, `vacuum`, `speaker`, `other` | `Kind` |
 | **Capabilities** — what it can do | `power`, `brightness`, `color`, `color_temp`, `volume`, `volume_level`, `mute`, `channel`, `remote`, `media`, `apps`, `inputs`, `sound_mode`, `effects`, `music`, `segments`, `toggles` | `Cap` |
 | **Actions** — commands you can send | `power`, `toggle`, `brightness`, `color`, `color_temp`, `volume`, `volume_up/down`, `mute`, `channel_up/down`, `key`, `launch_app`, `set_input`, `set_sound_mode`, `set_effect`, `update_effects`, `set_music`, `set_segments`, `set_toggle` | `Action` |
 | **Keys** — remote buttons | `UP DOWN LEFT RIGHT OK BACK HOME MENU SOURCE PLAY PAUSE STOP REWIND FORWARD` | `Key` |
@@ -49,6 +49,17 @@ Every device is described the same way, whatever the brand:
 The UI draws controls purely from capabilities: a device with `brightness`
 gets a slider; one with `remote` gets a D-pad. A new brand gets the full UI
 for free by declaring its capabilities.
+
+Purifiers add `fan_speed`/`fan_mode` capabilities and corresponding `set_fan_speed`
+/`set_fan_mode` actions with metadata-validated options. `air_quality` and
+`filter_life` are read-only capabilities. VeSync is an adapter, not a special API
+or UI path. Its requested provider cooldowns are enforced by service middleware
+and shared discovery/polling guards rather than adapter retry loops.
+
+The private photo library follows the same boundary: generic API/UI and
+`core/remote_photos.py` own profile grants, cache limits and private previews;
+`adapters/immich_photos.py` owns the remote protocol. Connection secrets live in
+accounts, never generic settings. No source is selected automatically.
 
 ## A command, end to end
 
@@ -107,18 +118,29 @@ browser ──cookie hp_session──► app/api/auth.py (ASGI middleware, befor
 
 No viewer means the panel itself is acting (polling, automations): nothing is
 filtered. Admins see everything; a member's profile lists `devices: "all"` or ids.
-Each profile keeps its own `home_layout`; `settings.home_layout` is the shared
-default for profiles that haven't made one. Sessions are random tokens kept only as
-SHA-256 hashes in `data/sessions.json`; PINs and passwords are scrypt hashes. On the
-first start after upgrading, an "Owner" admin is created with everything and the
-UI asks for a PIN or password before anything else works. Demo mode without
-`--sign-in` acts as the Owner when there's no session.
+Each profile keeps its own `home_layout` and `room_layouts`;
+`settings.home_layout` is the shared Home default. Grid positions and sizes are
+saved independently for 2, 4 and 6 columns. The shared UI grid editor rejects
+occupied cells, and `app/core/layout.py` validates bounds and overlap at the API.
+Older ordered layouts still work; rendering a different screen size never
+rewrites saved coordinates.
+
+Sessions are random tokens kept only as SHA-256 hashes in `data/sessions.json`;
+optional passwords are scrypt hashes. Profiles without passwords open with one tap.
+On upgrade, existing PIN hashes and idle-lock settings are retired; profiles,
+layouts, password hashes and integration credentials are preserved. Previously
+locked sessions become usable. A new installation creates an "Owner" profile
+ready to select. Isolated automated fixtures may act as Owner without a session;
+that test harness is not a user-facing deployment.
+Profile permissions still filter API data and commands, but an unprotected admin
+can be selected by anyone who reaches the service. Use trusted LAN/private
+tailnet access, not a publicly exposed port.
 
 ## Secrets
 
 Adapter-private data (IPs, local keys, TV tokens) lives in `device.config` and
 account keys in `store.accounts`, saved to `data/homepanel.json` (mode 600), along
-with the profiles' PIN and password hashes (never returned by the API).
+with the profiles' optional password hashes (never returned by the API).
 `config` is never included in API responses, and password-type account fields
 come back masked. `data/` and `logs/` are git-ignored.
 

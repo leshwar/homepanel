@@ -2,7 +2,8 @@
 // Text entry (API keys etc.) is easiest from a phone or laptop: open http://<panel>.local:8080
 
 import { api } from "./api.js";
-import { store, reload } from "./store.js";
+import { store, reload, addRoom, saveRooms } from "./store.js";
+import { roomGrip, roomEditButton, roomNameField, roomNameHelp, editableRoomNames, syncRoomSorters, isSortingRooms, isEditingRooms, isEditingRoomName, canLeaveRoomNames, toggleRoomEditing } from "./room-sort.js";
 import { $, esc, icon, kindIcon, toast } from "./util.js";
 import { applyTransparency } from "./glass.js";
 import { openFrame } from "./photoframe.js";
@@ -12,11 +13,13 @@ import { DEVICE_ICONS, deviceIconName, svg } from "./icons.js";
 import { invalidateWallpapers, previewWallpaper } from "./wallpaper.js";
 import { previewTiles } from "./tone.js";
 import { devicePicture } from "./art.js";
+import { FONT_SIZES, FONT_SIZE_NAMES, previewTypography } from "./typography.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
 let brandState = {};          // per-visit state of the "brand" screen
 let searchAll = {};           // per-visit state of "Search all brands" on the "add" screen
+let photoSettingsEpoch = 0;
 
 export const isSettingsOpen = () => !$("#settings").hidden;
 
@@ -29,13 +32,17 @@ export function openSettings(view = "home", arg = null) {
 
 function close() { $("#settings").hidden = true; stack = []; dropPreview(); }
 // Leaving Display settings without saving: back to the saved look.
-function dropPreview() { previewWallpaper(null); previewTiles(null); }
+function dropPreview() { previewWallpaper(null); previewTiles(null); previewTypography(null); }
 export const closeSettings = close;
 export function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; if (view === "add") searchAll = {}; render(); $("#settings").scrollTop = 0; }
-export function back() { if (stack.at(-1)?.view === "display") dropPreview(); stack.pop(); stack.length ? render() : close(); }
+export function back() {
+  if (!canLeaveRoomNames()) return;
+  if (stack.at(-1)?.view === "display") dropPreview();
+  stack.pop(); stack.length ? render() : close();
+}
 
 export function refreshSettings() {
-  if (!isSettingsOpen()) return;
+  if (!isSettingsOpen() || isSortingRooms() || isEditingRoomName()) return;
   const top = stack.at(-1);
   if (top && ["home", "devices", "scenes", "rooms", "automations", "location", "profiles"].includes(top.view)) render();
 }
@@ -48,11 +55,18 @@ export function page(title, body, { closeBtn = false } = {}) {
       <h1>${esc(title)}</h1>
       ${closeBtn && stack.length > 1 ? `<button class="icon-btn" data-close aria-label="Close">${icon("close")}</button>` : ""}
     </div>${body}</div>`;
+  syncRoomSorters();
 }
 
 export const row = (attrs, iconName, title, sub = "", extra = "") =>
   `<button class="row" ${attrs}>${iconName?.startsWith?.("<") ? iconName : iconName ? icon(iconName, "dim") : ""}<span class="grow">
     <span class="title">${esc(title)}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}</span>${extra}${icon("right", "dim")}</button>`;
+
+export const roomAddForm = (className = "card", value = "") => `<form class="${className}" data-room-add>
+  <label class="field"><span>New room</span><input name="room" maxlength="24" placeholder="Office" value="${esc(value)}" required></label>
+  <button class="btn primary" type="submit">Add room</button>
+  <button class="btn" type="button" data-room-add-cancel>Cancel</button>
+</form>`;
 
 function searchAllResults(r) {
   const found = r.found.length ? `<div class="list" data-search-all-results>${r.found.map((f) => `
@@ -61,11 +75,8 @@ function searchAllResults(r) {
         ${f.added ? `<span class="sub">Added</span>` :
           `<button class="btn small primary" data-add-found="${esc(f.uid)}" data-adapter="${esc(f.adapter)}" data-name="${esc(f.name)}">Add</button>`}
       </div>`).join("")}</div>` :
-    `<div class="card"><h3>Nothing found</h3>${store.inContainer
-      ? `<p>The panel is running inside Docker, which can't see your Wi-Fi on a Mac or Windows PC, so search can't find devices.
-           Add the device by IP address instead, or run the panel without Docker (make run).</p>`
-      : `<p>Make sure the devices are set up in their own app first and are on the same Wi-Fi as this panel.
-           If they still don't show up, choose the brand below and add them by IP address.</p>`}</div>`;
+    `<div class="card"><h3>Nothing found</h3><p>Make sure the devices are set up in their own app first and are on the same Wi-Fi as this panel.
+           If they still don't show up, choose the brand below and add them by IP address.</p></div>`;
   const extra = [
     ...r.needs_account.map((b) => row(`data-go=brand data-arg="${esc(b.adapter)}"`, "link", b.adapter_name, "Not searched. Connect your account first.")),
     ...r.failed.map((b) => row(`data-go=brand data-arg="${esc(b.adapter)}"`, "wifi-off", b.adapter_name, b.error)),
@@ -94,8 +105,9 @@ const VIEWS = {
               store.settings.latitude != null ? `${store.presence.length} ${store.presence.length === 1 ? "person" : "people"} watched` : "Set your location for sunrise and sunset")}
         ${row("data-go=photos", "image", "Photo frame", store.settings.idle_screen === "photos"
               ? "Shows when the panel is idle" : "Slideshow of your photos")}
+        ${row('data-go="photo-library"', "image", "Photo library", "Connect an album for the Home Photos tile")}
         ${row("data-go=display", "sun", "Display and clock")}
-        ${row("data-go=profiles", "users", "Profiles and sign-in", profilesSummary())}
+        ${row("data-go=profiles", "users", "Profiles", profilesSummary())}
         ${row("data-go=diagnostics", "pulse", "Diagnostics and logs")}
       </div>
       <p class="group-label">Tip: typing is easier from a phone or laptop. Open this panel's address in any browser on your Wi-Fi.</p>`);
@@ -104,7 +116,7 @@ const VIEWS = {
   // Members: their own profile only. Devices, rooms and settings are for admins.
   member() {
     page("Settings", `
-      <div class="list">${row("data-go=me", "users", "Your profile", "Name, colour, PIN and password")}</div>
+      <div class="list">${row("data-go=me", "users", "Your profile", "Name, colour and optional password")}</div>
       <div class="card"><h3>Want more devices here?</h3>
         <p>Adding devices, rooms and panel settings is for admins. Ask an admin to share more devices with your profile.</p></div>`);
   },
@@ -226,15 +238,11 @@ const VIEWS = {
           ${f.added ? `<span class="sub">Added</span>` :
             `<button class="btn small primary" data-add-uid="${esc(f.uid)}" data-name="${esc(f.name)}">Add</button>`}
         </div>`).join("")}</div>` :
-      `<div class="card"><h3>Nothing found</h3>${store.inContainer
-        ? `<p>The panel is running inside Docker, which can't see your Wi-Fi on a Mac or Windows PC, so search can't find devices.
-             Add the device by IP address instead, or run the panel without Docker (make run).</p>`
-        : `<p>Make sure the devices are set up in their own app first and are on the same Wi-Fi as this panel.
-             If they still don't show up, add them by IP address.</p>`}</div>`) : "";
+      `<div class="card"><h3>Nothing found</h3><p>Make sure the devices are set up in their own app first and are on the same Wi-Fi as this panel.
+             If they still don't show up, add them by IP address.</p></div>`) : "";
 
     page(a.name, `
-      ${store.demo ? `<div class="note">You're in demo mode, with pretend devices. To add your real ${esc(a.name)},
-        run the panel without --demo (make run) and open it at port 8080.</div>` : ""}
+      ${store.demo ? `<div class="note">Internal test fixtures, not household data. Use the existing native panel on port 8080 for real devices.</div>` : ""}
       ${accountCard}
       ${needsAccount ? "" : `
       <div class="card">
@@ -293,16 +301,22 @@ const VIEWS = {
     form.querySelector(".chip")?.setAttribute("aria-pressed", "true");
   },
 
-  rooms() {
+  rooms(focus) {
+    const editing = isEditingRooms();
     page("Rooms", `
-      <div class="list">${store.rooms.map((r, i) => `
-        <div class="row"><span class="grow"><span class="title">${esc(r)}</span></span>
-          ${i > 0 ? `<button class="btn small" data-room-up="${i}" aria-label="Move ${esc(r)} up">${icon("up")}</button>` : ""}
-          <button class="btn small danger" data-room-del="${i}" aria-label="Delete ${esc(r)}">${icon("trash")}</button></div>`).join("")}</div>
-      <form class="card" data-room-add>
-        <label class="field"><span>New room</span><input name="room" maxlength="24" placeholder="Office" required></label>
-        <button class="btn primary" type="submit">Add room</button>
-      </form>`);
+      <div class="room-settings-tools">${roomEditButton()}</div>
+      ${editing ? roomNameHelp() + '<p class="group-label">Drag the handles to reorder rooms. With a keyboard, focus a handle and use the arrow keys.</p>' : ""}
+      <div class="list" data-room-sort="vertical">${(editing ? editableRoomNames(store.rooms) : store.rooms).map((r) => `
+        <div class="row room-settings-row" data-sort-room="${esc(r)}">${editing ? roomNameField(r) : `<span class="grow"><span class="title">${esc(r)}</span></span>`}
+          ${editing ? `<button class="btn small" data-room-layout="${esc(r)}" aria-label="Edit ${esc(r)} tiles">Edit tiles</button>
+          ${roomGrip(r)}
+          <button class="btn small danger" data-room-del="${store.rooms.indexOf(r)}" aria-label="Delete ${esc(r)}" ${store.rooms.includes(r) ? "" : "disabled"}>${icon("trash")}</button>` : ""}</div>`).join("")}</div>
+      ${editing ? roomAddForm() : ""}`);
+    if (focus === "add" && editing) {
+      const input = $("#settings [data-room-add] input");
+      input.focus();
+      input.scrollIntoView({ block: "center" });
+    }
   },
 
   automations() {
@@ -406,7 +420,10 @@ const VIEWS = {
           <small>Shown on the resting clock. Type it, or let "Use my location" fill it in.</small></label>
         <label class="check"><input type="checkbox" name="weather_enabled" ${s.weather_enabled || forWeather ? "checked" : ""}>
           <span>Show the weather on the resting clock</span></label>
-        <p><small>The panel asks Open-Meteo (free, no account) for the weather about every 20 minutes, sending your location rounded to about 1 km. It's the panel's only internet call that isn't for a device. Without internet the clock just leaves the weather out.</small></p>
+        <p><small>Weather data by <a class="link" href="https://open-meteo.com/" target="_blank" rel="noopener">Open-Meteo</a>
+          (<a class="link" href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>).
+          The panel asks about every 20 minutes, sending your location rounded to about 1 km. No account is needed.
+          Without internet it uses a recent cached reading or shows weather as unavailable.</small></p>
         <label class="field"><span>Temperature</span><select name="temperature_unit">
           ${[["F", "°F (Fahrenheit)"], ["C", "°C (Celsius)"]].map(([v, l]) => `<option value="${v}" ${(s.temperature_unit || "F") === v ? "selected" : ""}>${l}</option>`).join("")}
         </select></label>
@@ -430,6 +447,83 @@ const VIEWS = {
       const fmt = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
       if (sun.sunrise && $("#sun-today")) $("#sun-today").textContent = `Today: sunrise ${fmt(sun.sunrise)}, sunset ${fmt(sun.sunset)}.`;
     } catch { /* location not set */ }
+  },
+
+  async "photo-library"() {
+    const epoch = ++photoSettingsEpoch;
+    page("Photo library", '<div class="card"><p role="status">Loading connection settings...</p></div>');
+    let config, albums = [], error = "";
+    try {
+      config = await api.photoLibrary();
+      if (config.key_set) {
+        try { albums = (await api.photoAlbums()).albums; }
+        catch (e) { error = e.message; }
+      }
+    } catch (e) {
+      if (stack.at(-1)?.view === "photo-library" && epoch === photoSettingsEpoch) {
+        page("Photo library", `<div class="card"><p class="note warn">${esc(e.message)}</p>
+          <button class="btn" data-go="photo-library">Try again</button></div>`);
+      }
+      return;
+    }
+    if (stack.at(-1)?.view !== "photo-library" || epoch !== photoSettingsEpoch) return;
+    page("Photo library", `<form class="card" data-photo-connect>
+      <h3>${esc(config.name)}</h3>
+      <p>Use a read-only API key, not your account password. Required permissions:
+        <b>${config.permissions.map(esc).join(", ")}</b>. Supports server versions 2.x and 3.x.</p>
+      <label class="field"><span>Server URL</span><input name="url" type="url" required
+        placeholder="http://laptop.local:2283" value="${esc(config.url)}" autocomplete="off"></label>
+      <label class="field"><span>Read-only API key</span><input name="key" type="password" autocomplete="new-password"
+        ${config.key_set ? 'placeholder="Saved; leave blank to keep"' : "required"}></label>
+      <p class="group-label">${config.key_set ? "A key is saved on the panel." : "Not connected."}
+        Use a trusted private network or HTTPS. The key is never sent to photo tiles.</p>
+      <p class="note warn" data-photo-error hidden role="alert"></p>
+      <div class="btn-row"><button type="submit" class="btn primary">Connect and verify</button>
+        ${config.key_set ? '<button type="button" class="btn danger" data-photo-disconnect>Disconnect</button>' : ""}</div>
+    </form>
+    ${config.key_set ? `<form class="card" data-photo-source><h3>Display source</h3>
+      <p>Only selected albums will be used. Photos will be visible to the permitted panel profiles below.</p>
+      ${error ? `<p class="note warn" role="alert">${esc(error)}</p>` : ""}
+      <fieldset><legend>Albums</legend>${albums.length ? albums.map(album => `<label class="check">
+        <input type="checkbox" name="album" value="${esc(album.id)}" ${config.albums.includes(album.id) ? "checked" : ""}>
+        <span>${esc(album.name)}</span></label>`).join("") : "<p>No albums available. Create an album on the server, then verify the connection again.</p>"}</fieldset>
+      <fieldset><legend>Permitted profiles</legend>${store.profiles.map(profile => `<label class="check">
+        <input type="checkbox" name="profile" value="${esc(profile.id)}" ${config.profiles.includes(profile.id) ? "checked" : ""}>
+        <span>${esc(profile.name)}</span></label>`).join("")}</fieldset>
+      <label class="field"><span>Seconds between photos</span><input type="number" name="seconds" min="30" max="300" step="1" value="${config.seconds}" required></label>
+      <p class="note warn" data-photo-error hidden role="alert"></p>
+      <button class="btn primary" type="submit" ${!albums.length ? "disabled" : ""}>Save photo source</button>
+      <p class="group-label">Then open Home, choose Edit, Add, Photos. Existing uploaded photo-frame pictures are unchanged.</p>
+    </form>` : ""}`);
+    const bind = (selector, action) => {
+      const form = $(selector);
+      if (!form) return;
+      form.addEventListener("submit", async e => {
+        e.preventDefault(); e.stopPropagation();
+        const values = new FormData(form), controls = [...form.querySelectorAll("button,input")];
+        controls.forEach(control => { control.disabled = true; });
+        const error = form.querySelector("[data-photo-error]"); error.hidden = true;
+        try {
+          await action(values); await reload();
+          if (stack.at(-1)?.view === "photo-library" && epoch === photoSettingsEpoch) VIEWS["photo-library"]();
+        } catch (e) {
+          error.textContent = e.message; error.hidden = false;
+          controls.forEach(control => { control.disabled = false; });
+        }
+      });
+    };
+    bind("[data-photo-connect]", values => api.connectPhotoLibrary({ url: String(values.get("url")).trim(), key: values.get("key") }));
+    bind("[data-photo-source]", values => api.selectPhotoAlbums({
+      albums: values.getAll("album"), profiles: values.getAll("profile"), seconds: Number(values.get("seconds")),
+    }));
+    $("[data-photo-disconnect]")?.addEventListener("click", async e => {
+      e.stopPropagation();
+      e.currentTarget.disabled = true;
+      try {
+        await api.disconnectPhotoLibrary(); await reload();
+        if (stack.at(-1)?.view === "photo-library") VIEWS["photo-library"]();
+      } catch (error) { toast(error.message, true); e.target.disabled = false; }
+    });
   },
 
   async photos() {
@@ -473,6 +567,14 @@ const VIEWS = {
     const opts = [[0, "Never"], [30, "30 seconds"], [60, "1 minute"], [90, "90 seconds"], [180, "3 minutes"], [600, "10 minutes"]];
     page("Display and clock", `
       <form class="card" data-display>
+        <h3>Text</h3>
+        <label class="field"><span>Font size <b id="font-size-value">${FONT_SIZE_NAMES[s.font_size || "medium"]}</b></span>
+          <input class="glass-range font-size-range" type="range" name="font_size" min="0" max="2" step="1"
+            value="${Math.max(0, FONT_SIZES.indexOf(s.font_size || "medium"))}" aria-valuetext="${FONT_SIZE_NAMES[s.font_size || "medium"]}"
+            aria-describedby="font-size-help">
+        </label>
+        <div class="font-size-labels" aria-hidden="true"><span>Small</span><span>Medium</span><span>Large</span></div>
+        <p id="font-size-help">Manrope is stored on the panel and works offline. Preview the size here, then Save to apply it to all profiles and screens.</p>
         <label class="field"><span>Show the resting clock after</span><select name="dim_after_seconds">
           ${opts.map(([v, l]) => `<option value="${v}" ${Number(s.dim_after_seconds) === v ? "selected" : ""}>${l}</option>`).join("")}
         </select><small>The screen goes dark with a dim clock so it doesn't light up the room. Touch to wake.</small></label>
@@ -706,6 +808,18 @@ async function useMyLocation(btn) {
 
 root.addEventListener("click", async (e) => {
   const t = (sel) => e.target.closest(sel);
+  if (t("[data-room-add-cancel]")) {
+    const form = t("[data-room-add]"); form.reset(); syncRoomSorters(); form.querySelector("input").focus(); return;
+  }
+  if (t("[data-room-add]")) return;
+  if (t("[data-edit-rooms]")) {
+    if (await toggleRoomEditing("#settings")) $("#settings [data-edit-rooms]")?.focus();
+    return;
+  }
+  if (t("[data-cancel-room-names], [data-room-name], [data-room-grip]")) return;
+  if (!canLeaveRoomNames()) return;
+  const roomLayout = t("[data-room-layout]");
+  if (roomLayout) return document.dispatchEvent(new CustomEvent("hp:edit-room", { detail: roomLayout.dataset.roomLayout }));
   if (t("[data-back]")) return back();
   if (t("[data-close]")) return close();
   const goEl = t("[data-go]");
@@ -809,12 +923,7 @@ root.addEventListener("click", async (e) => {
     if (t("[data-del-scene]")) { await api.deleteScene(t("[data-del-scene]").dataset.delScene); await reload(); return render(); }
     if (t("[data-room-del]")) {
       const rooms = store.rooms.filter((_, i) => i !== +t("[data-room-del]").dataset.roomDel);
-      await api.setRooms(rooms); await reload(); return render();
-    }
-    if (t("[data-room-up]")) {
-      const i = +t("[data-room-up]").dataset.roomUp; const rooms = [...store.rooms];
-      [rooms[i - 1], rooms[i]] = [rooms[i], rooms[i - 1]];
-      await api.setRooms(rooms); await reload(); return render();
+      await saveRooms(rooms); return render();
     }
     if (t("[data-logs]") !== null && t("[data-logs]")) return loadLogs(t("[data-logs]").dataset.logs);
   } catch (err) {
@@ -872,7 +981,9 @@ root.addEventListener("submit", async (e) => {
       toast(`Watching ${v.name.trim()}'s phone`); await reload(); return render();
     }
     if (form.matches("[data-room-add]")) {
-      await api.setRooms([...store.rooms, formValues(form).room.trim()]); await reload(); return render();
+      if (!canLeaveRoomNames(true)) return;
+      const room = await addRoom(formValues(form).room);
+      toast(`${room} added`); return render();
     }
     if (form.matches("[data-frame-settings]")) {
       const fd = new FormData(form);
@@ -884,6 +995,7 @@ root.addEventListener("submit", async (e) => {
     if (form.matches("[data-display]")) {
       const v = formValues(form);
       await api.saveSettings({ dim_after_seconds: Number(v.dim_after_seconds), clock_24h: !!v.clock_24h,
+                               font_size: FONT_SIZES[Number(v.font_size)],
                                glass_effect: !!v.glass_effect, background: v.background, clock_face: v.clock_face,
                                glass_transparency: Number(v.glass_transparency),
                                ...(v.wallpaper ? { wallpaper: v.wallpaper } : {}),
@@ -900,6 +1012,12 @@ root.addEventListener("submit", async (e) => {
 root.addEventListener("input", (e) => {
   const el = e.target;
   if (!el.closest("[data-display]")) return;
+  if (el.name === "font_size") {
+    const size = FONT_SIZES[Number(el.value)];
+    previewTypography(size);
+    el.setAttribute("aria-valuetext", FONT_SIZE_NAMES[size]);
+    $("#font-size-value").textContent = FONT_SIZE_NAMES[size];
+  }
   if (el.name === "glass_transparency") {
     applyTransparency(el.value);
     const label = $("#glass-val");

@@ -13,7 +13,7 @@ web/
 ├── clockfaces.css  resting clock faces and the face picker previews
 ├── voice.css       the voice sheet: big mic with a level ring, chat bubbles, typed box
 ├── controls.css    device sheets: light pill and color wheel, TV remote, robot vacuum
-├── auth.css        sign-in screens (picker, PIN pad, email, setup), avatars, the profile menu
+├── auth.css        profile picker, optional password form, avatars, the profile menu
 └── js/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
     ├── store.js    client state, optimistic commands, change notifications
@@ -21,21 +21,29 @@ web/
     ├── util.js     escaping, icons, colors/glow, status text, toasts, storage
     ├── glass.js    glass transparency → CSS variable
     ├── app.js      the shell: room rail / dock / tabs, Rooms view, live updates, idle clock
-    ├── auth.js     sign-in: profile picker, PIN pad, email + password, first-run setup, the
-    │               profile button (switch / sign out) and the wall panel's idle lock
-    ├── profiles.js Settings → Profiles and sign-in (admins) and Settings → Your profile
+    ├── auth.js     one-tap profiles, optional password sign-in, switch / sign out
+    ├── profiles.js Settings → Profiles (admins) and Settings → Your profile
+    ├── grid.js     shared responsive positions, collision checks, drag/resize and arrow keys
+    ├── room-layout.js per-profile room tile layouts and their editor
+    ├── room-sort.js three-line room grips, touch sorting, keyboard announcements and persistence
     ├── home.js     the Home page: widgets (clock, other places' clocks, weather, scenes, rooms)
     │               and edit mode (hold to move, drag a corner to resize, hide, Done)
-    ├── tiles.js    device tiles: tap = on/off, long-press or "…" = controls (+ haptics)
+    ├── tiles.js    open-first device tiles, explicit quick actions and stable in-place updates
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
     ├── sky.js      weather from the server → html[data-sky] / [data-period] for the Sky background
+    ├── weather-effects.js shared weather scenes and tile-only animation visibility
+    ├── typography.js shared Small/Medium/Large display preference and cancelable preview
     ├── sheet.js    bottom sheet: light controls and the TV remote
     ├── voice.js    the mic: speech to text in the browser (or a typed box), reply, choices, confirm
     ├── remote.js   TV and speaker remote: D-pad / touchpad / number pad, rockers, apps, pointer
+    ├── speaker.js  opaque simple-speaker controls: labeled power/mute, relative volume and compact selectors
+    ├── purifier.js generic purifier modes/speeds and reported air/filter readings
+    ├── device-controls.js shared headings/power states and safe release-to-apply range gestures
     ├── vacuum.js   robot vacuum: map, status, main button, rooms, Options, Maintenance
     ├── effects.js  light effects in the light sheet: searchable scenes (Scenes / DIY / Snapshots),
     │               music mode + sensitivity, strip parts (tap parts, then a color), toggles
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
+    ├── photo-tile.js private album tile: decoded crossfade, visibility lifecycle and object-URL cleanup
     ├── clockfaces.js  resting clock faces (digital, analog, words, date, night) + burn-in drift
     ├── locate.js   "Use my location": device location, else approximate from the server
     └── settings.js settings pages: add devices, edit, rooms, scenes, display, diagnostics
@@ -48,6 +56,16 @@ web/
   slow drifting clouds, rain, snow or stars. Weather is opt-in (Settings → Location and
   presence) and comes from the panel's own server; without it the sky follows the clock.
   Motion is transform-only and stops for "reduce motion".
+- **Weather tile.** Soft sun rays or a moon/stars, clouds, rain, snow, fog and a gentle
+  storm glow fill the tile behind text drawn directly in the scene, independently of the
+  chosen page background. Effects clip to the rounded tile at every size and
+  never intercept touches. Scene-aware text colors and restrained shadows keep
+  labels readable without caption panels, pills or a scrim. They pause offscreen, in background tabs and during
+  editing; reduced motion uses a still scene. Unconfigured, loading and unavailable
+  weather have explicit messages and no invented scene; unavailable weather has Retry.
+  Night clouds use defined blue silhouettes and a 28-second continuous drift rather
+  than barely visible white haze. Night precipitation stays within the same readable
+  palette; pixel-level checks cover visible motion and text contrast across phases.
 - **Glass over a scene.** Or a static background (`.backdrop` in `index.html`:
   gradients plus soft SVG shapes; Ocean, Aurora or Night via `html[data-bg]`) sits
   behind frosted-glass tiles, sheets and buttons. Settings → Display has the
@@ -59,6 +77,8 @@ web/
   than fading the whole tile. Labels and nested buttons use the tile's text colors,
   independently of the background-aware page title. Wallpaper rails also keep a
   minimum backing, and headings over the picture get a soft shadow.
+  Settings cards/lists and all device controls use opaque surfaces so dashboard
+  content cannot overlap their text; background previews remain visible around settings cards.
 - **Lit devices.** A device that is on gives off light: lamps glow in their real
   color, plugs in jade, TVs in indigo, and the background's top glow takes on the
   color of the lights that are on (`--room-glow`, `--warmth`).
@@ -70,20 +90,72 @@ web/
   refuses them anyway). A 401 from any call fires `hp:signin` and the picker comes back.
 - **Two pages.** **Home**: a grid of widgets, each profile's own, the same on every screen
   that profile uses (saved with `PUT /profiles/me/layout`, checked by `app/core/layout.py`). Long-press it (or the
-  pencil) to edit: widgets wiggle; hold and drag to move, drag a corner (or tap it) for
+  pencil) to edit: hold and drag into an empty grid cell, drag a corner (or tap it) for
   Small / Wide / Large, "…" for more (and the time zone of a clock), "−" to hide, **Add**
   to bring widgets back or add a clock; Cancel or Done. No devices on Home: the Rooms
   widget opens each room's page. **Rooms**: device tiles, All rooms (grouped by room) or
   one room at a time, titled with the room's name and with its own **Turn off**.
+  **Edit tiles** in the room heading or Settings → Rooms opens the same placement
+  and sizing controls. Arrow keys or the options menu move a tile one cell.
+  Empty space stays empty; occupied or out-of-bounds placements are rejected.
+  Room layouts save with `PUT /profiles/me/rooms/layout`, independently per profile.
 - **Navigation.** iPad and the landscape panel (≥ 768 px): a rail down the left with
   Home, All rooms, then each room in the order set in Settings → Rooms (vertical tabs),
   and "Other" only when a device has no room. Phones and the portrait panel: a floating
-  dock (Home, Rooms, Settings, +); Rooms shows the same list as tabs over the tiles.
+  dock (Home, Rooms, Settings, +); Rooms uses a native room picker. The same
+  selected room and profile remain active across orientation changes; no duplicate
+  tab strip is shown alongside the picker.
   Only rooms with devices the signed-in profile can see are listed. The chosen room is
-  remembered on each screen.
-- **Tap = do the obvious thing** (toggle). Long-press or "…" = full controls (with a
-  short vibration where the browser supports it). TVs, and devices with no on/off like
-  a robot vacuum, open their controls on tap so they're never switched by accident.
+  remembered on each screen. Home has no repeated visible brand/page headings:
+  its heading remains available to screen readers, with the status count and
+  actions visible. Room page titles remain visible.
+- **Room management.** Rooms starts in normal navigation mode. Admins choose **Edit**
+  beside Rooms to edit room names directly, add rooms and use three-line reorder grips.
+  Enter saves a name; **Done** saves pending names, hides the editing controls and
+  disables sorting. Invalid names stay editable with an inline error. Escape cancels
+  one name; Cancel name edits discards all unsaved names. Save or cancel names before
+  dragging or navigating away. Live updates preserve text and selection while typing.
+  The same mode works in portrait
+  mobile room list and Settings → Rooms; focus a grip and use arrow keys for keyboard ordering.
+  Add room stays inline on both navigation layouts. Names, new-room drafts and
+  caret/selection survive snapshots and viewport changes; finish or cancel an
+  unfinished entry before leaving. Normal navigation never enables dragging.
+  Handles are at least 48 px and leave normal scrolling/navigation outside them alone. Order is shared
+  across profiles and all room navigation; Home/All rooms/Other are not reorderable.
+  Empty rooms remain visible to admins with an Add device action. Members receive
+  only rooms containing their shared devices, including in the API. Stale room-list
+  saves are rejected rather than removing another screen's new room.
+  Renaming keeps room order, device membership and every profile's saved tile layout.
+  A conflicting existing layout is never silently overwritten.
+
+Room dragging reuses [SortableJS 1.15.7](https://github.com/SortableJS/Sortable/tree/1.15.7),
+served locally from `vendor/sortablejs/Sortable.min.js` (45,478 bytes; no CDN,
+framework or build step). Its unmodified MIT license and copyright notice are
+included in `vendor/sortablejs/LICENSE`. The app retains its own room permissions,
+keyboard behavior and guarded persistence; the library only handles dragging.
+- **Every tile opens controls.** Mouse/touch activation of the body or name, and
+  Enter/Space on its native Open controls button, never issue a device command.
+  The distinct power/cleaning button and supported volume buttons are explicit
+  quick actions; they do not also open the panel. Unknown/offline actions are
+  disabled, pending commands are visible, and failures show the standard error.
+  Long-press still opens controls; layout Edit hides/disables quick actions.
+- **Device controls.** Opaque, theme-aware panels have a named status header, a
+  reachable Close button and labeled Power/Mute actions where supported. TV
+  navigation/volume stay primary; apps, inputs and extra keys are grouped.
+  Lights keep distinct brightness/color/white controls, with scenes, music sync,
+  strip segments and options in expandable sections. Vacuum status and the
+  primary cleaning action come before its map; room selection, cleaning options,
+  dock actions and maintenance expand separately. Expanded sections and keyboard
+  focus survive live updates, and reset when another device opens.
+  Brightness, white-temperature and numeric range controls apply on release;
+  tapping a slider track, canceling a drag or closing the panel does not send a
+  command. Color-wheel taps and named presets remain explicit choices. Offline
+  or unpaired panels show recovery actions instead of unusable device controls.
+  Unchanged snapshots retain Home widgets and device-panel nodes rather than
+  restarting their animations. Gesture cancellation explicitly restores reported
+  values. Weather effects pause behind open settings/control panels; saved glass
+  and backdrop choices remain unchanged. Grid editing shows a bounded drop target,
+  rejects occupied space and settles with a short reduced-motion-aware transition.
 - **Icons.** Each device gets an icon from its name ("Floor lamp", "Kettle plug") or
   kind, or one picked in Settings → device → Icon.
 - **iPhone and iPad.** `viewport-fit=cover` with `env(safe-area-inset-*)` padding,
@@ -93,18 +165,37 @@ web/
   The dock keeps a safe edge inset, long room names wrap, and short-screen rails
   scroll without shrinking their touch targets.
 - **Animations** are short (150–300 ms) and only move or fade: tile press and "pop" when
-  something turns on, tab and page switches, the sheet sliding in and out, edit-mode
-  wiggle.
-- **Room tabs.** A sticky bar with "All", one tab per room and "Other" (devices
-  without a room); the number on a tab is how many things are on. Swipe the grid
-  sideways to change tab; the chosen tab is remembered. Each room has a heading with
+  something turns on, tab and page switches, and the sheet sliding in and out.
+- **Room selection.** The sidebar and mobile picker use "All rooms", named rooms
+  and "Other" (devices without a room). Swipe the grid sideways to change room;
+  the chosen room is remembered. Each room has a heading with
   what's on and a **Turn off** button for that room (the header's **All off** is
   always everything). "Other" nudges you to give its devices a room.
-- **Portrait first** (Touch Display 2 is 720×1280): device tiles in 2 columns on a
-  phone, 3 in portrait, 4–5 in landscape (they size to their column, not the window).
-  Home widgets sit on a square grid of 2, 4 or 6 columns, stepping up only when
-  their content area reaches 600 or 960 px (after the sidebar and padding).
-- Font: IBM Plex Sans (installed on the Pi by install.sh), falling back to Inter / system fonts.
+- **Portrait first** (Touch Display 2 is 720×1280): Home and room tiles use 2, 4 or
+  6 columns, stepping up when the content area reaches 600 or 960 px (after the
+  sidebar and padding). `positions` keeps separate coordinates and sizes per
+  column count. Unsaved sizes derive a non-overlapping layout without rewriting
+  saved positions. Room cells are at least 160 px tall for readable device labels.
+- **Typography.** Manrope is bundled locally (one unmodified variable font,
+  weight 200–800, 164,700 bytes) with Noto Sans/system fallbacks for other scripts
+  and missing-font recovery. No font CDN or system-wide font installation is
+  required. Display and clock has a three-position **Small / Medium / Large**
+  slider; Medium is the default. Changes preview immediately, Save persists the
+  shared panel setting for all profiles/screens, and leaving without saving restores
+  the saved size. Shared `--text-scale` and bounded `--readout-scale` tokens scale
+  existing typography without zooming the UI or reducing touch targets.
+- **Photos tile.** Add Photos from the Home editor after an admin configures
+  Settings → Photo library. Only explicitly selected albums and profiles are used.
+  One bounded stream supplies decoded images to the screen's tiles, without
+  replacing the current image while the next loads or fading to the same image.
+  Requests/timers pause offscreen, behind panels/idle screens, and during editing.
+  Profile/source changes, removal and errors clear private images/object URLs;
+  reduced motion disables crossfade. Existing local photo-frame uploads are untouched.
+
+Manrope is by The Manrope Project Authors, licensed under SIL OFL 1.1.
+The [source font and license](https://github.com/google/fonts/tree/b31870aff700ab7a1d74fa0c6887d95beb9e0037/ofl/manrope)
+are pinned to that revision; the license is included in `fonts/OFL.txt`.
+The font file SHA-256 is `3ae11c49db0455a3cc33e37d380f20fdb8c7f8b41dc07625c177e3d87a9d6ae6`.
 
 Color tokens (`app.css`): `--night` page, `--dusk` surfaces, `--slate` controls,
 `--paper` text, `--haze` secondary text, `--lamp` / `--jade` / `--indigo` "on"
@@ -114,34 +205,46 @@ colors, `--ember` warnings.
 
 `store.js` holds state and calls `emit()` on changes; `app.js` listens and
 re-renders only what changed (a single tile for device updates). User actions go
-through `store.command()`, which updates the tile instantly, calls the API, and
-reverts with an error toast if it fails. Live updates from other screens and
+through `store.command()`, with pending feedback, API reconciliation and an error
+toast if it fails. Late command results cannot restore a previous profile's hidden
+device. Live updates from other screens and
 phones arrive over Server-Sent Events. Navigation and Home room lists keep their
 DOM nodes when their structure is unchanged; count badges update in place, preserving
-focus and scroll. Updates to devices in another room don't rebuild the visible grid.
+focus and scroll. Device tiles patch attributes/text and retain action nodes;
+stable per-device SVG IDs avoid defeating markup caches. Unchanged room structures
+retain their tiles even through full snapshots. Active presses keep their intended
+action until click delivery completes.
 
 ## Device sheets
 
-Tap a tile's arrow (or long-press) for full controls. A sheet shows only what the
+Tap any tile's body/name (or long-press) for controls. A sheet shows only what the
 device can do (its `caps`):
 
-- *Lights*: a tall brightness pill (tap = on/off, drag = dim, relative like Apple Home),
-  a color wheel (the rim snaps to pure colors), a warm-to-cool slider and a few presets.
-  Dragging previews live, at most one command every 300 ms, and the final value always wins.
+- *Lights*: explicit power and a relative brightness pill are primary.
+  Color/white controls and presets expand separately, only when supported.
+  Dragging previews locally and applies on release; track taps/canceled gestures
+  send nothing. A no-op gesture does not rebuild the panel.
   Lights that list effects add Scenes (search box, grouped Scenes / DIY / Snapshots, the
   playing one highlighted, Update list), Music (mode chips and a sensitivity slider), Strip
   parts (tap parts, then a color) and Options toggles (`effects.js`).
-- *TV remote*: power, the TV's name with a "connected" dot, mute; a round D-pad with Menu,
-  Input, Exit and List around it; a switch between D-pad, touchpad (TVs with `pointer`)
+- *TV remote*: labeled power/mute, device name/status and navigation; a switch
+  between buttons, touchpad (TVs with `pointer`)
   and number pad; volume and channel rockers (hold to repeat), Home, Play/Pause, Back; and
-  swipeable pages of apps then inputs. Fits a 393×852 phone without scrolling; two columns
-  on big landscape screens. The touchpad sends pointer moves batched (one request in
+  expandable apps/inputs and extra keys. Secondary controls scroll on short screens;
+  the close control remains reachable. The touchpad sends pointer moves batched (one request in
   flight, ~30 ms apart): drag to move, tap to click, two fingers to scroll. On phones,
   **Aim** moves the pointer by tilting the phone (iOS asks for motion access first).
-- *Speakers and sound bars* use the same sheet without remote keys: power, name and mute,
-  a wide volume bar, then sound mode and input chips.
-- *Robot vacuum*: map, status and battery, one main button (start, pause, keep cleaning,
-  or clean the picked rooms), rooms as chips, Options (suction, mode, station jobs) and
+- *Simple speakers and sound bars* have an opaque, theme-appropriate control panel
+  independent of dashboard glass transparency. The header has status and Close;
+  Power/Mute show both state and action. The volume slider uses relative drag
+  and applies on release (a track tap or canceled gesture sends no command),
+  with keyboard support and native step buttons. Input and Sound mode expand
+  separately as compact selected-value controls; undocumented or format-dependent modes stay under
+  Device-reported modes. Device updates do not replace a control during interaction.
+  Richer speakers and TVs keep their existing transport/app controls.
+- *Robot vacuum*: status and battery, one main button (start, pause, keep cleaning,
+  or clean the picked rooms), with docking/location secondary. Unknown status requests
+  a refresh instead of guessing an action. Rooms, Options (suction, mode, station jobs) and
   parts wear folded behind Maintenance.
 
 ## Adding a control for a new capability

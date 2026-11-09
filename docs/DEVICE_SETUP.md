@@ -1,10 +1,11 @@
 # Setting up each brand
 
-General rule: set each device up in its **own app first** (so it's on your
-Wi-Fi), then add it in HomePanel → Settings → Add a device → pick the brand →
-**Search my Wi-Fi**. The panel and the devices must be on the same network
+General rule: set each device up in its **own app first**, then add it in
+HomePanel → Settings → Add a device → pick the brand → **Search**.
+Local adapters need the panel and devices on the same network
 (many routers put "guest" networks or 5 GHz/2.4 GHz bands on separate subnets —
-that's a common reason devices aren't found).
+that's a common reason local devices aren't found). Cloud-backed accounts such
+as Ecovacs and VeSync need internet/account access, not LAN proximity to the panel.
 
 To look for everything at once, tap **Search all brands** at the top of
 Add a device. It searches every brand in one go and lists what it found with
@@ -14,7 +15,61 @@ the list says which ones, and tapping one takes you to its setup.
 
 Typing keys is easiest from a phone or laptop: open `http://homepanel.local:8080`.
 
+## Immich photo library
+
+This is a Home **Photos tile**, separate from the uploaded full-screen photo frame.
+In **Settings → Photo library**, enter the existing server's base URL and a
+read-only API key with **`album.read`, `asset.read`, `asset.view`**. Do not enter
+an Immich account password. Use a direct URL on a trusted LAN/private network or
+HTTPS; redirects are deliberately refused. No network exposure is configured.
+
+Connect and verify checks server/version and album access. Choose the albums
+intended for the wall display and the profiles allowed to see them, then save.
+Image permission is checked when the tile requests a preview. Photos are visible
+to those permitted panel viewers; never select a private album unintentionally.
+An unprotected one-tap profile is not a security boundary: use optional profile
+passwords and trusted-network access when the selected photos are private.
+Add the tile with **Home → Edit → Add → Photos**, and move/resize it normally.
+Only timeline images from the selected albums are eligible; no entire-library
+shuffle, original downloads, EXIF display or face metadata is requested.
+
+The adapter verifies the Immich 2.x/3.x contract and rejects incompatible versions/
+privacy responses rather than retrying a broad search. It uses the official
+[random search](https://api.immich.app/endpoints/search/searchRandom),
+[album membership](https://api.immich.app/endpoints/albums/getAllAlbums) and
+[preview](https://api.immich.app/endpoints/assets/viewAsset) APIs; no AGPL server
+implementation or additional SDK is copied. The 2.0.0 DTO contract was checked
+alongside current API documentation. The user's own server is not connected
+until its address and scoped key are entered here.
+
 ---
+
+## Levoit Core300S / VeSync
+
+Set up the Core300S in the VeSync app first. In **Settings → Add a device →
+VeSync / Levoit**, save the VeSync email, password and account country. Use the
+password field in the app, never chat. **Verify connection** only signs in and
+lists supported devices; it does not operate them. Then Search and add the
+purifier to a room. No Home Assistant installation is required.
+
+The adapter uses pinned [pyvesync 3.5.0](https://github.com/webdjoe/pyvesync/tree/3.5.0)
+(MIT, Python 3.11+, asynchronous API), with upstream redaction enabled and verbose
+logging disabled. Its verified Core300S model map includes Core300S and
+LAP-C301S-WJP / LAP-C302S-WUSB / LAP-C301S-WAAA / LAP-C302S-WGC. Other models are
+not offered by this focused adapter.
+
+Controls are power, the reported manual speeds, and Manual/Automatic/Sleep modes.
+Selecting a speed enters Manual mode; speed/mode commands turn the purifier on.
+Filter life, PM2.5 and air-quality labels are shown only when supported/reported.
+Unknown readings stay unknown; no extra sensors or filter-reset commands are
+invented. Cloud status polls once a minute. Provider failures receive a
+service-managed cooldown; authentication/rate-limit failures wait five minutes.
+Changing credentials clears the cooldown, but re-saving identical credentials
+does not bypass it.
+
+The account is stored in the panel's private data file, masked in the API and
+absent from public snapshots. Signing in to an actual account remains necessary;
+fake SDK/cloud tests do not establish a connection to a household purifier.
 
 ## Globe Electric and other Tuya / Smart Life devices
 
@@ -129,22 +184,37 @@ Volume shows as +/− buttons (Samsung doesn't report the exact level).
 
 ## LG sound bars
 
-LG sound bars with Wi-Fi (2018 and newer, the ones the LG Sound Bar / ThinQ app
-can control) work over the local network. No account or pairing.
+LG sound bars with Wi-Fi (2018 and newer) work over the local network. No account
+or pairing is needed by HomePanel. Use the LG Soundbar app for the S95TR, not ThinQ.
 
 1. Set the sound bar up on your Wi-Fi with the LG app first.
 2. **Search** finds it (it answers on port 9741). If it doesn't, choose
    **Add by IP address**; the app shows the IP under the sound bar's settings, or
    look it up in your router's device list.
 3. Open it on the panel for volume, mute, inputs (TV / HDMI ARC, HDMI, Bluetooth,
-   Wi-Fi …) and sound modes (AI Sound Pro, Cinema, Music …). Each model lists only
-   what it has. Newer modes the panel doesn't have a name for yet show as
-   "Sound mode 23" and so on.
+   Wi-Fi …) and sound modes (AI Sound Pro, Cinema, Music …). Choices come from
+   the device's reported lists. Undocumented IDs such as 23–26 stay under
+   **Device-reported modes**, without guessed preset names. Format-dependent
+   entries such as Dolby Atmos are also advanced, not promised selectable EQ presets.
 
 It works while the TV is off, and alongside the TV: volume changed with the TV
 remote shows up on the panel within about 10 seconds. The power button puts the
 sound bar in standby and wakes it, as long as its network stays on in standby
 (the default after it has been set up with the app).
+
+**Spotify on S95TR:** start a track in the Spotify mobile app, tap its device
+icon, and select the soundbar. Use the same Wi-Fi for the first connection; on
+iPhone, allow Spotify's Local Network permission if the speaker is missing.
+The panel's Music sound mode changes EQ, not playback. No Spotify account/token
+is stored by HomePanel.
+
+Sources: [LG S95TR specifications](https://www.lg.com/au/speakers/soundbars/s95tr/),
+[Spotify Connect help](https://support.spotify.com/us/article/spotify-connect/).
+Protocol IDs are checked against
+[Temescal's tables at 7460c04](https://github.com/mjg59/python-temescal/blob/7460c04ff6bec1be58462399bdb9b72ec0a212c3/temescal/__init__.py)
+and [Home Assistant's equivalent-input handling](https://github.com/home-assistant/core/blob/dev/homeassistant/components/lg_soundbar/media_player.py).
+These sources do not name IDs 23–26; the panel does not infer a mapping from a
+manual's list order.
 
 ## Home Assistant
 

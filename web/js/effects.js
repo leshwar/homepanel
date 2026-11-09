@@ -5,6 +5,7 @@
 
 import { command } from "./store.js";
 import { esc, toast } from "./util.js";
+import { bindRelativeRange } from "./device-controls.js";
 
 const GROUPS = ["Scenes", "DIY", "Snapshots"];
 const SEGMENT_COLORS = [
@@ -41,29 +42,30 @@ export function effectsBody(d) {
         ${showGroups ? `<div class="fx-group-name">${esc(g)}</div>` : ""}
         <div class="chips">${l.map((e) => `<button class="chip" data-effect="${esc(e.id)}" data-name="${esc(e.name.toLowerCase())}"
           aria-pressed="${active?.id === e.id}">${esc(e.name)}</button>`).join("")}</div></div>`).join("");
-    html += `<section class="fx" aria-label="Scenes">
+    html += `<details class="fx control-section" data-control-section="scenes"><summary>Scenes${active ? `: ${esc(active.name)}` : ""}</summary>
       <div class="section-label"><span>Scenes${active ? ` <b>${esc(active.name)}</b>` : ""}</span>
         <button class="link" data-fx-update>Update list</button></div>
       ${all.length > SEARCH_FROM ? `<input class="fx-search" type="search" placeholder="Search ${all.length} scenes"
         aria-label="Search scenes" value="${esc(st.query)}" autocomplete="off" enterkeyhint="search">` : ""}
       ${all.length ? `<div class="fx-list" data-fx-list>${list}<p class="fx-none" hidden>No scenes match.</p></div>`
         : `<p class="fx-none">No scenes yet. Make some in the light's own app, then tap Update list.</p>`}
-    </section>`;
+    </details>`;
   }
 
   if (has(d, "music")) {
     const modes = d.meta?.music_modes || [];
     const on = s.color_mode === "music" && s.music;
     if (on && s.music.sensitivity != null) st.sensitivity = s.music.sensitivity;
-    html += `<section class="fx" aria-label="Music">
+    html += `<details class="fx control-section" data-control-section="music"><summary>Music sync</summary>
       <div class="section-label"><span>Music${on ? ` <b>${esc(modes.find((m) => m.id === s.music.mode)?.name || "")}</b>` : ""}</span></div>
       <div class="chips">${modes.map((m) => `<button class="chip" data-music-mode="${esc(m.id)}"
         aria-pressed="${!!(on && s.music.mode === m.id)}">${esc(m.name)}</button>`).join("")}</div>
+      ${!modes.length ? '<p class="control-help">No music modes have been reported. Refresh the device status.</p>' : ""}
       <label class="fx-range"><span>Sensitivity <b data-sens-val>${st.sensitivity}%</b></span>
         <input type="range" class="glass-range" min="0" max="100" step="5" value="${st.sensitivity}" data-sensitivity
-          aria-label="Music sensitivity"></label>
-      <p class="hint fx-note">The light listens with its own microphone.</p>
-    </section>`;
+          aria-label="Music sensitivity" ${modes.length ? "" : "disabled"}></label>
+      <p class="hint fx-note">The light listens with its own microphone. Drag sensitivity and release to apply.</p>
+    </details>`;
   }
 
   if (has(d, "segments")) {
@@ -74,23 +76,23 @@ export function effectsBody(d) {
       return `<button class="seg-part ${c ? "lit" : ""}" data-seg="${i}" style="${c ? `--sw:${esc(c)}` : ""}"
         aria-pressed="${st.parts.has(i)}" aria-label="Part ${i + 1}${c ? `, ${esc(c)}` : ""}">${i + 1}</button>`;
     }).join("");
-    html += `<section class="fx" aria-label="Strip parts">
-      <div class="section-label"><span>Strip parts <span class="soft">Tap parts, then a color</span></span>
+    html += `<details class="fx control-section" data-control-section="segments"><summary>Strip segments</summary>
+      ${n ? `<div class="section-label"><span>Strip parts <span class="soft">Tap parts, then a color</span></span>
         <button class="link" data-seg-all>${st.parts.size === n && n ? "Clear" : "Select all"}</button></div>
       <div class="seg-strip" role="group" aria-label="Parts of the strip">${parts}</div>
       <div class="presets seg-colors" role="group" aria-label="Color for the chosen parts">
         ${SEGMENT_COLORS.map((c) => `<button class="swatch" data-seg-color="${c.c}" style="--sw:${c.c}" aria-label="${c.name}"></button>`).join("")}
-      </div>
-    </section>`;
+      </div>` : '<p class="control-help">Segment information is not available. Refresh the device status.</p>'}
+    </details>`;
   }
 
   if (has(d, "toggles") && (d.meta?.toggles || []).length) {
     const t = s.toggles || {};
-    html += `<section class="fx" aria-label="Options">
+    html += `<details class="fx control-section" data-control-section="light-options"><summary>More light options</summary>
       <div class="section-label"><span>Options</span></div>
       <div class="chips">${d.meta.toggles.map((x) => `<button class="chip fx-toggle" data-toggle="${esc(x.id)}"
         aria-pressed="${!!t[x.id]}"><i aria-hidden="true"></i>${esc(x.name)}</button>`).join("")}</div>
-    </section>`;
+    </details>`;
   }
   return html ? `<div class="fx-wrap">${html}</div>` : "";
 }
@@ -130,16 +132,21 @@ export function attachEffects(sheet, d, onIdle) {
   const search = sheet.querySelector(".fx-search");
   if (search) {
     search.addEventListener("input", () => { ui.query = search.value; filter(sheet); });
-    search.addEventListener("blur", onIdle);
+    search.addEventListener("blur", () => queueMicrotask(onIdle));
   }
   const range = sheet.querySelector("[data-sensitivity]");
   if (range) {
     const val = sheet.querySelector("[data-sens-val]");
-    range.addEventListener("input", () => { val.textContent = `${range.value}%`; });
-    range.addEventListener("change", () => {
-      ui.sensitivity = +range.value;
-      const s = d.state || {};
-      if (s.color_mode === "music" && s.music) sendMusic(d, s.music.mode);   // only while music is playing
+    bindRelativeRange(range, {
+      value: () => ui.sensitivity, preview: v => { val.textContent = `${v}%`; },
+      commit: async v => {
+        const before = ui.sensitivity;
+        ui.sensitivity = v;
+        const s = d.state || {};
+        if (s.color_mode === "music" && s.music && !await sendMusic(d, s.music.mode)) ui.sensitivity = before;
+        onIdle();
+      },
+      idle: onIdle,
     });
   }
 }

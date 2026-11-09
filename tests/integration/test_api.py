@@ -57,6 +57,41 @@ class ApiTests(unittest.TestCase):
         for d in data["devices"]:
             self.assertNotIn("config", d)
 
+    def test_room_order_and_creation_preserve_assignments_and_reject_stale_writes(self):
+        original = self.call("GET", "/state")[1]
+        rooms = original["rooms"]
+        reordered = [*reversed(rooms), "Empty office"]
+        try:
+            status, result = self.call("PUT", "/rooms", {"rooms": reordered, "expected_rooms": rooms})
+            self.assertEqual((status, result["rooms"]), (200, reordered))
+            state = self.call("GET", "/state")[1]
+            self.assertEqual(state["rooms"], reordered)
+            self.assertEqual({d["id"]: d["room"] for d in state["devices"]},
+                             {d["id"]: d["room"] for d in original["devices"]})
+            self.assertEqual(state["settings"]["home_layout"], original["settings"]["home_layout"])
+            self.assertEqual(self.call("PUT", "/rooms", {"rooms": rooms, "expected_rooms": rooms})[0], 400)
+            self.assertEqual(self.call("PUT", "/rooms", {})[0], 400)
+            self.assertEqual(self.call("GET", "/state")[1]["rooms"], reordered)
+        finally:
+            self.call("PUT", "/rooms", {"rooms": rooms})
+
+    def test_room_rename_preserves_devices_and_layout_and_rejects_stale_requests(self):
+        original = self.call("GET", "/state")[1]
+        rooms = original["rooms"]
+        renamed = ["Study" if r == "Bedroom" else r for r in rooms]
+        try:
+            status, result = self.call("PUT", "/rooms", {
+                "rooms": renamed, "expected_rooms": rooms, "rename": {"from": "Bedroom", "to": "Study"}})
+            self.assertEqual((status, result["rooms"]), (200, renamed))
+            state = self.call("GET", "/state")[1]
+            self.assertEqual({d["id"]: d["room"] for d in state["devices"]},
+                             {d["id"]: "Study" if d["room"] == "Bedroom" else d["room"] for d in original["devices"]})
+            self.assertEqual(state["settings"]["home_layout"], original["settings"]["home_layout"])
+            self.assertEqual(self.call("PUT", "/rooms", {
+                "rooms": rooms, "expected_rooms": rooms, "rename": {"from": "Study", "to": "Bedroom"}})[0], 400)
+        finally:
+            self.call("PUT", "/rooms", {"rooms": rooms, "rename": {"from": "Study", "to": "Bedroom"}})
+
     def test_all_off_for_devices_without_a_room(self):
         self.call("PATCH", "/devices/kt-kettle", {"room": ""})
         try:
@@ -180,10 +215,10 @@ class ApiTests(unittest.TestCase):
         status, h = self.call("GET", "/health")
         self.assertTrue(h["ok"])
         self.assertIn("unsupported", h)
-        if sys.version_info[:2] != (3, 14):        # e.g. CI and Docker: the vacuum brand needs 3.14
+        if sys.version_info[:2] != (3, 14):        # e.g. CI: the vacuum brand needs 3.14
             self.assertIn("Needs Python 3.14", h["unsupported"]["ecovacs"])
             self.assertNotIn("ecovacs", h["unavailable"])        # "not for this Python", not "not installed"
-        self.assertIn("in_container", h)
+        self.assertNotIn("in_container", h)
         self.assertIn("phone_url", h)          # where to open the panel on a phone
         if h["phone_url"]:
             self.assertRegex(h["phone_url"], r"^http://[0-9.]+:\d+$")
@@ -191,6 +226,14 @@ class ApiTests(unittest.TestCase):
         status, logs = self.call("GET", "/logs")
         self.assertEqual(status, 200)
         self.assertIsInstance(logs["logs"], list)
+
+    def test_native_startup_loads_all_supported_brand_libraries(self):
+        status, health = self.call("GET", "/health")
+        self.assertEqual(status, 200)
+        self.assertTrue(health["ok"])
+        self.assertGreater(health["devices"], 0)
+        self.assertEqual(health["unavailable"], {})
+        self.assertNotIn("in_container", self.call("GET", "/state")[1])
 
     def test_energy_and_automations(self):
         status, e = self.call("GET", "/devices/kt-fridge/energy")

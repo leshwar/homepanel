@@ -3,7 +3,7 @@ Photo library for the photo-frame slideshow.
 
 Photos live in data/photos/ on the panel. They get there by uploading from a
 phone or laptop browser (Settings → Photo frame), or by copying files into the
-folder (USB stick, scp, the Docker volume).
+folder (USB stick or scp).
 
 Uploads are made screen-ready when Pillow is installed: rotated upright using the
 camera's orientation tag, shrunk to at most MAX_EDGE pixels on the long side, and

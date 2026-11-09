@@ -35,7 +35,6 @@ export function applySnapshot(s) {
   store.me = s.me || null;
   store.profiles = s.profiles || [];
   store.demo = s.demo;
-  store.inContainer = !!s.in_container;
   if (store.room !== "all" && store.room !== OTHER && !store.rooms.includes(store.room)) store.room = "all";
   emit("all");
 }
@@ -48,7 +47,7 @@ export function upsertDevice(d) {
   if (store.busy.has(d.id)) {           // keep the optimistic value until our own command returns
     const local = store.devices.get(d.id);
     if (local) d.state = { ...d.state, ...pick(local.state, ["on", "brightness", "color", "color_temp", "color_mode", "volume", "muted",
-                                                         "effect", "music", "segments", "toggles"]) };
+                                                         "effect", "music", "segments", "toggles", "fan_mode", "fan_speed"]) };
   }
   store.devices.set(d.id, d);
   emit("device", d.id);
@@ -62,6 +61,7 @@ const inFlight = new Map();   // device id -> commands sent and not answered yet
 export async function command(id, action, value, optimistic = {}) {
   const d = store.devices.get(id);
   if (!d) return;
+  const profile = store.me?.id;
   const before = { ...d.state };
   d.state = { ...d.state, ...optimistic };
   inFlight.set(id, (inFlight.get(id) || 0) + 1);
@@ -72,10 +72,11 @@ export async function command(id, action, value, optimistic = {}) {
   try {
     const updated = await api.command(id, action, value);
     settle();
-    upsertDevice(updated);
+    if (store.me?.id === profile && store.devices.has(id)) upsertDevice(updated);
     return true;
   } catch (e) {
     settle();
+    if (store.me?.id !== profile || !store.devices.has(id)) return false;
     d.state = before;
     emit("device", id);
     toast(e.message, true);
@@ -102,9 +103,49 @@ export const roomOf = (d) => (store.rooms.includes(d.room) ? d.room : OTHER);
 export const devicesIn = (room) =>
   [...store.devices.values()].filter((d) => room === "all" || roomOf(d) === room);
 
-// The groups that get a tab, in display order: rooms that have devices, then "Other".
+// Admins can manage empty rooms; members only see rooms with shared devices.
 export function roomGroups() {
-  const groups = store.rooms.filter((r) => devicesIn(r).length);
+  const groups = store.rooms.filter((r) => store.me?.role === "admin" || devicesIn(r).length);
   if (devicesIn(OTHER).length) groups.push(OTHER);
   return groups;
+}
+
+export async function saveRooms(rooms, expected = [...store.rooms], rename) {
+  if (store.me?.role !== "admin") throw new Error("Only an admin can change rooms.");
+  await api.setRooms(rooms, expected, rename);
+  await reload();
+}
+
+function roomName(name) {
+  const room = String(name || "").trim();
+  if (!room) throw new Error("Give the room a name.");
+  if (room.length > 24) throw new Error("Keep the room name to 24 characters.");
+  if (room === "all") throw new Error('Choose a name other than "all"; that opens All rooms.');
+  return room;
+}
+
+export async function addRoom(name) {
+  const room = roomName(name);
+  if (store.rooms.includes(room)) throw new Error("That room already exists.");
+  await saveRooms([...store.rooms, room]);
+  return room;
+}
+
+export async function renameRoom(old, name) {
+  const room = roomName(name), expected = [...store.rooms], selected = store.room === old;
+  if (!expected.includes(old)) throw new Error("That room is no longer available. Reload and try again.");
+  if (room === old) return room;
+  if (expected.includes(room)) throw new Error("That room already exists.");
+  await saveRooms(expected.map((r) => r === old ? room : r), expected, { from: old, to: room });
+  if (selected) setRoom(room);
+  return room;
+}
+
+export async function moveRoom(room, direction) {
+  const rooms = [...store.rooms], index = rooms.indexOf(room), next = index + direction;
+  if (index < 0 || ![-1, 1].includes(direction) || next < 0 || next >= rooms.length) {
+    throw new Error("That room cannot move further in that direction.");
+  }
+  [rooms[index], rooms[next]] = [rooms[next], rooms[index]];
+  await saveRooms(rooms);
 }

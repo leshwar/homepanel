@@ -1,6 +1,6 @@
 // Settings → Profiles (admins): who can use the panel, how they sign in, which
-// devices each profile sees; and "This screen" (make it the wall panel, lock time).
-// Settings → Your profile (everyone): name, colour, email, PIN and password.
+// devices each profile sees; and "This screen" (make it the wall panel).
+// Settings → Your profile (everyone): name, colour, email and optional password.
 
 import { api } from "./api.js";
 import { store, reload } from "./store.js";
@@ -9,9 +9,8 @@ import { registerViews, page, row, back, rerender, currentView } from "./setting
 import { avatar, currentSession } from "./auth.js";
 
 const COLORS = ["#f2b35b", "#7cc7a5", "#96a6ff", "#ff8a7a", "#e59ad8", "#6fc3df", "#c3d36b", "#b9a1ff"];
-const LOCK_TIMES = [[0, "Never"], [2, "2 minutes"], [5, "5 minutes"], [10, "10 minutes"], [30, "30 minutes"], [60, "1 hour"]];
 
-const signInText = (p) => [p.has_pin && "PIN", p.has_password && "password"].filter(Boolean).join(" and ") || "no sign-in yet";
+const signInText = (p) => p.has_password ? "Password" : "One-tap profile";
 const accessText = (p) => p.role === "admin" ? "Admin, all devices"
   : p.devices === "all" ? "Member, all devices" : `Member, ${p.devices.length} ${p.devices.length === 1 ? "device" : "devices"}`;
 
@@ -20,24 +19,18 @@ const colorChoices = (current) => `<span class="field"><span>Colour</span></span
     <label class="color-choice"><input type="radio" name="color" value="${c}" ${c === current ? "checked" : ""}>
       <span style="--av:${c}" aria-label="${c}"></span></label>`).join("")}</div>`;
 
-// PIN and password fields: blank keeps what's saved.
+// Optional password: blank keeps what's saved.
 function secretFields(p) {
   return `
-    <label class="field"><span>PIN (4 to 6 digits, for the wall panel)</span>
-      <input name="pin" type="password" inputmode="numeric" pattern="[0-9]{4,6}" maxlength="6" autocomplete="off"
-        placeholder="${p?.has_pin ? "Saved. Leave blank to keep it." : "No PIN"}"></label>
-    ${p?.has_pin ? `<label class="check"><input type="checkbox" name="clear_pin"><span>Remove the PIN</span></label>` : ""}
     <label class="field"><span>Password (at least 8 characters, for phones and laptops)</span>
       <input name="password" type="password" autocomplete="new-password" minlength="8"
         placeholder="${p?.has_password ? "Saved. Leave blank to keep it." : "No password"}"></label>
     ${p?.has_password ? `<label class="check"><input type="checkbox" name="clear_password"><span>Remove the password</span></label>` : ""}
-    <small class="field"><small>A password needs an email address: you sign in with both.</small></small>`;
+    <small class="field"><small>A password needs an email address. Without a password, anyone who can open the panel can choose this profile.</small></small>`;
 }
 
 function secretValues(fd) {
   const out = {};
-  if (fd.get("pin")) out.pin = fd.get("pin");
-  else if (fd.has("clear_pin")) out.pin = null;
   if (fd.get("password")) out.password = fd.get("password");
   else if (fd.has("clear_password")) out.password = null;
   return out;
@@ -64,20 +57,17 @@ function devicePicker(p) {
 registerViews({
   async profiles() {
     const s = currentSession() || {};
-    const lockAfter = Number(store.settings.lock_after_minutes ?? 10);
-    page("Profiles and sign-in", `
+    page("Profiles", `
       <div class="list" data-profile-list>${store.profiles.map((p) =>
         row(`data-go=profile data-arg="${esc(p.id)}"`, avatar(p), p.name + (p.id === store.me?.id ? " (you)" : ""),
             `${accessText(p)} · ${signInText(p)}`)).join("")}</div>
       <button class="btn primary" data-go="profile">${icon("plus")}Add a profile</button>
       <form class="card" data-this-screen style="margin-top:20px">
         <h3>This screen</h3>
-        ${s.auto ? `<p>Demo mode: nobody needs to sign in. Start the demo with --sign-in to try it like a real panel.</p>` : `
+        ${s.auto ? `<p>Internal test fixtures. The user-facing panel uses its saved profiles on port 8080.</p>` : `
         <label class="check"><input type="checkbox" name="panel" ${s.panel ? "checked" : ""}>
-          <span>This screen is the wall panel: it stays signed in and goes back to the profile picker when nobody is using it</span></label>`}
-        <label class="field"><span>The wall panel goes back to the profile picker after</span><select name="lock_after_minutes">
-          ${LOCK_TIMES.map(([v, l]) => `<option value="${v}" ${lockAfter === v ? "selected" : ""}>${l}</option>`).join("")}
-        </select><small>Phones and laptops stay signed in for 30 days after they're last used.</small></label>
+          <span>This screen is the wall panel: keep it signed in</span></label>`}
+        <p>Idle screens show the clock or photos without locking. Phones and laptops stay signed in for 30 days after they're last used.</p>
         <div class="btn-row"><button class="btn primary" type="submit">Save</button></div>
       </form>
       <div class="card">
@@ -175,7 +165,6 @@ root.addEventListener("submit", async (e) => {
   const fd = new FormData(form);
   try {
     if (form.matches("[data-this-screen]")) {
-      await api.saveSettings({ lock_after_minutes: Number(fd.get("lock_after_minutes")) });
       const s = currentSession();
       if (s && !s.auto && fd.has("panel") !== !!s.panel) Object.assign(s, await api.setPanel(fd.has("panel")));
       toast("Saved");
@@ -194,7 +183,7 @@ root.addEventListener("submit", async (e) => {
                    devices: fd.get("access") === "some" ? fd.getAll("device") : "all" };
     if (id) await api.updateProfile(id, body);
     else await api.addProfile(body);
-    toast(id ? "Saved" : `${body.name} can now sign in`);
+    toast(id ? "Saved" : `${body.name}'s profile is ready`);
     await reload();
     if (currentView()?.view === "profile") back();
   } catch (err) { toast(err.message, true); }

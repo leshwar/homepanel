@@ -6,7 +6,6 @@ import colorsys
 import ipaddress
 import json
 import math
-import os
 import re
 import socket
 import ssl
@@ -114,7 +113,7 @@ async def udp_query(host: str, port: int, payload: bytes, *, timeout: float = 2.
     if broadcast:
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     if is_multicast(host):
-        # Macs often have extra interfaces (VPN, Docker, Thunderbolt bridge). Send discovery
+        # Macs often have extra interfaces (VPNs, virtual machines, Thunderbolt). Send discovery
         # out of the interface that reaches the home network, not whichever the OS picks.
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
         try:
@@ -198,11 +197,6 @@ def is_multicast(host: str) -> bool:
         return ipaddress.ip_address(host).is_multicast
     except ValueError:
         return False
-
-
-def in_container() -> bool:
-    """True when running inside Docker (where Docker Desktop on Mac/Windows hides the home network)."""
-    return os.path.exists("/.dockerenv")
 
 
 async def scan_ports(hosts: list[str], ports: tuple[int, ...], timeout: float = 0.8,

@@ -11,38 +11,53 @@
 import { api } from "./api.js";
 import { store } from "./store.js";
 import { applyTiles } from "./tone.js";
+import { weatherScene } from "./weather-effects.js";
 
 let weather = null;
 let key = "";
 let fetchedAt = 0;
+let status = "off";
+let requestId = 0;
 const listeners = new Set();
 
 export const onWeather = (fn) => listeners.add(fn);
 export const currentWeather = () => weather;
+export const weatherStatus = () => status;
 
 export function refreshWeather(force = false) {
   const s = store.settings;
-  if (!s.weather_enabled || s.latitude == null) {
+  if (!s.weather_enabled || s.latitude == null || s.longitude == null) {
     key = "";
-    if (weather) { weather = null; changed(); }
+    requestId++;
+    if (weather || status !== "off") { weather = null; status = "off"; changed(); }
     return;
   }
   const k = [s.latitude, s.longitude, s.temperature_unit].join();
   if (!force && k === key && Date.now() - fetchedAt < 10 * 60e3) return;
+  const updating = k === key && weather && ["ready", "updating"].includes(status);
   key = k;
   fetchedAt = Date.now();
+  const id = ++requestId;
+  status = updating ? "updating" : "loading";
+  if (!updating) changed();  // keep the known scene moving while its next reading loads
   api.weather()
-    .then((w) => { weather = w?.available ? w : null; changed(); })
-    .catch(() => { /* the server already logged it; keep the last reading */ });
+    .then((w) => {
+      if (id !== requestId) return;
+      weather = w?.available ? w : null;
+      status = weather ? "ready" : w?.reason === "off" ? "off" : "unavailable";
+      changed();
+    })
+    .catch(() => {
+      if (id !== requestId) return;
+      status = "unavailable";  // the tile explains the failure; the page sky keeps its last known reading
+      changed();
+    });
 }
 
 function changed() {
   applySky();
   listeners.forEach((fn) => fn(weather));
 }
-
-const SKY = { clear: "clear", "partly-cloudy": "partly", cloudy: "cloudy", fog: "fog",
-              drizzle: "rain", rain: "rain", snow: "snow", storm: "storm" };
 
 // dawn 5–7:30, day, dusk 17:30–20, night. The weather's own day/night flag wins
 // in between (it knows the real sunset for the place).
@@ -54,7 +69,7 @@ export function periodAt(now = new Date(), w = weather) {
   return h >= 7.5 && h < 17.5 ? "day" : "night";
 }
 
-export const skyAt = (w = weather) => (w && SKY[w.condition]) || "clear";
+export const skyAt = (w = weather) => weatherScene(w) || "clear";
 
 export function applySky(now = new Date()) {
   const root = document.documentElement;

@@ -58,7 +58,7 @@ export const svg = (name, cls = "") =>
 export const DEVICE_ICONS = ["bulb", "lamp", "ceiling", "strip", "plug", "switch", "tv", "soundbar", "speaker", "fan",
   "kettle", "fridge", "coffee", "heater", "ac", "purifier", "washer", "vacuum", "router", "camera", "lock", "blinds", "power"];
 
-const KIND = { light: "bulb", plug: "plug", switch: "switch", tv: "tv", fan: "fan", vacuum: "vacuum",
+const KIND = { light: "bulb", plug: "plug", switch: "switch", tv: "tv", fan: "fan", purifier: "purifier", vacuum: "vacuum",
                speaker: "soundbar", other: "power" };
 
 // Checked in order; the first word found in the device's name wins.

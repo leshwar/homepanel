@@ -27,13 +27,14 @@ from collections import Counter
 from dataclasses import asdict
 from typing import Any, Awaitable, Callable
 
-from .adapter import (ADAPTERS, Action, AdapterError, Cap, Clean, Device, DeviceAdapter, Found,
+from .adapter import (ADAPTERS, Action, AdapterBackoff, AdapterError, Cap, Clean, Device, DeviceAdapter, Found,
                       Key, PairingRequired, Pointer, missing_requirements, unsupported_reason)
 from .automations import Automations
 from .history import History
-from .layout import LayoutError, clean_layout, default_layout, migrate_layout
-from .net import in_container, normalize_mac, parse_color
+from .layout import LayoutError, clean_layout, clean_room_layout, default_layout, migrate_layout
+from .net import normalize_mac, parse_color
 from .photos import DevicePictures, PhotoLibrary
+from .remote_photos import RemotePhotos
 from .presence import Presence
 from .profiles import ADMIN, MEMBER, Profiles, Sessions, Viewer, current_viewer, hash_secret, sees
 from .geolocate import Geolocator
@@ -47,6 +48,7 @@ COMMAND_TIMEOUT = 10.0
 BACKGROUNDS = ("sky", "ocean", "aurora", "night", "wallpaper")   # sky: follows the weather and time of day
 WALLPAPER_EVERY = (0, 15, 60, 240, 1440)             # shuffle: minutes per wallpaper
 TILE_STYLES = ("auto", "light", "dark")              # auto: contrast with the background
+FONT_SIZES = ("small", "medium", "large")
 IDLE_SCREENS = ("clock", "photos")
 CLOCK_FACES = ("digital", "analog", "words", "date", "night")
 REFRESH_TIMEOUT = 8.0
@@ -230,7 +232,7 @@ async def mw_timeout_retry(ctx: CommandContext, call_next):
             last = e
             await asyncio.sleep(0.4)
     if isinstance(last, asyncio.TimeoutError):
-        raise AdapterError(f"{ctx.device.name} didn't respond. Is it powered and on Wi-Fi?")
+        raise AdapterError(f"{ctx.device.name} didn't respond. Check its power and connection.")
     raise AdapterError(f"Couldn't reach {ctx.device.name}: {last}")
 
 
@@ -252,9 +254,11 @@ class HomeService:
         self._pollers: dict[str, asyncio.Task] = {}
         self._soon: dict[str, asyncio.TimerHandle] = {}   # pushed changes waiting to refresh
         self._failures: dict[str, int] = {}
+        self._adapter_backoff: dict[str, tuple[float, str]] = {}
+        self._provider_locks: dict[str, asyncio.Lock] = {}
         self._found: dict[tuple[str, str], Found] = {}
         self._found_ips: dict[str, Counter] = {}     # per brand: how many results the last search found at each address
-        self._middleware: list[Middleware] = [mw_access, mw_validate, mw_normalize, mw_log, self._mw_in_order,
+        self._middleware: list[Middleware] = [mw_access, mw_validate, mw_normalize, mw_log, self._mw_in_order, self._mw_adapter_backoff,
                                               mw_timeout_retry]
         self._queues: dict[str, asyncio.Lock] = {}      # per device: commands run one at a time
         self._commands_done: dict[str, int] = {}        # per device: commands finished (to spot stale reads)
@@ -262,6 +266,7 @@ class HomeService:
         self.history = History(os.path.join(data_dir, "demo-history.db" if demo else "history.db"))
         self.automations = Automations(self)
         self.photos = PhotoLibrary(os.path.join(data_dir, "demo-photos" if demo else "photos"))
+        self.photo_library = RemotePhotos(self.store, self._publish_layout)
         self.wallpapers = PhotoLibrary(os.path.join(data_dir, "demo-wallpapers" if demo else "wallpapers"))
         self.device_pictures = DevicePictures(os.path.join(data_dir, "demo-device-pictures" if demo else "device-pictures"))
         self.weather = Weather(lambda: self.store.settings)
@@ -274,6 +279,29 @@ class HomeService:
     def use(self, middleware: Middleware, index: int | None = None) -> None:
         """Insert custom middleware. Default: just before the adapter call."""
         self._middleware.insert(len(self._middleware) if index is None else index, middleware)
+
+    async def _with_adapter_backoff(self, adapter_id, call, timeout=None):
+        if getattr(ADAPTERS.get(adapter_id), "failure_backoff", 0):
+            async with self._provider_locks.setdefault(adapter_id, asyncio.Lock()):
+                return await self._provider_call(adapter_id, call, timeout)
+        return await self._provider_call(adapter_id, call, timeout)
+
+    async def _provider_call(self, adapter_id, call, timeout):
+        until, message = self._adapter_backoff.get(adapter_id, (0, ""))
+        remaining = until - time.monotonic()
+        if remaining > 0:
+            raise AdapterError(f"{message} Retry in {int(remaining) + 1} seconds.")
+        try:
+            return await call() if timeout is None else await asyncio.wait_for(call(), timeout)
+        except (AdapterError, asyncio.TimeoutError) as error:
+            seconds = error.seconds if isinstance(error, AdapterBackoff) else getattr(ADAPTERS.get(adapter_id), "failure_backoff", 0)
+            if seconds:
+                message = str(error) if isinstance(error, AdapterError) else "The provider did not respond. Check its connection."
+                self._adapter_backoff[adapter_id] = (time.monotonic() + seconds, message)
+            raise
+
+    async def _mw_adapter_backoff(self, ctx, call_next):
+        return await self._with_adapter_backoff(ctx.device.adapter, lambda: call_next(ctx))
 
     async def _mw_in_order(self, ctx: CommandContext, call_next):
         """Commands for one device run one at a time, in the order they arrived, so the last one
@@ -433,9 +461,11 @@ class HomeService:
         (and scenes) their profile can see, and none of the admin-only lists."""
         viewer = current_viewer.get()
         admin = viewer is None or viewer.is_admin
+        devices = self.visible_devices()
+        visible_rooms = {d.room for d in devices}
         return {
-            "devices": [self.public_device(d) for d in self.visible_devices()],
-            "rooms": self.store.rooms,
+            "devices": [self.public_device(d) for d in devices],
+            "rooms": self.store.rooms if admin else [r for r in self.store.rooms if r in visible_rooms],
             "scenes": [s for s in self.store.scenes if self.scene_visible(s)],
             "settings": self.settings(),
             "adapters": [self.adapter_meta(a) for a in ADAPTERS if not ADAPTERS[a].hidden or self.demo] if admin else [],
@@ -444,7 +474,6 @@ class HomeService:
             "me": self.profiles.public(viewer.profile) if viewer else None,
             "profiles": [self.profiles.public(p) for p in self.profiles.items] if viewer and viewer.is_admin else [],
             "demo": self.demo,
-            "in_container": in_container(),
         }
 
     def visible_devices(self) -> list[Device]:
@@ -463,6 +492,8 @@ class HomeService:
         if viewer is not None and not viewer.is_admin:
             s.pop("presence", None)          # phones' addresses: admins only
         s["home_layout"] = self.layout_for(viewer)
+        s["room_layouts"] = self.room_layouts_for(viewer)
+        s["photo_library"] = self.photo_library.status()
         return s
 
     def layout_for(self, viewer: Viewer | None) -> dict:
@@ -496,6 +527,43 @@ class HomeService:
         self.profiles.set_layout(viewer.id, clean)
         self._publish_layout()
         return {"home_layout": self.layout_for(viewer)}
+
+    def room_layouts_for(self, viewer: Viewer | None) -> dict:
+        if viewer is None:
+            return {}
+        layouts = viewer.profile.get("room_layouts", {})
+        out = {}
+        for room, layout in layouts.items():
+            ids = {d.id for d in self.store.devices.values()
+                   if viewer.sees(d.id) and (d.room if d.room in self.store.rooms else "") == room}
+            if ids:
+                out[room] = {**layout, "widgets": [w for w in layout["widgets"] if w["id"] in ids]}
+        return out
+
+    def save_my_room_layout(self, room: str, layout: Any) -> dict:
+        viewer = current_viewer.get()
+        if viewer is None:
+            raise AdapterError("Choose your profile to arrange room tiles.")
+        if not isinstance(room, str) or (room and room not in self.store.rooms):
+            raise AdapterError("Choose an available room.")
+        try:
+            clean = clean_room_layout(layout) if layout is not None else None
+        except LayoutError as e:
+            raise AdapterError(str(e)) from None
+        allowed = {d.id for d in self.store.devices.values()
+                   if viewer.sees(d.id) and (d.room if d.room in self.store.rooms else "") == room}
+        if clean and any(w["id"] not in allowed for w in clean["widgets"]):
+            raise AdapterError("Only this room's available devices can be arranged.")
+        profile = self.profiles.get(viewer.id)
+        layouts = dict(profile.get("room_layouts", {}))
+        if clean is None:
+            layouts.pop(room, None)
+        else:
+            layouts[room] = clean
+        profile["room_layouts"] = layouts
+        self.store.save()
+        self._publish_layout()
+        return {"room_layouts": self.room_layouts_for(viewer)}
 
     def get(self, device_id: str) -> Device:
         d = self.store.devices.get(device_id)
@@ -593,7 +661,7 @@ class HomeService:
         # for its own fresh read), so its result stays.
         overtaken = lambda: self._commands_done.get(d.id, 0) != done   # noqa: E731
         try:
-            state = await asyncio.wait_for(adapter.refresh(d), REFRESH_TIMEOUT)
+            state = await self._with_adapter_backoff(d.adapter, lambda: adapter.refresh(d), REFRESH_TIMEOUT)
             self._failures[d.id] = 0
             if not overtaken():
                 d.state = {"online": True, **(state or {})}
@@ -630,7 +698,7 @@ class HomeService:
         a = self.adapters.get(adapter_id)
         if not a:
             raise AdapterError("This brand isn't available.")
-        found = await asyncio.wait_for(a.discover(), 25)
+        found = await self._with_adapter_backoff(adapter_id, a.discover, 25)
         self._found_ips[adapter_id] = Counter(f.config.get("ip") for f in found if f.config.get("ip"))
         out = []
         for f in found:
@@ -742,7 +810,7 @@ class HomeService:
 
     async def _setup(self, d: Device, a: DeviceAdapter) -> None:
         try:
-            await asyncio.wait_for(a.setup(d), 45)
+            await self._with_adapter_backoff(d.adapter, lambda: a.setup(d), 45)
             d.state.pop("needs_pairing", None)
             d.state["online"] = True
         except PairingRequired as e:
@@ -849,7 +917,10 @@ class HomeService:
                 if f.type == "password" and v in ("", None) and current.get(f.key):
                     continue  # blank password field = keep the saved one
                 current[f.key] = v
+        changed = current != self.store.accounts.get(adapter_id, {})
         self.store.accounts[adapter_id] = current
+        if changed:
+            self._adapter_backoff.pop(adapter_id, None)
         self.store.save()
         if adapter_id in self.adapters:
             self.adapters[adapter_id].account_changed(current)
@@ -865,7 +936,8 @@ class HomeService:
         a = self.adapters.get(adapter_id)
         if not a:
             raise AdapterError("This brand isn't available.")
-        result = await a.run_account_action(action) or {}
+        timeout = 25 if a.failure_backoff else None
+        result = await self._with_adapter_backoff(adapter_id, lambda: a.run_account_action(action), timeout) or {}
         updates = result.get("account") or {}
         if updates:
             self.store.accounts[adapter_id] = {**self.store.accounts.get(adapter_id, {}), **updates}
@@ -874,15 +946,43 @@ class HomeService:
         return {"message": result.get("message", "Done"), "account": self.account_public(adapter_id)}
 
     # --- rooms, scenes, settings -------------------------------------------
-    def set_rooms(self, rooms: list[str]) -> list[str]:
+    def set_rooms(self, rooms: list[str], expected: list[str] | None = None, rename: dict | None = None) -> list[str]:
+        if expected is not None and expected != self.store.rooms:
+            raise AdapterError("Rooms changed on another screen. Reload and try again.")
+        if not isinstance(rooms, list) or not all(isinstance(r, str) for r in rooms):
+            raise AdapterError("Rooms should be a list of names.")
         clean = []
         for r in rooms:
             r = str(r).strip()
             if r and r not in clean:
                 clean.append(r)
+        old = new = None
+        if rename is not None:
+            if not isinstance(rename, dict) or not all(isinstance(rename.get(k), str) for k in ("from", "to")):
+                raise AdapterError("A room rename needs its old and new names.")
+            old, new = rename["from"], rename["to"].strip()
+            if old not in self.store.rooms:
+                raise AdapterError("That room is no longer available. Reload and try again.")
+            if not new or len(new) > 24 or (new == "all" and new != old):
+                raise AdapterError('Choose a room name of 1 to 24 characters, other than "all".')
+            if new != old and new in self.store.rooms:
+                raise AdapterError("That room already exists.")
+            if clean != [new if r == old else r for r in self.store.rooms]:
+                raise AdapterError("Rename one room without removing or reordering the others.")
+            if old != new:
+                for profile in self.store.profiles:
+                    layouts = profile.get("room_layouts", {})
+                    if old in layouts and new in layouts:
+                        raise AdapterError("A saved room layout already uses that name. Choose another name.")
+                for profile in self.store.profiles:
+                    layouts = profile.get("room_layouts", {})
+                    if old in layouts:
+                        layouts[new] = layouts.pop(old)
         self.store.rooms = clean
         for d in self.store.devices.values():
-            if d.room and d.room not in clean:
+            if old is not None and new is not None and d.room == old:
+                d.room = new
+            elif d.room and d.room not in clean:
                 d.room = ""
         self.store.save()
         self._publish_layout()
@@ -908,6 +1008,10 @@ class HomeService:
                     actions.append({"device_id": did, "action": Action.COLOR, "value": d.state["color"]})
                 elif d.state.get("color_mode") == "temp" and d.state.get("color_temp"):
                     actions.append({"device_id": did, "action": Action.COLOR_TEMP, "value": d.state["color_temp"]})
+                if Cap.FAN_MODE in d.caps and d.state.get("fan_mode"):
+                    actions.append({"device_id": did, "action": Action.SET_FAN_MODE, "value": d.state["fan_mode"]})
+                if Cap.FAN_SPEED in d.caps and d.state.get("fan_mode") == "manual" and d.state.get("fan_speed"):
+                    actions.append({"device_id": did, "action": Action.SET_FAN_SPEED, "value": d.state["fan_speed"]})
         sid = scene.get("id") or uuid.uuid4().hex[:8]
         item = {"id": sid, "name": scene.get("name", "Scene").strip() or "Scene",
                 "icon": scene.get("icon", "sparkle"), "actions": actions}
@@ -969,6 +1073,8 @@ class HomeService:
             changes["wallpaper_every"] = every
         if "tile_style" in changes and changes["tile_style"] not in TILE_STYLES:
             raise AdapterError("Tiles should be auto, light or dark.")
+        if "font_size" in changes and changes["font_size"] not in FONT_SIZES:
+            raise AdapterError("Font size should be small, medium or large.")
         if "wallpaper_dim" in changes:
             try:
                 changes["wallpaper_dim"] = max(0, min(80, int(float(changes["wallpaper_dim"]))))
@@ -990,11 +1096,6 @@ class HomeService:
             changes["temperature_unit"] = unit
         if "clock_face" in changes and changes["clock_face"] not in CLOCK_FACES:
             raise AdapterError(f"Clock face should be one of: {', '.join(CLOCK_FACES)}.")
-        if "lock_after_minutes" in changes:
-            try:
-                changes["lock_after_minutes"] = max(0, min(240, int(float(changes["lock_after_minutes"]))))
-            except (TypeError, ValueError):
-                raise AdapterError("Lock after should be a number of minutes.")
         if "frame_seconds" in changes:
             try:
                 changes["frame_seconds"] = max(5, min(300, int(float(changes["frame_seconds"]))))
@@ -1043,7 +1144,7 @@ class HomeService:
         return self.profiles.public(p)
 
     async def update_me(self, data: dict) -> dict:
-        """Change your own name, colour, email, PIN or password (not your role or devices)."""
+        """Change your own name, colour, email or password (not your role or devices)."""
         viewer = current_viewer.get()
         if viewer is None:
             raise AdapterError("Sign in first.")
@@ -1058,11 +1159,10 @@ class HomeService:
         self._publish_layout()
 
     def display_settings(self, with_location: bool = False) -> dict:
-        """The look of the panel, for the sign-in screen and a locked wall panel's clock.
-        Nothing private: no location unless asked (a locked panel), no people, no layout."""
+        """The sign-in screen's look. No people, layout, or location unless signed in."""
         keys = ("home_name", "background", "glass_effect", "glass_transparency", "clock_24h", "clock_face",
                 "dim_after_seconds", "idle_screen", "frame_seconds", "frame_shuffle", "frame_clock",
-                "frame_night_clock", "temperature_unit", "lock_after_minutes", "tile_style")
+                "frame_night_clock", "temperature_unit", "tile_style", "font_size")
         out = {k: self.store.settings.get(k) for k in keys}
         if with_location:
             out.update({k: self.store.settings.get(k) for k in ("latitude", "longitude", "place_name", "weather_enabled")})
@@ -1094,13 +1194,13 @@ class HomeService:
                 {"device_id": "lr-tv", "action": "power", "value": False},
                 {"device_id": "bd-lamp", "action": "brightness", "value": 10}]},
         ]
-        # Two pretend people. Owner: PIN 1234, or owner@example.com / homepanel. Sam: PIN 2468.
+        # Owner demonstrates optional password sign-in; Sam opens with one tap.
         self.store.profiles = [
             {"id": "owner", "name": "Owner", "color": "#f2b35b", "email": "owner@example.com", "role": ADMIN,
-             "pin_hash": hash_secret("1234"), "password_hash": hash_secret("homepanel"), "devices": "all",
+             "password_hash": hash_secret("homepanel"), "devices": "all",
              "home_layout": None, "created": time.time()},
             {"id": "sam", "name": "Sam", "color": "#7cc7a5", "email": "", "role": MEMBER,
-             "pin_hash": hash_secret("2468"), "password_hash": None,
+             "password_hash": None,
              "devices": ["bd-fan", "bd-lamp", "bd-tv", "kt-pendant"], "home_layout": None, "created": time.time()},
         ]
         self.store.automations = [

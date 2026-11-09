@@ -1,4 +1,4 @@
-"""Pretend devices so the panel can be tried without any hardware (run with --demo)."""
+"""Simulated devices for isolated automated tests, not a user-facing deployment."""
 from __future__ import annotations
 
 import asyncio

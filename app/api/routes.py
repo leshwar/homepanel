@@ -20,7 +20,7 @@ from ..core.adapter import AdapterError
 from ..core import logs as logmod
 from ..core.logs import ring
 from ..core.photos import MAX_UPLOAD_BYTES, PhotoError
-from ..core.net import in_container, phone_url
+from ..core.net import phone_url
 from ..core.profiles import AuthError, ProfileError, RateLimited, current_viewer
 from ..core.service import HomeService
 from .auth import COOKIE, client_address, read_cookie
@@ -87,7 +87,7 @@ async def events(request: Request):
         # Looked up again for every event (publish() runs in other requests' context,
         # so never read current_viewer here): a removed profile or ended session stops at once.
         v = svc.profiles.viewer_for(token) or auto_viewer
-        return v if v and not (v.session and v.session.locked) else None
+        return v
 
     def allow(ev: dict) -> bool:
         v = viewer_now()
@@ -201,7 +201,10 @@ async def account_action(request):
 
 @handle_errors
 async def put_rooms(request):
-    return {"rooms": _svc(request).set_rooms((await _body(request)).get("rooms", []))}
+    body = await _body(request)
+    if "rooms" not in body:
+        raise AdapterError("Include the room names to save.")
+    return {"rooms": _svc(request).set_rooms(body["rooms"], body.get("expected_rooms"), body.get("rename"))}
 
 
 @handle_errors
@@ -331,6 +334,38 @@ async def photo_image(request):
 
 # --- wallpapers and device pictures --------------------------------------------------
 
+@handle_errors
+async def photo_library_config(request):
+    source = _svc(request).photo_library
+    if request.method == "PUT":
+        return await source.connect(await _body(request))
+    if request.method == "DELETE":
+        return source.disconnect()
+    return source.management()
+
+
+@handle_errors
+async def photo_library_albums(request):
+    return {"albums": await _svc(request).photo_library.albums()}
+
+
+@handle_errors
+async def photo_library_source(request):
+    return await _svc(request).photo_library.select(await _body(request))
+
+
+@handle_errors
+async def photo_library_next(request):
+    svc = _svc(request)
+    image, token, generation = await svc.photo_library.next()
+    cookie = read_cookie(request.scope)
+    if cookie and not svc.profiles.viewer_for(cookie):
+        return JSONResponse({"error": "Sign in again to view photos.", "signin": True}, status_code=401)
+    return Response(image, media_type="image/jpeg", headers={
+        "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+        "X-Photo-Token": token, "X-Photo-Generation": generation,
+    })
+
 async def _image_body(request) -> bytes:
     if int(request.headers.get("content-length") or 0) > MAX_UPLOAD_BYTES:
         raise PhotoError("That picture is too large.")
@@ -407,19 +442,16 @@ async def get_logs(request):
 
 @handle_errors
 async def health(request):
-    """Without a session only "it's running" (for the kiosk script and Docker's health check)."""
+    """Without a session only "it's running" (for the kiosk and service health checks)."""
     svc = _svc(request)
     viewer = current_viewer.get()
-    if viewer is None or (viewer.session and viewer.session.locked):
+    if viewer is None:
         return {"ok": True, "time": time.time(), "sign_in": True}
     devices = list(svc.store.devices.values())
     return {"ok": True, "time": time.time(), "uptime_s": round(time.time() - request.app.state.started, 1),
             "devices": len(devices), "online": sum(1 for d in devices if d.state.get("online")),
             "adapters": sorted(svc.adapters), "unavailable": svc.unavailable, "unsupported": svc.unsupported, "demo": svc.demo,
-            "in_container": in_container(),
-            # where to open the panel on a phone (unknown inside Docker: the container's
-            # address isn't the computer's, so the UI explains how to find it)
-            "phone_url": None if in_container() else phone_url(getattr(request.app.state, "port", 8080))}
+            "phone_url": phone_url(getattr(request.app.state, "port", 8080))}
 
 
 # --- sign-in and profiles ------------------------------------------------------------
@@ -443,13 +475,10 @@ def _session_info(request: Request) -> dict:
     svc = _svc(request)
     viewer = current_viewer.get()
     session = viewer.session if viewer else None
-    locked = bool(session and session.locked)
-    signed_in = viewer is not None and not locked
+    signed_in = viewer is not None
     return {
         "signed_in": signed_in,
         "auto": bool(viewer and viewer.auto),
-        "setup": svc.profiles.needs_setup and not (viewer and viewer.auto),
-        "locked": locked,
         "panel": bool(session and session.panel),
         "me": svc.profiles.public(viewer.profile) if signed_in else None,
         "profiles": svc.profiles.picker(),
@@ -476,32 +505,17 @@ async def _start_session(request: Request, profile: dict, panel: bool):
 
 @handle_errors
 async def sign_in(request):
-    """{profile_id, pin} | {profile_id, password} | {email, password}; optional panel: true (admins)."""
+    """{profile_id}, or {profile_id/email, password}; optional panel: true (admins)."""
     body = await _body(request)
     p = await asyncio.to_thread(_svc(request).profiles.check_credentials, body, client_address(request.scope))
     return await _start_session(request, p, panel=bool(body.get("panel")) and p.get("role") == "admin")
 
 
 @handle_errors
-async def setup(request):
-    """First open after upgrading: protect the Owner profile with a PIN or password."""
-    body = await _body(request)
-    svc = _svc(request)
-    p = await asyncio.to_thread(svc.profiles.setup, body)
-    return await _start_session(request, p, panel=bool(body.get("panel")))
-
-
-@handle_errors
 async def sign_out(request):
-    """Ends this browser's session. On the wall panel it locks instead (unless forget: true),
-    so the panel stays signed in and shows the profile picker."""
+    """End this screen's session and return to the profile picker."""
     svc = _svc(request)
-    body = await _body(request)
     viewer = svc.profiles.viewer_for(read_cookie(request.scope))
-    if viewer and viewer.session and viewer.session.panel and not body.get("forget"):
-        svc.profiles.sessions.update(viewer.session, locked=True)
-        current_viewer.set(viewer)
-        return JSONResponse(_session_info(request), headers={"Cache-Control": "no-store"})
     if viewer and viewer.session:
         svc.profiles.sessions.delete(viewer.session)
     current_viewer.set(None)
@@ -509,20 +523,11 @@ async def sign_out(request):
 
 
 @handle_errors
-async def lock(request):
-    """The wall panel was idle: back to the profile picker (the session is kept)."""
-    viewer = current_viewer.get()
-    if viewer and viewer.session:
-        _svc(request).profiles.sessions.update(viewer.session, locked=True)
-    return JSONResponse(_session_info(request), headers={"Cache-Control": "no-store"})
-
-
-@handle_errors
 async def set_panel(request):
-    """Admin: make this screen the wall panel (stays signed in, locks when idle), or not."""
+    """Admin: make this screen the wall panel (stays signed in), or not."""
     viewer = current_viewer.get()
     if not viewer or not viewer.session:
-        raise AdapterError("Sign in with a PIN or password first.")
+        raise AdapterError("Choose your profile first.")
     body = await _body(request)
     _svc(request).profiles.sessions.update(viewer.session, panel=bool(body.get("panel")))
     return _with_cookie(request, _session_info(request), read_cookie(request.scope), int(viewer.session.ttl))
@@ -559,17 +564,24 @@ async def put_my_layout(request):
     return _svc(request).save_my_layout((await _body(request)).get("home_layout"))
 
 
+@handle_errors
+async def put_my_room_layout(request):
+    body = await _body(request)
+    if "room" not in body or "layout" not in body:
+        raise AdapterError("Choose a room and include its layout.")
+    return _svc(request).save_my_room_layout(body["room"], body["layout"])
+
+
 routes = [
     Route("/api/v1/auth/session", auth_session),
     Route("/api/v1/auth/sign-in", sign_in, methods=["POST"]),
-    Route("/api/v1/auth/setup", setup, methods=["POST"]),
     Route("/api/v1/auth/sign-out", sign_out, methods=["POST"]),
-    Route("/api/v1/auth/lock", lock, methods=["POST"]),
     Route("/api/v1/auth/panel", set_panel, methods=["POST"]),
     Route("/api/v1/profiles", list_profiles, methods=["GET"]),
     Route("/api/v1/profiles", add_profile, methods=["POST"]),
     Route("/api/v1/profiles/me", update_me, methods=["PATCH"]),
     Route("/api/v1/profiles/me/layout", put_my_layout, methods=["PUT"]),
+    Route("/api/v1/profiles/me/rooms/layout", put_my_room_layout, methods=["PUT"]),
     Route("/api/v1/profiles/{id}", update_profile, methods=["PATCH"]),
     Route("/api/v1/profiles/{id}", delete_profile, methods=["DELETE"]),
     Route("/api/v1/state", get_state),
@@ -605,6 +617,10 @@ routes = [
     Route("/api/v1/weather", get_weather),
     Route("/api/v1/location/lookup", lookup_location, methods=["POST"]),
     Route("/api/v1/photos", list_photos, methods=["GET"]),
+    Route("/api/v1/photo-library", photo_library_config, methods=["GET", "PUT", "DELETE"]),
+    Route("/api/v1/photo-library/albums", photo_library_albums, methods=["GET"]),
+    Route("/api/v1/photo-library/source", photo_library_source, methods=["PUT"]),
+    Route("/api/v1/photo-library/next", photo_library_next, methods=["GET"]),
     Route("/api/v1/photos", upload_photo, methods=["POST"]),
     Route("/api/v1/photos/{id}", delete_photo, methods=["DELETE"]),
     Route("/api/v1/photos/{id}/image", photo_image, methods=["GET"]),

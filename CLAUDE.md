@@ -7,14 +7,12 @@ plain-JS web UI). Read `docs/ARCHITECTURE.md` before larger changes.
 
 ```bash
 make setup      # .venv + dev dependencies (+ Playwright Chromium)
-make dev        # run with pretend devices: http://localhost:8080
-make run        # run against real devices on this Wi-Fi
+make run        # start native 8080 only if its existing service is not already running
 make test-unit         # tests/unit: logic only, no network
 make test-integration  # tests/integration: real server, fake devices, browser UI
-make test       # both (must pass before every commit)
+make test       # both, once on the final revision before merge
 make check-tests  # PR rule: app/ or web/ changes need a unit AND an integration test
 make lint       # ruff
-make docker-demo  # demo in Docker → http://localhost:8081 (CI also builds and smoke-tests the image)
 python -m unittest discover -s tests -t .    # tests without pytest
 ```
 
@@ -39,13 +37,28 @@ Follow the `homepanel-dev` skill (`.claude/skills/homepanel-dev/SKILL.md`): the 
 clone stays on `main`; each change gets a worktree from `scripts/dev/wt.sh new <branch>`.
 See `docs/DEVELOPMENT.md`.
 
+There is one user-facing native application on 8080. Do not start a parallel
+demo/preview or substitute fixture layouts/data in user-facing screenshots.
+Use the actual deployed profile/settings for previews, avoiding secret fields.
+Keep mutation tests isolated from live household devices. Pinned release/source
+worktrees are versioned code and rollback copies, not additional applications.
+
 ## Pull requests and tests
 
 - Never push to `main`; work on a branch and open a PR. CI must be green.
+- During development, run focused checks for the behavior being changed (for example,
+  `.venv/bin/python -m pytest -q tests/unit/test_layout.py -k positions`).
+  Do not run both full suites after every edit or commit. On the final revision,
+  run `make lint`, `REQUIRE_UI_TESTS=1 make test`, and `make check-tests` once.
+  Do not also run `make test-unit` and `make test-integration`: `make test` includes both.
+  Fix failures and rerun affected checks; later product changes invalidate the
+  affected results. Required CI still checks the final PR revision before merge.
 - Every change to `app/` or `web/` must add/update a test in **both** `tests/unit/`
   and `tests/integration/` — CI rejects the PR otherwise. See `tests/README.md`.
 - Tests must not need real devices or the internet; simulate devices with a small
   local server (see `tests/integration/test_fake_devices.py`).
+- Read the relevant code and focused test files, not every test file or the entire
+  documentation tree for each change. `tests/README.md` is the short test workflow.
 
 ## Adding a brand
 

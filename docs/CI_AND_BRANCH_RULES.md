@@ -8,18 +8,16 @@
 | | **Tests included**: code changes under `app/` or `web/` must add or change a `tests/unit/test_*.py` **and** a `tests/integration/test_*.py`, otherwise the PR fails | `scripts/ci/check_tests_included.py` |
 | | **Unit tests** on Python 3.11 and 3.13 (the versions on Raspberry Pi OS) | `tests/unit/` |
 | | **Integration tests**: real server over HTTP, adapters against simulated devices, the touch UI in headless Chromium (never skipped in CI) | `tests/integration/` |
-| | **Build**: Docker image builds, starts in demo mode, answers health checks and commands, all brand libraries load | `Dockerfile` |
+| | **Native startup smoke** (inside integration): real server starts, answers health/commands/static UI, and all supported brand libraries load | `tests/integration/test_api.py` |
 | | **All checks passed**: one summary check that's green only if everything above passed | — |
-| Every push to `main` (i.e. a merged PR) | Everything above, then **Publish build**: multi-arch Docker image (amd64 + arm64 for the Pi) to `ghcr.io/leshwar/homepanel:latest` and `:sha-<commit>`, plus a source archive attached to the run | GitHub Packages, Actions run page |
+| Every push to `main` (i.e. a merged PR) | Everything above, then **Publish source**: a source archive attached to the run | Actions run page |
 
 Run the same checks locally before opening a PR:
 
 ```bash
 make lint
-make test-unit
-make test-integration
+REQUIRE_UI_TESTS=1 make test   # one complete final pass; targeted checks while developing
 make check-tests      # would the "tests included" rule pass?
-make docker-demo      # optional: the same image CI builds
 ```
 
 ## Branch rules for `main` (owner sets these once)
@@ -78,14 +76,8 @@ Settings → **Collaborators** → **Add people**. Give them the **Write** role 
 they can push branches and open PRs in this repo (or they can fork). They still
 can't merge without your approval.
 
-## The published image
+## Published source
 
-After the first merge to `main`, the image appears under the repo's
-**Packages**. To let anyone pull it without logging in: open the package →
-**Package settings** → **Change visibility** → Public.
-
-On the Pi:
-
-```bash
-docker pull ghcr.io/leshwar/homepanel:latest
-```
+After a merge to `main` passes all required checks, its Actions run contains a
+`homepanel-<commit>` source archive. The panel runs natively with Python; update
+the native checkout/interpreter and restart its existing supervisor.

@@ -7,11 +7,11 @@
 
 .cf { display: flex; flex-direction: column; align-items: center; text-align: center; color: #8b8780;
       font-weight: 200; line-height: 1; font-variant-numeric: tabular-nums; }
-.cf-sub { color: #5d5a55; font-weight: 400; font-size: max(var(--min-text), 3.1cqmin); line-height: 1.3;
+.cf-sub { color: #5d5a55; font-weight: 400; font-size: calc(max(var(--min-text), 3.1cqmin) * var(--readout-scale)); line-height: 1.3;
           margin-top: 2.5cqmin; max-width: 86cqw; text-wrap: balance; }
 
 /* Big digital: the original resting clock */
-.cf-digital .cf-time { font-size: min(28cqw, 30cqh); letter-spacing: -0.03em; }
+.cf-digital .cf-time { font-size: calc(min(28cqw, 30cqh) * var(--readout-scale)); letter-spacing: -0.03em; }
 
 /* Analog with hands (no second hand: nothing moves faster than the 10 s redraw) */
 .cf-dial { width: 62cqmin; height: 62cqmin; overflow: visible; }
@@ -24,19 +24,19 @@
 .cf-analog .cf-sub { margin-top: 4cqmin; }
 
 /* Word clock: "It's quarter past ten" */
-.cf-phrase { font-size: 12cqmin; font-weight: 300; line-height: 1.12; max-width: 86cqw; text-wrap: balance;
+.cf-phrase { font-size: calc(12cqmin * var(--readout-scale)); font-weight: 300; line-height: 1.12; max-width: 86cqw; text-wrap: balance;
              letter-spacing: -0.01em; }
 .cf-lead { color: #5d5a55; }
 .cf-words .cf-sub { margin-top: 4cqmin; }
 
 /* Date and day */
-.cf-weekday { font-size: 15cqmin; letter-spacing: -0.02em; }
-.cf-day { font-size: 6.5cqmin; color: #6f6b65; font-weight: 300; margin-top: 1.5cqmin; }
-.cf-date .cf-time { font-size: 8cqmin; font-weight: 300; margin-top: 4cqmin; color: #a29d95; }
+.cf-weekday { font-size: calc(15cqmin * var(--readout-scale)); letter-spacing: -0.02em; }
+.cf-day { font-size: calc(6.5cqmin * var(--readout-scale)); color: #6f6b65; font-weight: 300; margin-top: 1.5cqmin; }
+.cf-date .cf-time { font-size: calc(8cqmin * var(--readout-scale)); font-weight: 300; margin-top: 4cqmin; color: #a29d95; }
 
 /* Dim night: small, dark red, nearly nothing lit */
 .ambient[data-face="night"] { cursor: none; }
-.cf-night .cf-time { font-size: 13cqmin; font-weight: 300; color: #5a2f22; letter-spacing: -0.02em; }
+.cf-night .cf-time { font-size: calc(13cqmin * var(--readout-scale)); font-weight: 300; color: #5a2f22; letter-spacing: -0.02em; }
 
 /* ---------- Settings → Display and clock: face picker with previews ---------- */
 .face-choices { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
@@ -51,7 +51,7 @@
 
 /* ---------- place and weather (shown when set; hidden when there's no weather) ---------- */
 .cf-wx { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0 1.4cqmin;
-         color: #6f6b65; font-weight: 400; font-size: max(var(--min-text), 3.1cqmin); line-height: 1.3;
+         color: #6f6b65; font-weight: 400; font-size: calc(max(var(--min-text), 3.1cqmin) * var(--readout-scale)); line-height: 1.3;
          margin-top: 2cqmin; max-width: 86cqw; }
 .cf-wx-icon { width: 1.5em; height: 1.5em; fill: none; stroke: currentColor; stroke-width: 1.6;
               stroke-linecap: round; stroke-linejoin: round; color: #8b8780; flex: none; overflow: visible; }
@@ -59,7 +59,7 @@
 .cf-temp { color: #a29d95; font-weight: 300; }
 .cf-hl, .cf-dot, .cf-place { color: #5d5a55; }
 .cf-hl { flex-basis: 100%; }
-.cf-kicker { font-size: max(var(--min-text), 2.6cqmin); letter-spacing: .14em; text-transform: uppercase;
+.cf-kicker { font-size: calc(max(var(--min-text), 2.6cqmin) * var(--readout-scale)); letter-spacing: .14em; text-transform: uppercase;
              color: #5d5a55; font-weight: 500; margin-bottom: 2cqmin; }
-.cf-date .cf-wx { font-size: max(var(--min-text), 3.6cqmin); margin-top: 3cqmin; }
-.cf-night .cf-temp { font-size: 4cqmin; color: #3a1f17; margin-top: 2cqmin; font-weight: 400; }
+.cf-date .cf-wx { font-size: calc(max(var(--min-text), 3.6cqmin) * var(--readout-scale)); margin-top: 3cqmin; }
+.cf-night .cf-temp { font-size: calc(4cqmin * var(--readout-scale)); color: #3a1f17; margin-top: 2cqmin; font-weight: 400; }

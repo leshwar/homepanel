@@ -4,16 +4,11 @@ An open-source, touch-screen smart home panel for the Raspberry Pi. One dark,
 simple screen for the lights, plugs and TVs in your home — from many brands at
 once — controlled directly over your Wi-Fi.
 
-<p align="center">
-  <img src="docs/screenshots/home.png" width="270" alt="Home screen: lit lamp tiles glowing in their colors, a TV tile with volume buttons, plugs">
-  <img src="docs/screenshots/room.png" width="270" alt="Home screen filtered to the Living room">
-  <img src="docs/screenshots/night.png" width="270" alt="Night clock shown when the panel is idle">
-</p>
-<p align="center">
-  <img src="docs/screenshots/landscape.png" width="830" alt="Home screen in landscape on a 1280x720 display">
-</p>
+Use the running native panel at **http://localhost:8080**. Its saved household,
+profiles, layouts and display settings are the source of truth for feature checks
+and screenshots; there is no separate user-facing demo application.
 
-- **Touch-first glass UI.** A **Home page** of widgets you arrange yourself (long-press to edit): a big clock, clocks for India and the US, weather, scenes and your rooms, the same on every screen. **All rooms** and a page for each room, listed down the side on an iPad or a landscape panel and as tabs on a phone: tap a room to see just its devices. Tap a tile to switch it, long-press (or tap "…") for full controls.
+- **Touch-first glass UI.** A **Home page** of widgets you arrange yourself (long-press to edit): a big clock, clocks for India and the US, weather, scenes and your rooms, the same on every screen. **All rooms** and individual rooms use a sidebar on wide screens and a room picker with bottom navigation on phones. Every device tile opens its controls; only explicit power, cleaning or volume quick-action buttons operate a device. Rooms Edit exposes inline names, Add room and drag grips in either layout.
 - **A sky that matches outside.** The background follows the weather and time of day (or pick Ocean, Aurora or Night), under frosted-glass tiles with adjustable transparency. Lit lights glow in their real color.
 - **Works on iPhone and iPad too.** Safe areas, no sideways scrolling, and "Add to Home Screen" for a full-screen app.
 - **Many brands, one screen.** Globe Electric / Tuya / Smart Life, Govee, TP-Link Kasa & Tapo, Shelly, WiZ, Philips Hue, Samsung TVs, LG TVs and LG sound bars.
@@ -27,9 +22,10 @@ once — controlled directly over your Wi-Fi.
 - **Resting clock faces.** When nobody has touched the panel for a while it shows a dim clock: big digital, analog with hands, a word clock ("It's quarter past ten"), date and day (with sunrise, sunset and lights on), or a very dim red night face. With weather turned on, the faces also show the temperature and a drawn weather icon, plus your place name. Pick one with a preview in Settings → Display and clock. The clock drifts slowly around the screen to avoid burn-in, and touching it only wakes the panel.
 - **Your own wallpapers and device pictures.** Add your own background pictures (TIFFs from a Mac work too); pick one or shuffle them, darkened just enough to keep things readable. Tiles stand out from whatever is behind them: light tiles on a dark background, dark tiles on a light one (or pick one). Tiles show a drawing of each device (a TV, a TV backlight, a robot vacuum on its station…), or a photo of your actual device.
 - **Photo frame.** A full-screen slideshow of family photos, added from any phone's browser. It can start by itself when the panel is idle, switches to a dim clock at night, and one touch goes back to the controls.
+- **Private Photos tile.** Connect an Immich 2.x/3.x server in Settings → Photo library, explicitly choose albums and permitted profiles, then add Photos from Home's editor. Read-only keys stay on the backend; bounded previews crossfade without changing the existing uploaded photo frame. No private library is selected automatically.
 - **Energy history.** Plugs that measure power show watts now, kWh today and a 7-day chart.
 - **Works with Home Assistant.** Already run Home Assistant? Add its lights, switches and TVs here, rooms included.
-- **Profiles and sign-in.** Everyone gets a profile with their own avatar, their own devices and their own Home page. Sign in with a quick 4–6 digit PIN on the wall panel, or an email and password on a phone. Admins add devices and change settings; members use the devices they're given. The wall panel stays signed in and goes back to the profile picker when nobody is using it.
+- **Profiles.** Everyone gets an avatar, their own devices and their own Home/room layouts. Choose a profile with one tap; optional passwords are still supported. Admins manage settings and devices; members use the devices they're given. The wall panel stays signed in without idle locking.
 - **Works from phones too.** Open `http://homepanel.local:8080` in any browser on your Wi-Fi.
 - **Built to extend.** A stable API on top, one small file per brand underneath. See [Adding a device brand](app/adapters/README.md).
 
@@ -50,6 +46,7 @@ once — controlled directly over your Wi-Fi.
 | LG | Sound bars with Wi-Fi (2018+) | Local | None, [guide](docs/DEVICE_SETUP.md#lg-sound-bars) |
 | Home Assistant | Anything it controls: lights, switches, fans, TVs, speakers | Local (Home Assistant REST API) | Long-lived access token |
 | Ecovacs Deebot | Robot vacuums | Ecovacs cloud | Ecovacs Home app login; needs Python 3.14, [guide](docs/DEVICE_SETUP.md#ecovacs-deebot-robot-vacuums) |
+| VeSync / Levoit | Core300S air purifier family | VeSync cloud | VeSync account; [setup](docs/DEVICE_SETUP.md#levoit-core300s--vesync) |
 
 Want another brand? It's usually one file — see [app/adapters/README.md](app/adapters/README.md).
 
@@ -66,7 +63,7 @@ Want another brand? It's usually one file — see [app/adapters/README.md](app/a
 
 Details and prices: [docs/HARDWARE.md](docs/HARDWARE.md).
 
-## Try it on your computer first (no hardware needed)
+## Run the native panel
 
 Needs Python 3.11 or newer.
 
@@ -74,7 +71,7 @@ Needs Python 3.11 or newer.
 git clone https://github.com/leshwar/homepanel.git
 cd homepanel
 make setup        # creates .venv and installs everything
-make dev          # pretend devices → open http://localhost:8080
+make run          # real panel → open http://localhost:8080
 ```
 
 Without `make` (e.g. Windows):
@@ -82,48 +79,45 @@ Without `make` (e.g. Windows):
 ```bash
 python -m venv .venv
 .venv\Scripts\activate            # macOS/Linux: source .venv/bin/activate
-pip install -r requirements-dev.txt
-python -m app.main --demo --debug
+pip install -r requirements.txt
+python -m app.main --debug
 ```
 
-The demo opens straight to the panel. To try sign-in and profiles too, start it
-with `python -m app.main --demo --sign-in`: Owner's PIN is 1234, Sam's is 2468
-(Sam only sees the bedroom and the kitchen pendant).
-
-To control **your real devices** from your laptop (same Wi-Fi), run `make run`
-(or `python -m app.main --debug`), open http://localhost:8080, then Settings → Add a device.
+If the panel already runs as a service, use that existing instance instead of
+starting a second server. Updates restart its existing supervisor while keeping
+the same data directory. On first setup, choose Owner and add devices in Settings.
+Automated tests use temporary simulated devices internally, never the household
+data or live device controls.
 
 ## Sign-in and profiles
 
-| Profile picker (wall panel) | PIN pad (phone) | Settings → Profiles |
-|---|---|---|
-| <img src="docs/screenshots/signin-picker.png" width="300" alt="Who's using the panel? Avatars for Owner and Sam"> | <img src="docs/screenshots/signin-pin.png" width="160" alt="Sam's avatar over a round-key PIN pad"> | <img src="docs/screenshots/profiles-settings.png" width="220" alt="List of profiles with their role, devices and sign-in, plus This screen settings"> |
+Profiles without a password open with **one tap**, with no PIN or idle lock.
+Existing profiles, devices, preferences and layouts survive upgrading; old profile
+PIN hashes are removed. Existing passwords and integration credentials are kept.
+Profiles help personalize the panel, but an unprotected admin profile is **not
+access control**: anyone who can reach the page can choose it. Keep the service on a
+trusted LAN or private Tailscale network; never expose it directly to the internet.
 
-The panel asks everyone to sign in, so a guest on your Wi-Fi, or anyone who finds
-the address, can't switch your lights or see your devices. That also makes it
-**safer to reach the panel when you're away from home** (for example over
-Tailscale or another VPN): without a session the API answers nothing but "sign in".
-It isn't a substitute for a VPN: don't expose the panel's port to the internet.
-
-- **First open after upgrading:** your devices, rooms and Home page now belong to an
-  **Owner** profile, and the panel asks you to choose a PIN or a password for it. Do
-  this on the wall panel (tick "This screen is the wall panel") or from your phone.
-- **Add people** in Settings → Profiles and sign-in: a name and colour, a PIN and/or an
-  email and password, **Admin** or **Member**, and for members "all devices" or a list.
+- **First open:** choose the **Owner** profile. Add an optional email/password in
+  Settings → Your profile if that profile needs password sign-in.
+- **Add people** in Settings → Profiles: a name and colour, optional email/password,
+  **Admin** or **Member**, and for members "all devices" or a list.
   Devices a member can't see never reach their screen: the server leaves them out.
-- **Each profile has its own Home page.** Long-press Home to arrange yours; nobody
-  else's changes. New profiles start from a shared default ("Use my Home page for new
-  profiles").
-- **The wall panel** stays signed in across restarts and goes back to the profile
-  picker after 10 minutes without a touch (change it in Settings → Profiles and sign-in;
-  the resting clock and photo frame keep running while it's locked). Tap your avatar,
-  then your PIN.
+- **Each profile has its own Home and room layouts.** Long-press Home or use its
+  pencil; in a room or Settings → Rooms, choose **Edit tiles**. Hold a tile and drop
+  it into free grid space, use its corner or options to resize, or use arrow keys
+  on a focused tile. Other tiles stay put, including empty space. Done saves and
+  Cancel restores. Layouts adapt to 2, 4 or 6 columns; each width keeps its own
+  positions and sizes. New profiles start Home from a shared default.
+- **The wall panel** stays signed in across restarts. Idle screens show the clock
+  or photos without locking; switch profiles from the avatar menu.
 - **Phones and laptops** stay signed in for 30 days after they're last used. The avatar
   at the top right switches profile or signs out.
-- PINs and passwords are stored only as scrypt hashes in `data/homepanel.json`, and sign-in
-  is limited to 8 wrong tries per 15 minutes. Forgot the only admin PIN? Stop the panel,
-  remove `"pin_hash"`/`"password_hash"` from that profile in `data/homepanel.json` (or the
-  whole `"profiles"` list) and start it again: it asks to set one up.
+- Optional passwords are stored only as scrypt hashes in `data/homepanel.json`;
+  password attempts remain rate-limited. To recover a forgotten admin password,
+  stop the panel, back up its data, remove only that profile's `password_hash` from
+  `data/homepanel.json`, then restart and choose the profile. Do not delete the
+  profile list or device data.
 
 ## Install on the Raspberry Pi
 
@@ -143,9 +137,10 @@ is easier there).
 
 Server-only (no screen): `./scripts/install.sh --no-kiosk`.
 
-Prefer Docker? `docker compose up -d --build` runs the server (host networking,
-so device search works on the Pi). Try it on any computer with
-`make docker-demo`. Details and Mac caveats: [docs/DOCKER.md](docs/DOCKER.md).
+HomePanel runs natively with Python; no container runtime is needed.
+Feature verification and previews use the same running panel on 8080. Source
+worktrees are for editing/testing and rollback, not extra application instances.
+See [development and deployment](docs/DEVELOPMENT.md).
 
 ## Voice commands
 
@@ -177,10 +172,10 @@ not an AI service. See `POST /api/v1/voice` in [docs/API.md](docs/API.md#voice-c
 The panel is a web page, so any phone, tablet or laptop on the same Wi-Fi can use
 it: open the panel's address in Safari or Chrome. The address is shown in
 **Settings → Diagnostics** and in the log at start-up, for example
-`http://192.168.1.20:8080`. (In Docker on a Mac, use your Mac's address from
-System Settings → Wi-Fi → Details, with the port you opened, e.g. `:8081`.)
+`http://192.168.1.20:8080`. On a Mac, the address is also available in
+System Settings → Wi-Fi → Details.
 
-Sign in with your profile's PIN or email and password. Members only see the
+Choose your profile (enter its password only if one is set). Members only see the
 devices shared with them; admins manage devices and settings. Use a VPN such as
 Tailscale for access away from home—don't expose the panel's port to the internet.
 Native phone apps are planned for later (see [ROADMAP](docs/ROADMAP.md)).
@@ -192,7 +187,7 @@ Native phone apps are planned for later (see [ROADMAP](docs/ROADMAP.md)).
 | Log file (rotates, 5 × 2 MB) | `logs/homepanel.log` |
 | On the Pi, live | `journalctl -u homepanel -f` |
 | In the app | Settings → Diagnostics and logs (and "Download log file") |
-| Verbose logging | add `--debug` (or `make dev` / `make run`, which already do) |
+| Verbose logging | add `--debug` (`make run` already does) |
 | Bug-report bundle | `./scripts/collect-logs.sh` → attach the `.tar.gz` to an issue (no keys or tokens included) |
 
 Common fixes are in [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
@@ -246,13 +241,13 @@ make test-integration   # real server, simulated devices, browser UI
 make lint
 ```
 
-Every pull request runs lint, unit tests, integration tests and a Docker build;
+Every pull request runs lint, unit tests and integration tests, including native startup smoke;
 pull requests that change code must include both kinds of tests. Merges to
-`main` publish a Docker image for the Pi. See [docs/CI_AND_BRANCH_RULES.md](docs/CI_AND_BRANCH_RULES.md).
+`main` publish a source archive. See [docs/CI_AND_BRANCH_RULES.md](docs/CI_AND_BRANCH_RULES.md).
 
 ## Status
 
-Early but working: the app, UI, demo mode and test suite run end to end. The
+Early but working: the native app, UI and isolated test suite run end to end. The
 device adapters follow each brand's documented protocol or library; the Shelly
 and Home Assistant adapters are tested against simulated devices, and the others
 still need testing against real hardware. Reports are welcome: open an issue

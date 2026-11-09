@@ -48,6 +48,14 @@ class ShutdownWithOpenPanel(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.dir, ignore_errors=True)
 
+    def test_cli_refuses_fixture_mode_on_canonical_port_without_creating_data(self):
+        data = os.path.join(self.dir, "refused")
+        result = subprocess.run([sys.executable, "-m", "app.main", "--demo", "--host", "127.0.0.1",
+                                 "--port", "8080", "--data", data], cwd=ROOT, capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("internal tests", result.stderr)
+        self.assertFalse(os.path.exists(data))
+
     def test_stop_ends_event_streams_and_runs_service_shutdown(self):
         server = DemoServer(self.dir).start()
         service = server.app.state.service

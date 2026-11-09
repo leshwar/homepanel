@@ -66,6 +66,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
               align-items: center; background: var(--dusk); font-weight: 500; }
 .btn-alloff:active { background: var(--slate); }
 .btn-alloff .i { color: var(--ember); }
+.btn-alloff.idle, .btn-alloff.idle .i { color: var(--haze); }   /* nothing is on: no red power mark */
 
 /* ---------- scenes (Home page widget) ---------- */
 .rooms::-webkit-scrollbar { display: none; }
@@ -149,6 +150,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .tile-more:active { background: rgb(255 255 255 / .06); }
 .tile.offline { opacity: .55; }
 .tile.offline .tile-status { color: var(--ember); }
+/* A device that needs a person (a problem, a worn part): its status line stands out. */
+.tile.attn .tile-status { color: var(--lamp); opacity: 1; font-weight: 600; }
+html[data-tiles="light"] .tile.attn .tile-status { color: #7a4a00; }
 .tile.busy .tile-icon { animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .5; } }
 

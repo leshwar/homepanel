@@ -20,7 +20,8 @@ export function powerControls(d) {
     </button>`;
   const power = d.caps.includes("power") ? toggle("data-power", "Power", typeof s.on === "boolean",
     s.on, s.on ? "Turn off" : "Turn on", "power") : "";
-  const mute = d.caps.includes("mute") ? toggle("data-mute", "Mute", typeof s.muted === "boolean",
+  // A device that is off can't say whether it is muted: leave the button out instead of "Unknown".
+  const mute = d.caps.includes("mute") && !(s.on === false && typeof s.muted !== "boolean") ? toggle("data-mute", "Mute", typeof s.muted === "boolean",
     s.muted, s.muted ? "Unmute" : "Mute audio", s.muted ? "mute" : "vol", s.on === false) : "";
   return power || mute ? `<div class="device-power speaker-toggles">${power}${mute}</div>` : "";
 }

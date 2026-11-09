@@ -23,7 +23,7 @@ class TileInteractionTests(unittest.TestCase):
         self.run_js("tiles.js", """
           const store={busy:new Set(),devices:new Map()}, command=()=>{};
           const esc=s=>String(s??'').replaceAll('<','&lt;').replaceAll('"','&quot;'), icon=()=>'<svg></svg>';
-          const isMedia=d=>['tv','speaker'].includes(d.kind), glowVar=()=>'1 2 3', statusText=()=>'On';
+          const isMedia=d=>['tv','speaker'].includes(d.kind), glowVar=()=>'1 2 3', statusText=()=>'On', needsAttention=d=>!!d.state?.problem;
           const toast=()=>{},openDevice=()=>{},deviceIcon=()=>'<svg></svg>',devicePicture=()=>null,syncAttributes=()=>{};
         """, """
           const {tileHtml,primaryAction}=await import(process.argv[1]);

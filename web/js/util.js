@@ -50,8 +50,24 @@ export const glowVar = (d) => glow(d).join(" ");
 const ACTIVITY_TEXT = { cleaning: "Cleaning", paused: "Paused", returning: "Going back to dock",
                         docked: "Docked", idle: "Ready", error: "Needs help" };
 
+// A device that wants a person: it reports a problem, or a part is worn out.
+// Generic state keys (problem, parts), so any brand can use it.
+export const WORN_PERCENT = 10;
+export const wornPart = (s = {}) => (s.parts || []).find((p) => p.percent <= WORN_PERCENT) || null;
+// Resting = nothing more useful to say: not cleaning, not still charging.
+const resting = (s) => !s.activity || (["docked", "idle"].includes(s.activity) && (s.battery == null || s.battery >= 100));
+export const needsAttention = (d) => {
+  const s = d?.state || {};
+  return s.online !== false && !s.needs_pairing && !!(s.problem || (wornPart(s) && resting(s)));
+};
+
+// What a room's heading says: nothing to turn off is not the same as nothing there.
+export const roomStatus = (total, on) => !total ? "No devices yet" : on ? `${on} of ${total} on` : "Everything is off";
+
 export function vacuumText(s) {
   if (!s.activity) return "Connecting…";
+  if (s.problem) return "Needs attention";
+  if (resting(s) && wornPart(s)) return "Maintenance due";
   let t = ACTIVITY_TEXT[s.activity] || "Ready";
   if (s.activity === "docked" && s.battery != null && s.battery < 100) t = "Charging";
   return s.battery != null ? `${t}, ${s.battery}%` : t;

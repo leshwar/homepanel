@@ -122,7 +122,8 @@ web/
   unfinished entry before leaving. Normal navigation never enables dragging.
   Handles are at least 48 px and leave normal scrolling/navigation outside them alone. Order is shared
   across profiles and all room navigation; Home/All rooms/Other are not reorderable.
-  Empty rooms remain visible to admins with an Add device action. Members receive
+  Empty rooms remain visible to admins with an Add device action: one line ("No devices
+  yet" and the button) in All rooms, a full empty page on the room's own tab. Members receive
   only rooms containing their shared devices, including in the API. Stale room-list
   saves are rejected rather than removing another screen's new room.
   Renaming keeps room order, device membership and every profile's saved tile layout.
@@ -139,6 +140,8 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   quick actions; they do not also open the panel. Unknown/offline actions are
   disabled, pending commands are visible, and failures show the standard error.
   Long-press still opens controls; layout Edit hides/disables quick actions.
+  A device that reports a `problem`, or a worn part (`parts` at 10% or less) while it
+  rests, says "Needs attention" / "Maintenance due" in a highlighted status line.
 - **Device controls.** Opaque, theme-aware panels have a named status header, a
   reachable Close button and labeled Power/Mute actions where supported. TV
   navigation/volume stay primary; apps, inputs and extra keys are grouped.
@@ -170,7 +173,7 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   and "Other" (devices without a room). Swipe the grid sideways to change room;
   the chosen room is remembered. Each room has a heading with
   what's on and a **Turn off** button for that room (the header's **All off** is
-  always everything). "Other" nudges you to give its devices a room.
+  always everything; it loses its red power mark while nothing can be turned off). "Other" nudges you to give its devices a room.
 - **Portrait first** (Touch Display 2 is 720×1280): Home and room tiles use 2, 4 or
   6 columns, stepping up when the content area reaches 600 or 960 px (after the
   sidebar and padding). `positions` keeps separate coordinates and sizes per

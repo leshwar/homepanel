@@ -1,7 +1,7 @@
 // Ordinary activation opens controls. Only explicit quick-action buttons send commands.
 
 import { store, command } from "./store.js";
-import { esc, icon, isMedia, glowVar, statusText, toast } from "./util.js";
+import { esc, icon, isMedia, glowVar, needsAttention, statusText, toast } from "./util.js";
 import { openDevice } from "./sheet.js";
 import { deviceIcon } from "./icons.js";
 import { devicePicture } from "./art.js";
@@ -40,7 +40,7 @@ export function tileHtml(d, { size = "", ctx = "rooms", sub = "", editing = fals
   const level = d.kind === "light" && s.brightness ? Math.max(0.15, s.brightness / 100) : 1;
   const wide = size ? size !== "1x1" : ctx === "rooms" && isMedia(d);
   const busy = store.busy.has(d.id) || pending.has(d.id), quick = primaryAction(d);
-  const cls = ["tile", on && "on", offline && "offline", busy && "busy", wide && "wide"]
+  const cls = ["tile", on && "on", offline && "offline", busy && "busy", wide && "wide", needsAttention(d) && "attn"]
     .filter(Boolean).join(" ");
   const status = statusText(d);
   const tvControls = isMedia(d) && d.caps.includes("volume") && on && wide ? `

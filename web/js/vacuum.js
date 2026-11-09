@@ -3,7 +3,7 @@
 // (suction, mode, station jobs) and parts wear behind a Maintenance row.
 
 import { api } from "./api.js";
-import { esc, icon } from "./util.js";
+import { esc, icon, WORN_PERCENT } from "./util.js";
 
 const has = (d, c) => d.caps.includes(c);
 
@@ -93,7 +93,7 @@ export function vacuumBody(d) {
       ${options ? `<details class="control-section" data-control-section="vac-options"><summary>Cleaning options</summary><div class="opts">${options}</div></details>` : ""}
       ${parts.length ? `<details class="vac-parts" data-control-section="maintenance">
           <summary class="maint-row">${icon("wrench")}<span class="grow"><span class="title">Maintenance</span>
-            <span class="sub ${worst.percent <= 10 ? "warn" : ""}">${worst.percent <= 10 ? `${esc(worst.name)} needs replacing`
+            <span class="sub ${worst.percent <= WORN_PERCENT ? "warn" : ""}">${worst.percent <= WORN_PERCENT ? `${esc(worst.name)} needs replacing`
               : `All parts good. ${esc(worst.name)} at ${worst.percent}%`}</span></span>${icon("down", "chev")}</summary>
           ${parts.map((p) => `<div class="part"><span>${esc(p.name)}</span>
             <div class="meter small"><div class="meter-fill ${p.percent <= 10 ? "low" : ""}" style="width:${p.percent}%"></div></div>

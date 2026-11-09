@@ -32,6 +32,33 @@ log = logging.getLogger("homepanel")
 # shown in Settings → Diagnostics. Keep it to warnings, even when running with --debug.
 logging.getLogger("deebot_client").setLevel(logging.WARNING)
 
+
+class _CalmReconnects(logging.Filter):
+    """Ecovacs' cloud drops the connection many times a day and the library reconnects by
+    itself. One short line per drop is enough: no stack trace, no separate socket error."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        message = record.getMessage()
+        if "failed to receive on socket" in message:
+            return False
+        if message.startswith(("Connection lost", "Cannot connect")):
+            record.exc_info = record.exc_text = None
+        return True
+
+
+# Filters only see records logged on their own logger, so both of the library's get one.
+for _name in ("deebot_client.mqtt_client", "deebot_client.mqtt_client.client"):
+    _logger = logging.getLogger(_name)
+    if not any(isinstance(f, _CalmReconnects) for f in _logger.filters):
+        _logger.addFilter(_CalmReconnects())
+
+# The library's wording for some error codes is hard to follow; say what to do instead.
+PROBLEM_TEXT = {
+    305: "The dirty water tank is full. Empty it and put it back.",
+    318: "The dirty water tank is full. Empty it and put it back.",
+    323: "The dirty water tank is full or not in place. Empty it and put it back.",
+}
+
 COUNTRIES = [("US", "United States"), ("CA", "Canada"), ("GB", "United Kingdom"), ("IE", "Ireland"),
              ("DE", "Germany"), ("FR", "France"), ("ES", "Spain"), ("IT", "Italy"), ("NL", "Netherlands"),
              ("AU", "Australia"), ("NZ", "New Zealand"), ("IN", "India"), ("JP", "Japan"),
@@ -329,7 +356,7 @@ class EcovacsAdapter(DeviceAdapter):
             self.changed(did)
 
         async def on_error(e):
-            st["problem"] = (e.description or f"Error {e.code}") if e.code else ""
+            st["problem"] = _problem(e.code, e.description)
             self.changed(did)
 
         async def on_available(e):
@@ -506,6 +533,11 @@ def _problem_text(name: str, problem: tuple) -> str:
     if code == "errno 500":
         return f"No answer from {name}. Check it's on Wi-Fi, then try again."
     return f"{name} didn't do that (Ecovacs said: {msg or 'no reason given'}, code {code})."
+
+
+def _problem(code, description) -> str:
+    """What the robot says is wrong, in plain words. Code 0 = nothing is wrong."""
+    return (PROBLEM_TEXT.get(code) or description or f"Error {code}") if code else ""
 
 
 def _public(st: dict) -> dict:

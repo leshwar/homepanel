@@ -71,7 +71,7 @@ class FavouritesTests(unittest.TestCase):
         rows.first.wait_for()
         self.assertEqual(rows.evaluate_all("els => els.map(e => e.dataset.id)"), ["lr-vacuum", "bd-lamp"])   # chosen order
         lamp = page.locator('.w-favs .tile[data-id="bd-lamp"]')
-        self.assertEqual(lamp.locator(".tile-status").inner_text(), "Bedroom · Off")
+        self.assertEqual(lamp.locator(".tile-status").inner_text(), "Off")           # no room: the names differ
         box, quick = lamp.bounding_box(), lamp.locator(".tile-quick").bounding_box()
         self.assertLess(box["height"], 80)                               # a compact row, not a full tile
         self.assertGreaterEqual(min(quick["width"], quick["height"]), 48)
@@ -87,7 +87,19 @@ class FavouritesTests(unittest.TestCase):
         lamp.locator(".tile-quick").click()                              # the power button is the only command
         page.wait_for_function("""() => document.querySelector('.w-favs .tile[data-id="bd-lamp"]').dataset.on === 'true'""")
         self.assertEqual(self.commands, [{"action": "power", "value": True}])
-        self.assertRegex(lamp.locator(".tile-status").inner_text(), r"^Bedroom · On")   # the room stays in the line
+        self.assertRegex(lamp.locator(".tile-status").inner_text(), r"^On")
+        # A long name takes a second line instead of being cut; a shared name brings the room back.
+        page.evaluate("""async () => {
+          const {store, upsertDevice} = await import('/js/store.js'), home = await import('/js/home.js');
+          upsertDevice({...store.devices.get('lr-vacuum'), name: 'Bedside lamp with a very long name'});
+          upsertDevice({...store.devices.get('bd-lamp'), name: 'Bedside lamp with a very long name'});
+          home.refreshHomeParts(['favourites']);
+        }""")
+        page.wait_for_function("""() => document.querySelector('.w-favs .tile[data-id="bd-lamp"] .tile-status').textContent.startsWith('Bedroom · ')""")
+        name = lamp.locator(".tile-name")
+        self.assertTrue(name.evaluate("e => e.scrollWidth <= e.clientWidth"))
+        self.assertGreater(name.bounding_box()["height"], 30)                # two lines
+        self.assertLess(lamp.bounding_box()["height"], 80)
         self.assertEqual(page.locator("#sheet:not([hidden])").count(), 0)
 
     def test_favourites_are_added_and_chosen_in_edit_mode(self):

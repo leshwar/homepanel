@@ -5,7 +5,7 @@
 import { api, connectEvents } from "./api.js";
 import { setMarkup, updateRoomCounts, syncAttributes } from "./render.js";
 import { store, onChange, reload, upsertDevice, setRoom, setView, devicesIn, applySnapshot, addRoom } from "./store.js";
-import { $, esc, icon, glow, roomStatus, toast } from "./util.js";
+import { $, esc, icon, glow, headline, roomStatus, toast } from "./util.js";
 import { refreshSheet, closeSheet } from "./sheet.js";
 import { openSettings, isSettingsOpen, refreshSettings, closeSettings, roomAddForm } from "./settings.js";
 import { applyTransparency } from "./glass.js";
@@ -187,14 +187,11 @@ function renderTitle() {
   const all = [...store.devices.values()];
   const room = store.room;
   let title = store.settings.home_name || "Home", sub;
-  if (home) {
-    const on = all.filter(isOn).length;
-    sub = on ? `${on} ${on === 1 ? "thing is" : "things are"} on` : "Everything is off";
-  } else {
+  if (home) sub = headline(all) || "Everything is off";
+  else {
     title = room === "all" ? "All rooms" : roomLabel(room);   // the page is the room, on every screen size
     const list = devicesIn(room);
-    const on = list.filter(isOn).length;
-    sub = on ? `${on} of ${list.length} on` : list.length ? "Everything is off" : "";
+    sub = headline(list, list.length);
   }
   $("#title").textContent = title;
   $("#subtitle").textContent = sub;
@@ -252,10 +249,10 @@ function roomHead(r, linked) {
   const status = roomStatus(list.length, on);
   // In "All" an empty room is one line with its own Add button, not a full empty page.
   const add = linked && !list.length
-    ? `<button class="btn small" data-add-device aria-label="Add a device to ${name}">${icon("plus")}Add a device</button>` : "";
+    ? `<button class="btn small" data-add-device aria-label="Add a device to ${name}">${icon("plus")}<span>Add a device</span></button>` : "";
   return `<div class="room-head${linked ? "" : " single"}" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>${
     offable ? `<button class="room-off" data-room-off="${esc(r)}">${icon("power")}Turn off</button>` : ""}
-    ${list.length ? `<button class="btn small" data-edit-room="${esc(r)}" aria-label="Edit ${name} tiles">${svg("pencil")}Edit tiles</button>` : add}</div>`;
+    ${list.length ? `<button class="btn small" data-edit-room="${esc(r)}" aria-label="Edit ${name} tiles">${svg("pencil")}<span>Edit tiles</span></button>` : add}</div>`;
 }
 
 function updateHeads() {

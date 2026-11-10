@@ -53,7 +53,7 @@ export function tileHtml(d, { size = "", ctx = "rooms", sub = "", editing = fals
         <button type="button" data-act="volume_up" aria-label="${esc(d.name)} volume up" ${busy || editing || offline || s.online !== true ? "disabled" : ""}>${icon("plus")}</button>
       </div>` : "";
   return `
-    <div class="${cls}" data-id="${esc(d.id)}" data-ctx="${ctx}" data-size="${esc(size)}" data-on="${on}" data-editing="${editing}"
+    <div class="${cls}" data-id="${esc(d.id)}" data-ctx="${ctx}" data-size="${esc(size)}" data-sub="${esc(sub)}" data-on="${on}" data-editing="${editing}"
          role="group" style="--glow:${glowVar(d)};--level:${level}" aria-busy="${busy}" aria-label="${esc(d.name)}">
       ${tilePicture(d, offline, ctx)}
       <div class="tile-tv-row">
@@ -79,7 +79,7 @@ function tilePicture(d, offline, ctx) {
 
 // Re-draw every tile showing this device (it can be on Home and in Rooms).
 // Returns false if none is on screen.
-export function updateTiles(id, subFor = (d, el) => (el.dataset.ctx === "home" ? d.room || "" : "")) {
+export function updateTiles(id, subFor = (d, el) => el.dataset.sub || "") {
   const d = store.devices.get(id);
   const els = document.querySelectorAll(`.tile[data-id="${CSS.escape(id)}"]`);
   if (!d || !els.length) return false;

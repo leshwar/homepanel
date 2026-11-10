@@ -92,8 +92,10 @@ web/
   that profile uses (saved with `PUT /profiles/me/layout`, checked by `app/core/layout.py`). Long-press it (or the
   pencil) to edit: hold and drag into an empty grid cell, drag a corner (or tap it) for
   Small / Wide / Large, "…" for more (and the time zone of a clock), "−" to hide, **Add**
-  to bring widgets back or add a clock; Cancel or Done. No devices on Home: the Rooms
-  widget opens each room's page. **Rooms**: device tiles, All rooms (grouped by room) or
+  to bring widgets back, add a clock or add **Favourites**; Cancel or Done. Device tiles live on
+  the Rooms pages (the Rooms widget opens each one). A Favourites widget lists up to 8 chosen
+  devices ("…" → tick them; none ticked = the first few) as compact rows: the name opens the
+  controls, the round button is the same quick action as on a tile. **Rooms**: device tiles, All rooms (grouped by room) or
   one room at a time, titled with the room's name and with its own **Turn off**.
   **Edit tiles** in the room heading or Settings → Rooms opens the same placement
   and sizing controls. Arrow keys or the options menu move a tile one cell.
@@ -136,7 +138,8 @@ included in `vendor/sortablejs/LICENSE`. The app retains its own room permission
 keyboard behavior and guarded persistence; the library only handles dragging.
 - **Every tile opens controls.** Mouse/touch activation of the body or name, and
   Enter/Space on its native Open controls button, never issue a device command.
-  The distinct power/cleaning button and supported volume buttons are explicit
+  The distinct power/cleaning button and supported volume buttons (with the level between
+  them on a wide TV or speaker tile that reports one) are explicit
   quick actions; they do not also open the panel. Unknown/offline actions are
   disabled, pending commands are visible, and failures show the standard error.
   Long-press still opens controls; layout Edit hides/disables quick actions.

@@ -15,6 +15,8 @@ on (or open) an issue before starting so work isn't duplicated.
 - Per-profile Home and room tiles: position in free grid space, resize, and save across screens.
 - Room pages with their own Turn off button.
 - Voice/typed commands, photo frame, wallpapers and device pictures.
+- Favourites on Home: a widget with chosen devices as compact rows.
+- Device-state triggers: "when the TV turns on, turn the sound bar on".
 
 ## Phones and tablets (later)
 
@@ -58,14 +60,13 @@ additional sources, each as its own module next to `app/core/photos.py`:
 
 ## UI
 
-- Favourite-device shortcuts (Home and room tiles already support grid placement and resizing).
 - Indoor temperature and an optional weather summary in the header.
 - Per-room "All off" directly from the room tab (long-press); room pages already have Turn off.
 - Backlight control on the official display (dim at night instead of showing the night clock).
 
 ## Automations
 
-- Device-state triggers: "when the TV turns on after sunset, set the backlight to 20%".
+- More than one action per trigger, and values other than on/off ("set the backlight to 20%").
 - Conditions ("only if someone is home") and a vacation mode that randomises lights.
 
 ## Reference material

@@ -265,6 +265,8 @@ class HomeService:
         self.profiles = Profiles(self.store, Sessions(os.path.join(data_dir, "demo-sessions.json" if demo else "sessions.json")))
         self.history = History(os.path.join(data_dir, "demo-history.db" if demo else "history.db"))
         self.automations = Automations(self)
+        self._was_on: dict[str, bool] = {}       # last known power per device, for "turns on/off" automations
+        self._power_tasks: set[asyncio.Task] = set()
         self.photos = PhotoLibrary(os.path.join(data_dir, "demo-photos" if demo else "photos"))
         self.photo_library = RemotePhotos(self.store, self._publish_layout)
         self.wallpapers = PhotoLibrary(os.path.join(data_dir, "demo-wallpapers" if demo else "wallpapers"))
@@ -361,7 +363,7 @@ class HomeService:
                             asyncio.create_task(self.presence.run())]
 
     async def stop(self) -> None:
-        for t in [*self._pollers.values(), *self._background]:
+        for t in [*self._pollers.values(), *self._background, *self._power_tasks]:
             t.cancel()
         for h in self._soon.values():
             h.cancel()
@@ -424,6 +426,25 @@ class HomeService:
 
     def _publish_device(self, d: Device) -> None:
         self.publish({"type": "device", "device": self.public_device(d)})
+        self._watch_power(d)
+
+    def _watch_power(self, d: Device) -> None:
+        """Tell the automations when a device turns on or off. The first reading after a start,
+        and a device that drops offline, are not changes: only a known on -> off or off -> on."""
+        on = d.state.get("on")
+        if d.state.get("online") is not True or not isinstance(on, bool):
+            return
+        before = self._was_on.get(d.id)
+        self._was_on[d.id] = on
+        if before is None or before == on:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return                         # no server running (a plain unit test)
+        task = loop.create_task(self.automations.on_device(d.id, on))
+        self._power_tasks.add(task)
+        task.add_done_callback(self._power_tasks.discard)
 
     def _publish_layout(self) -> None:
         self.publish({"type": "layout"})   # UI reloads the full snapshot
@@ -679,6 +700,8 @@ class HomeService:
             self.store.save()              # the adapter learned something (e.g. a TV's MAC address)
         if d.state != before or shape_changed:
             self._publish_device(d)
+        else:
+            self._watch_power(d)           # an unchanged first reading still becomes the baseline
 
     async def map_image(self, device_id: str) -> tuple[str, bytes]:
         d = self.get(device_id)
@@ -899,7 +922,9 @@ class HomeService:
         await asyncio.to_thread(self.device_pictures.remove, d.picture)
         for s in self.store.scenes:
             s["actions"] = [x for x in s["actions"] if x["device_id"] != device_id]
-        self.store.automations = [a for a in self.store.automations if a["do"].get("device_id") != device_id]
+        self.store.automations = [a for a in self.store.automations
+                                  if device_id not in (a["do"].get("device_id"), a["when"].get("device_id"))]
+        self._was_on.pop(device_id, None)
         self.profiles.forget_device(device_id)
         await asyncio.to_thread(self.history.forget, device_id)
         self.store.save()

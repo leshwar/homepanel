@@ -16,7 +16,7 @@ import { svg, roomIcon } from "./icons.js";
 import { updateTiles, bindTiles } from "./tiles.js";
 import { applySky, refreshWeather, onWeather } from "./sky.js";
 import { applyWallpaper } from "./wallpaper.js";
-import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEditing, stopEditing } from "./home.js";
+import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEditing, stopEditing, favouritesStale } from "./home.js";
 import { startAuth } from "./auth.js";
 import "./profiles.js";      // Settings → Profiles
 import { roomTiles, roomLayoutKey, setupRoomEditor, startRoomEditing, stopRoomEditing, isRoomEditing } from "./room-layout.js";
@@ -581,7 +581,8 @@ function setupLive() {
 onChange((what, id) => {
   if (what === "device") {
     const d = store.devices.get(id);
-    const shown = updateTiles(id);
+    // Only a tile in the room grid counts: a Favourites row on Home must not hide a missing one.
+    const shown = updateTiles(id) && !!$(`#grid .tile[data-id="${CSS.escape(id)}"]`);
     // A poll for a device in another room must not rebuild the visible grid.
     if (!shown && store.view === "rooms" && devicesIn(store.room).some((dev) => dev.id === id)) renderGrid();
     renderAmbience();
@@ -590,6 +591,8 @@ onChange((what, id) => {
     renderTitle();
     updateHeads();
     if (d) refreshHomeParts(["rooms"]);
+    // Favourites redraw only when their list changes; updateTiles keeps the rows current.
+    if (store.view === "home" && favouritesStale()) refreshHomeParts(["favourites"]);
   } else if (what === "room") {
     renderNav(); renderTitle();
     if (store.view === "rooms") renderGrid();

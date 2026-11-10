@@ -1,4 +1,5 @@
 """Unit tests: sunrise/sunset, energy history, presence and schedules (no network)."""
+import asyncio
 import os
 import shutil
 import tempfile
@@ -123,6 +124,77 @@ class Automations(unittest.IsolatedAsyncioTestCase):
         a = self.svc.automations.save({"when": {"type": "sun", "event": "sunset", "offset_min": -15}, "do": {"type": "all_off"}})
         self.assertIn("sunset", a["name"])
         self.assertIsNotNone(a["next_run"])
+
+    async def _settle(self):
+        while self.svc._power_tasks:
+            await asyncio.gather(*list(self.svc._power_tasks))
+
+    async def test_device_trigger_runs_when_the_watched_device_turns_on(self):
+        autos = self.svc.automations
+        a = autos.save({"when": {"type": "device", "device_id": "bd-tv", "event": "on", "junk": 1},
+                        "do": {"type": "command", "device_id": "bd-lamp", "action": "power", "value": True}})
+        self.assertEqual(a["name"], "Bedside lamp on when LG TV turns on")
+        self.assertEqual(a["when"], {"type": "device", "device_id": "bd-tv", "event": "on"})
+        self.assertIsNone(a["next_run"])                       # it waits for the device, not for a time
+        await self.svc.refresh("bd-lamp")
+        await self.svc.refresh("bd-tv")                        # first reading: off. A baseline, not a change.
+        await self._settle()
+        self.assertFalse(self.svc.get("bd-lamp").state["on"])
+        await self.svc.command("bd-tv", Action.POWER, True)
+        await self._settle()
+        self.assertTrue(self.svc.get("bd-lamp").state["on"])
+        stored = next(x for x in self.svc.store.automations if x["id"] == a["id"])
+        self.assertEqual(stored["last_result"], "ok")
+
+        # Off and straight back on (a flicker, or two automations switching each other): no second run yet.
+        first = stored["last_run"]
+        await self.svc.command("bd-lamp", Action.POWER, False)
+        await self.svc.command("bd-tv", Action.POWER, False)
+        await self.svc.command("bd-tv", Action.POWER, True)
+        await self._settle()
+        self.assertEqual(stored["last_run"], first)
+        self.assertFalse(self.svc.get("bd-lamp").state["on"])
+        stored["last_run"] = first - 60                        # later on it runs again
+        await self.svc.command("bd-tv", Action.POWER, False)
+        await self.svc.command("bd-tv", Action.POWER, True)
+        await self._settle()
+        self.assertTrue(self.svc.get("bd-lamp").state["on"])
+
+    async def test_device_trigger_ignores_offline_and_the_other_direction(self):
+        autos = self.svc.automations
+        autos.save({"when": {"type": "device", "device_id": "kt-kettle", "event": "off"}, "do": {"type": "all_off"}})
+        await self.svc.command("lr-ceiling", Action.POWER, True)
+        await self.svc.refresh("kt-kettle")
+        await self.svc.command("kt-kettle", Action.POWER, True)       # "on" is not what this one waits for
+        await self._settle()
+        self.assertTrue(self.svc.get("lr-ceiling").state["on"])
+        kettle = self.svc.get("kt-kettle")
+        kettle.state = {"online": False, "error": "unplugged"}        # dropping off the network is not "off"
+        self.svc._publish_device(kettle)
+        await self._settle()
+        self.assertTrue(self.svc.get("lr-ceiling").state["on"])
+        await self.svc.refresh("kt-kettle")                           # back online, still on: nothing happened
+        await self._settle()
+        self.assertTrue(self.svc.get("lr-ceiling").state["on"])
+        await self.svc.command("kt-kettle", Action.POWER, False)
+        await self._settle()
+        self.assertFalse(self.svc.get("lr-ceiling").state["on"])
+
+    async def test_device_trigger_validation_and_cleanup(self):
+        autos = self.svc.automations
+        for when, do, message in (
+            ({"type": "device", "device_id": "nope", "event": "on"}, {"type": "all_off"}, "device to watch"),
+            ({"type": "device", "device_id": "bd-tv", "event": "maybe"}, {"type": "all_off"}, "turns on"),
+            ({"type": "device", "device_id": "bd-tv", "event": "on"},
+             {"type": "command", "device_id": "bd-tv", "action": "power", "value": False}, "different device"),
+        ):
+            with self.subTest(message=message), self.assertRaises(AdapterError) as cm:
+                autos.save({"when": when, "do": do})
+            self.assertIn(message, str(cm.exception))
+        a = autos.save({"when": {"type": "device", "device_id": "bd-tv", "event": "off"}, "do": {"type": "all_off"}})
+        self.assertEqual(a["name"], "All off when LG TV turns off")
+        await self.svc.remove_device("bd-tv")                         # nothing left to watch
+        self.assertNotIn(a["id"], [x["id"] for x in self.svc.store.automations])
 
     async def test_presence_automation_runs_all_off(self):
         await self.svc.command("lr-ceiling", Action.POWER, True)

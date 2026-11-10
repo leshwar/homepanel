@@ -18,7 +18,7 @@ and screenshots; there is no separate user-facing demo application.
   - **Use my location** (only when you tap it): the browser's own location is used if it can ask for it (HTTPS or localhost; it shows its own permission prompt). Otherwise the server looks up your home's approximate location from its internet address at [ipapi.co](https://ipapi.co), with [ipwho.is](https://ipwho.is) as a backup. The place name comes from [BigDataCloud](https://www.bigdatacloud.com/free-api/free-reverse-geocode-to-city-api), sent your location rounded to about 1 km. Nothing is saved until you tap Save location, and you can always type your location instead.
 - **Voice commands.** Tap or hold the mic and say "turn off the living room", "set the lamp to 30%", "open YouTube", "vacuum the kitchen and hall" or "run movie night". It asks "Which lamp?" when it isn't sure, and asks before turning everything off. Where the browser can't listen (e.g. the Pi's own screen), type the command instead. See [Voice commands](#voice-commands).
 - **Scenes and rooms.** "Movie night", "Bedtime", or "All off" for a room or the whole house.
-- **Schedules and automations.** At a time of day, at sunset/sunrise (computed locally), or when everyone leaves / someone comes home (phones on Wi-Fi).
+- **Schedules and automations.** At a time of day, at sunset/sunrise (computed locally), when everyone leaves / someone comes home (phones on Wi-Fi), or when a device turns on or off ("TV on → sound bar on").
 - **Resting clock faces.** When nobody has touched the panel for a while it shows a dim clock: big digital, analog with hands, a word clock ("It's quarter past ten"), date and day (with sunrise, sunset and lights on), or a very dim red night face. With weather turned on, the faces also show the temperature and a drawn weather icon, plus your place name. Pick one with a preview in Settings → Display and clock. The clock drifts slowly around the screen to avoid burn-in, and touching it only wakes the panel.
 - **Your own wallpapers and device pictures.** Add your own background pictures (TIFFs from a Mac work too); pick one or shuffle them, darkened just enough to keep things readable. Tiles stand out from whatever is behind them: light tiles on a dark background, dark tiles on a light one (or pick one). Tiles show a drawing of each device (a TV, a TV backlight, a robot vacuum on its station…), or a photo of your actual device.
 - **Photo frame.** A full-screen slideshow of family photos, added from any phone's browser. It can start by itself when the panel is idle, switches to a dim clock at night, and one touch goes back to the controls.
@@ -221,7 +221,7 @@ web/  (touch UI: HTML + CSS + JS, no build step)
   │  HTTP + live events (/api/v1)
 app/api/        stable API — never changes when brands are added
 app/core/       service: registry, state, polling, scenes, middleware (validate → normalize → log → retry),
-                automations (time / sun / presence), energy history (SQLite), presence
+                automations (time / sun / presence / device), energy history (SQLite), presence
 app/core/adapter.py   the DeviceAdapter interface every brand implements
 app/adapters/   one file per brand: tuya.py, govee.py, kasa.py, shelly.py, wiz.py, hue.py, samsung_tv.py, lg_tv.py,
                 lg_soundbar.py, home_assistant.py, ecovacs.py

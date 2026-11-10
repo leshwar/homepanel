@@ -475,3 +475,23 @@ html[data-bg="sky"] .w-wx .cf-wx-icon { color: var(--paper); }
   .topbar-title { order: 2; flex: 1 0 100%; }
 }
 @media (max-width: 480px) { .topbar-clock { display: none; } }
+
+/* Favourites on Home: chosen devices as compact rows (picture, name and status, quick action). */
+.w-fav-list { flex: 1 1 auto; min-height: 0; margin-top: 8px; display: grid; gap: 8px; align-content: start;
+              grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); overflow-y: auto; scrollbar-width: none; }
+.w-fav-list::-webkit-scrollbar { display: none; }
+.w-fav-list p { margin: 0; color: var(--haze); font-size: calc(15px * var(--text-scale)); }
+.w-favs .tile { min-height: 54px; padding: 3px 60px 3px 10px; border-radius: 18px; display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.w-favs .tile-icon, .w-favs .tile-icon.pic { flex: none; width: 40px; height: 40px; margin: 0; }
+.w-favs .tile-icon.pic .art, .w-favs .tile-icon.photo .dev-photo { width: 40px; height: 40px; }
+.w-favs .tile-tv-row { flex: 1; min-width: 0; align-items: center; }
+.w-favs .tile-name { margin-top: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.w-favs .tile-quick { top: 50%; right: 6px; margin-top: -24px; }
+.w-favs .tile-tv-ctl { display: none; }
+/* Small and Wide have room for two rows only without the heading. */
+.widget:is(.s-1x1, .s-2x1) .w-favs > .w-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.widget:is(.s-1x1, .s-2x1) .w-fav-list { margin-top: 0; }
+.fav-pick .chip small { opacity: .7; margin-left: 4px; }
+/* The level between a wide TV or speaker tile's volume buttons. */
+.tile-vol { min-width: 44px; align-self: center; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums;
+            font-size: calc(16px * var(--text-scale)); color: var(--paper); }

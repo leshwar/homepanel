@@ -14,6 +14,7 @@ import { invalidateWallpapers, previewWallpaper } from "./wallpaper.js";
 import { previewTiles } from "./tone.js";
 import { devicePicture } from "./art.js";
 import { FONT_SIZES, FONT_SIZE_NAMES, previewTypography } from "./typography.js";
+import { buildWhen, whenText } from "./automation-text.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
 let stack = [];
@@ -328,7 +329,7 @@ const VIEWS = {
           <label class="check" style="min-height:0"><input type="checkbox" data-auto-toggle="${esc(a.id)}" ${a.enabled ? "checked" : ""}
             aria-label="${a.enabled ? "Turn off" : "Turn on"} ${esc(a.name)}"></label>
           <span class="grow"><span class="title">${esc(a.name)}</span>
-            <span class="sub">${esc(whenText(a))}${a.last_result && !String(a.last_result).startsWith("ok") ? `. Last run: ${esc(a.last_result)}` : ""}</span></span>
+            <span class="sub">${esc(whenText(a, (id) => store.devices.get(id)?.name))}${a.last_result && !String(a.last_result).startsWith("ok") ? `. Last run: ${esc(a.last_result)}` : ""}</span></span>
           <button class="btn small" data-auto-run="${esc(a.id)}">Run now</button>
           <button class="btn small danger" data-auto-del="${esc(a.id)}" aria-label="Delete ${esc(a.name)}">${icon("trash")}</button>
         </div>`).join("")}</div>` : ""}
@@ -349,6 +350,8 @@ const VIEWS = {
             <option value="sunrise" ${hasLoc ? "" : "disabled"}>At sunrise${hasLoc ? "" : " (set your location first)"}</option>
             <option value="all_away">When everyone leaves home</option>
             <option value="someone_home">When someone comes home</option>
+            <option value="device_on" ${plugsAndLights.length ? "" : "disabled"}>When a device turns on</option>
+            <option value="device_off" ${plugsAndLights.length ? "" : "disabled"}>When a device turns off</option>
           </select></label>
           <div data-show="time">
             <label class="field"><span>Time</span><input type="time" name="at" value="07:00"></label>
@@ -361,6 +364,12 @@ const VIEWS = {
                  [15, "15 minutes after"], [30, "30 minutes after"], [60, "1 hour after"]].map(([v, l]) =>
                 `<option value="${v}" ${v === 0 ? "selected" : ""}>${l}</option>`).join("")}
             </select></label>
+          </div>
+          <div data-show="watch" hidden>
+            <label class="field"><span>Device to watch</span><select name="watch_id">
+              ${plugsAndLights.map((d) => `<option value="${esc(d.id)}">${esc(d.name)}${d.room ? ` (${esc(d.room)})` : ""}</option>`).join("")}
+            </select></label>
+            <p>It runs however the device was switched: from the panel, its own remote or an app.</p>
           </div>
           <div data-show="presence" hidden>
             <p>${store.presence.length ? `Watching ${store.presence.map((p) => esc(p.name)).join(", ")}.` :
@@ -392,6 +401,7 @@ const VIEWS = {
       form.querySelector('[data-show="time"]').hidden = w !== "time";
       form.querySelector('[data-show="sun"]').hidden = !["sunset", "sunrise"].includes(w);
       form.querySelector('[data-show="presence"]').hidden = !["all_away", "someone_home"].includes(w);
+      form.querySelector('[data-show="watch"]').hidden = !w.startsWith("device_");
       form.querySelector('[data-show="device"]').hidden = d !== "device";
       form.querySelectorAll(".chip.day").forEach((c) => c.setAttribute("aria-pressed", c.querySelector("input").checked));
     };
@@ -687,14 +697,6 @@ async function uploadFiles(files) {
   await loadThumbs();
 }
 
-function whenText(a) {
-  const w = a.when;
-  const next = a.next_run ? new Date(a.next_run * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" }) : "";
-  if (!a.enabled) return "Paused";
-  if (w.type === "presence") return w.event === "all_away" ? "When everyone leaves" : "When someone comes home";
-  return next ? `Next: ${next}` : "No upcoming run";
-}
-
 function fmtDuration(s) {
   if (s < 90) return `${Math.round(s)} seconds`;
   if (s < 5400) return `${Math.round(s / 60)} minutes`;
@@ -956,10 +958,8 @@ root.addEventListener("submit", async (e) => {
     }
     if (form.matches("[data-auto-form]")) {
       const fd = new FormData(form);
-      const w = fd.get("when");
-      const when = w === "time" ? { type: "time", at: fd.get("at"), days: fd.getAll("days").map(Number) }
-        : (w === "sunset" || w === "sunrise") ? { type: "sun", event: w, offset_min: Number(fd.get("offset_min")) }
-        : { type: "presence", event: w };
+      const when = buildWhen({ when: fd.get("when"), at: fd.get("at"), days: fd.getAll("days"),
+                               offset_min: fd.get("offset_min"), watch_id: fd.get("watch_id") });
       const d = fd.get("do");
       const doIt = d.startsWith("scene:") ? { type: "scene", scene_id: d.slice(6) }
         : d === "all_off" ? { type: "all_off" }

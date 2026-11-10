@@ -291,7 +291,8 @@ page per room), which only list rooms with devices the profile can see.
 
 Types: `clock`, `zone` (a clock for another place; `tz: null` = the screen's own zone
 if it's in the US, else US Eastern), `weather`, `scenes`, `rooms` (each room opens its
-page). Sizes are grid columns × rows: `1x1`, `2x1`, `2x2`. Up to 40 widgets; a bad
+page), `photos`, `favourites` (`options.devices`: up to 8 device ids shown as compact
+rows; an empty list lets the screen pick the first few). Sizes are grid columns × rows: `1x1`, `2x1`, `2x2`. Up to 40 widgets; a bad
 layout gets a 400 that says what's wrong. Version 1 layouts could also hold `device`
 widgets: the server drops them when it starts (and from anything an older screen
 saves), so nobody is left with an empty slot.
@@ -344,8 +345,11 @@ free space; removed/moved-away devices are left out of the displayed layout.
 ```
 
 `when` is one of `{"type":"time","at":"HH:MM","days":[0-6, 0 = Monday]}`,
-`{"type":"sun","event":"sunset"|"sunrise","offset_min":-15}`, or
-`{"type":"presence","event":"all_away"|"someone_home"}`.
+`{"type":"sun","event":"sunset"|"sunrise","offset_min":-15}`,
+`{"type":"presence","event":"all_away"|"someone_home"}`, or
+`{"type":"device","device_id":"...","event":"on"|"off"}` (runs when that device turns on or off,
+however it was switched; not on the first reading after a start or when it only goes offline;
+at most once every 10 seconds; the device it controls must be a different one).
 `do` is one of `{"type":"scene","scene_id":...}`, `{"type":"all_off"}`, or
 `{"type":"command","device_id":...,"action":"power","value":true}`.
 

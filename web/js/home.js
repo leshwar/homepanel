@@ -13,7 +13,7 @@
 import { api } from "./api.js";
 import { setMarkup, updateRoomCounts } from "./render.js";
 import { store, devicesIn, roomGroups, OTHER } from "./store.js";
-import { $, esc, icon, toast } from "./util.js";
+import { $, esc, icon, roomIfAmbiguous, toast } from "./util.js";
 import { openSettings } from "./settings.js";
 import { svg, roomIcon } from "./icons.js";
 import { haptic, tileHtml } from "./tiles.js";
@@ -139,7 +139,10 @@ function scenesWidget() {
   const items = store.scenes.map((s) =>
     `<button class="scene" data-scene="${esc(s.id)}">${icon(SCENE_ICONS.includes(s.icon) ? s.icon : "sparkle")}<span>${esc(s.name)}</span></button>`);
   if (store.devices.size) items.push(`<button class="scene add" data-new-scene>${icon("plus")}<span>New scene</span></button>`);
-  return `<div class="w-fill w-scenes"><span class="w-label">Scenes</span><div class="w-scene-list">${items.join("")}</div></div>`;
+  // Nothing saved yet: say what a scene is, so the tile isn't a lone button.
+  const hint = !store.scenes.length && store.devices.size
+    ? `<p class="w-hint">Set your devices the way you like, save that as a scene, and bring it back with one tap.</p>` : "";
+  return `<div class="w-fill w-scenes"><span class="w-label">Scenes</span><div class="w-scene-list">${items.join("")}</div>${hint}</div>`;
 }
 
 function roomsWidget() {
@@ -174,7 +177,7 @@ export function favouritesStale() {
 
 function favouritesWidget(w) {
   const list = favouriteDevices(w.options, store.devices.values());
-  const rows = list.map((d) => tileHtml(d, { ctx: "home", size: "1x1", sub: d.room || "", editing: isEditing() }));
+  const rows = list.map((d) => tileHtml(d, { ctx: "home", size: "1x1", sub: roomIfAmbiguous(d, list), editing: isEditing() }));
   return `<div class="w-fill w-favs"><span class="w-label">Favourites</span><div class="w-fav-list">${
     rows.join("") || `<p>Add a device to see it here.</p>`}</div></div>`;
 }

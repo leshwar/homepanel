@@ -7,7 +7,7 @@ export function photoTile() {
   const source = store.settings.photo_library || {}, admin = store.me?.role === "admin";
   const message = source.ready ? "Loading photos..." : !source.configured ? "Connect a photo library in Settings."
     : !source.permitted ? "Photos are not shared with this profile." : "Choose an album in Settings.";
-  return `<div class="w-photos w-fill" data-photo-tile data-photo-generation="${esc(source.generation || "")}">
+  return `<div class="w-photos w-fill${source.ready ? "" : " empty"}" data-photo-tile data-photo-generation="${esc(source.generation || "")}">
     <img class="photo-layer" alt="Photo from a selected album"><img class="photo-layer" alt="">
     <span class="photo-caption">Photos</span>
     <div class="photo-placeholder"><p role="status">${message}</p>

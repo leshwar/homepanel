@@ -64,6 +64,22 @@ export const needsAttention = (d) => {
 // What a room's heading says: nothing to turn off is not the same as nothing there.
 export const roomStatus = (total, on) => !total ? "No devices yet" : on ? `${on} of ${total} on` : "Everything is off";
 
+// The line under the page title: what's on, plus anything that needs a person.
+// total = null on Home ("3 things are on"); a number on a room page ("2 of 5 on").
+export function headline(devices, total = null) {
+  const list = [...devices];
+  const on = list.filter((d) => !!d.state?.on && d.state?.online !== false).length;
+  const attention = list.filter(needsAttention).length;
+  const power = total == null ? (on ? `${on} ${on === 1 ? "thing is" : "things are"} on` : list.length ? "Everything is off" : "")
+    : !total ? "" : on ? `${on} of ${total} on` : "Everything is off";
+  const note = attention ? `${attention} ${attention === 1 ? "needs" : "need"} attention` : "";
+  return [power, note].filter(Boolean).join(" · ");
+}
+
+// In a short list (Favourites), the room is only worth its space when two devices share a name.
+export const roomIfAmbiguous = (d, list) =>
+  (list.some((other) => other.id !== d.id && other.name === d.name) ? d.room || "" : "");
+
 export function vacuumText(s) {
   if (!s.activity) return "Connecting…";
   if (s.problem) return "Needs attention";

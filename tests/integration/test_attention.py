@@ -69,6 +69,7 @@ class AttentionTests(unittest.TestCase):
         page.evaluate(SET_STATE, ["lr-vacuum", {"problem": "The dirty water tank is full. Empty it and put it back."}, []])
         page.wait_for_selector('#grid .tile.attn[data-id="lr-vacuum"]')
         self.assertEqual(tile.locator(".tile-status").inner_text(), "Needs attention")
+        self.assertRegex(page.inner_text("#subtitle"), r"^\d+ of \d+ on · 1 needs attention$")      # the page header says so too
         self.assertIn("Needs attention", tile.locator(".tile-open").get_attribute("aria-label"))
         self.assertNotEqual(tile.locator(".tile-status").evaluate("e => getComputedStyle(e).color"), resting)
 
@@ -79,6 +80,54 @@ class AttentionTests(unittest.TestCase):
         page.evaluate(SET_STATE, ["lr-vacuum", {"parts": []}, []])
         page.wait_for_selector('#grid .tile[data-id="lr-vacuum"]:not(.attn)')
         self.assertEqual(tile.locator(".tile-status").inner_text(), "Docked, 100%")
+        self.assertNotIn("attention", page.inner_text("#subtitle"))
+
+    def test_phone_room_heading_keeps_its_status_and_touch_targets(self):
+        page = self.page
+        page.set_viewport_size({"width": 390, "height": 844})
+        page.evaluate(SHOW_ROOM, "all")
+        head = page.locator('#grid .room-head[data-head="Living room"]')
+        head.wait_for()
+        status = head.locator(".room-status")
+        self.assertRegex(status.inner_text(), r"^(\d+ of \d+ on|Everything is off)$")
+        self.assertTrue(status.evaluate("e => e.scrollWidth <= e.clientWidth"))             # not cut to "5 of…"
+        self.assertGreater(status.bounding_box()["y"], head.locator(".room-title").bounding_box()["y"] + 20)   # on its own line
+        edit = head.locator("[data-edit-room]")
+        box = edit.bounding_box()
+        self.assertGreaterEqual(min(box["width"], box["height"]), 48)
+        self.assertLess(box["width"], 80)                                                   # just the pencil
+        self.assertEqual(edit.get_attribute("aria-label"), "Edit Living room tiles")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), 390)
+        page.set_viewport_size({"width": 1280, "height": 720})                              # wide screens keep the words
+        self.assertGreater(edit.bounding_box()["width"], 100)
+
+    def test_home_widgets_explain_themselves_before_they_are_set_up(self):
+        page = self.page
+        api = self.server.url + "/api/v1"
+        layout = page.request.get(api + "/state").json()["settings"]["home_layout"]
+        try:
+            widgets = [{k: v for k, v in w.items() if k != "positions"} for w in layout["widgets"]]
+            widgets.append({"id": "photos-1", "type": "photos", "size": "2x2", "hidden": False, "options": {}})
+            r = page.request.put(api + "/profiles/me/layout", data={"home_layout": {"version": 3, "widgets": widgets}})
+            self.assertEqual(r.status, 200, r.text())
+            page.reload()
+            page.wait_for_selector(".w-photos.empty")
+            self.assertEqual(page.locator(".w-scenes .w-hint").count(), 0)          # scenes exist: no explanation needed
+            page.evaluate("""async () => {                                          // a household with none saved yet
+              const {store} = await import('/js/store.js'), home = await import('/js/home.js');
+              store.scenes = []; home.refreshHomeParts(['scenes']);
+            }""")
+            hint = page.locator(".w-scenes .w-hint")
+            self.assertIn("save that as a scene", hint.inner_text())
+            self.assertTrue(hint.is_visible())
+            self.assertTrue(page.locator(".w-scenes [data-new-scene]").is_visible())
+            # Photos with no library: the widget's own glass, not an opaque dark block over it.
+            for selector in (".w-photos.empty", ".w-photos.empty .photo-placeholder"):
+                self.assertEqual(page.locator(selector).evaluate("e => getComputedStyle(e).backgroundColor"), "rgba(0, 0, 0, 0)")
+            self.assertIn("Connect a photo library", page.locator(".photo-placeholder").inner_text())
+            self.assertGreaterEqual(page.locator("[data-photo-settings]").bounding_box()["height"], 48)
+        finally:
+            page.request.put(api + "/profiles/me/layout", data={"home_layout": layout})
 
     def test_empty_room_is_one_line_in_all_rooms_and_a_full_page_alone(self):
         page = self.page

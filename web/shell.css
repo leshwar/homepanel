@@ -477,15 +477,20 @@ html[data-bg="sky"] .w-wx .cf-wx-icon { color: var(--paper); }
 @media (max-width: 480px) { .topbar-clock { display: none; } }
 
 /* Favourites on Home: chosen devices as compact rows (picture, name and status, quick action). */
-.w-fav-list { flex: 1 1 auto; min-height: 0; margin-top: 8px; display: grid; gap: 8px; align-content: start;
+.w-fav-list { flex: 1 1 auto; min-height: 0; margin-top: 8px; display: grid; gap: 6px; align-content: start;
               grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); overflow-y: auto; scrollbar-width: none; }
 .w-fav-list::-webkit-scrollbar { display: none; }
 .w-fav-list p { margin: 0; color: var(--haze); font-size: calc(15px * var(--text-scale)); }
-.w-favs .tile { min-height: 54px; padding: 3px 60px 3px 10px; border-radius: 18px; display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.w-favs { padding: 12px; }
+.w-favs .tile { min-height: 54px; padding: 3px 58px 3px 8px; border-radius: 18px; display: flex; flex-direction: row; align-items: center; gap: 10px; }
 .w-favs .tile-icon, .w-favs .tile-icon.pic { flex: none; width: 40px; height: 40px; margin: 0; }
 .w-favs .tile-icon.pic .art, .w-favs .tile-icon.photo .dev-photo { width: 40px; height: 40px; }
 .w-favs .tile-tv-row { flex: 1; min-width: 0; align-items: center; }
-.w-favs .tile-name { margin-top: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Long names take a second line instead of being cut ("DEEBOT T90 PRO…"). */
+.w-favs .tile-name { margin-top: 0; font-size: calc(15px * var(--text-scale)); line-height: 1.2; overflow: hidden;
+                     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+.w-favs .tile-status { margin-top: 1px; font-size: calc(13px * var(--text-scale)); }
+.w-favs .tile-open { min-height: 48px; }
 .w-favs .tile-quick { top: 50%; right: 6px; margin-top: -24px; }
 .w-favs .tile-tv-ctl { display: none; }
 /* Small and Wide have room for two rows only without the heading. */
@@ -495,3 +500,19 @@ html[data-bg="sky"] .w-wx .cf-wx-icon { color: var(--paper); }
 /* The level between a wide TV or speaker tile's volume buttons. */
 .tile-vol { min-width: 44px; align-self: center; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums;
             font-size: calc(16px * var(--text-scale)); color: var(--paper); }
+
+/* Photos before a library is connected: the same glass as the other widgets, not a dark block. */
+.w-photos.empty, .w-photos.empty .photo-placeholder { background: none; }
+.w-photos.empty .photo-caption { color: var(--haze); text-shadow: none; top: clamp(12px, 8cqmin, 20px); left: clamp(12px, 8cqmin, 20px); }
+.w-photos.empty .photo-placeholder { padding: calc(clamp(12px, 8cqmin, 20px) + 30px) clamp(12px, 8cqmin, 20px) clamp(12px, 8cqmin, 20px); justify-content: flex-start; }
+/* Scenes with nothing saved yet. */
+.w-hint { margin: 0; color: var(--haze); font-size: calc(14px * var(--text-scale)); line-height: 1.35; }
+.s-1x1 .w-hint { display: none; }
+/* Phones: the room heading keeps its status readable; its button shrinks to the icon (the label stays for screen readers). */
+@media (max-width: 480px) {
+  .room-head .btn.small > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .room-head .btn.small { min-width: 48px; padding: 0 12px; justify-content: center; }
+  /* "All rooms": the name and buttons share a line; what's on gets its own line below, never cut. */
+  .room-head:not(.single) .room-title { flex: 1; }
+  .room-head:not(.single) .room-status { order: 9; flex: 0 0 100%; margin-top: -8px; white-space: normal; }
+}

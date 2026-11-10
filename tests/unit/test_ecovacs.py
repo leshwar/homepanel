@@ -415,6 +415,43 @@ class EcovacsAdapterTests(unittest.IsolatedAsyncioTestCase):
         from app.adapters.ecovacs import _public
         self.assertEqual(_public({}), {"on": False})       # the UI shows "Connecting…"
 
+    def test_problems_are_said_in_plain_words(self):
+        from app.adapters.ecovacs import _problem, _public
+        self.assertEqual(_problem(0, "NoError: Robot is operational"), "")
+        self.assertEqual(_problem(323, "Dirty Water Tank is full not installed"),
+                         "The dirty water tank is full or not in place. Empty it and put it back.")
+        self.assertEqual(_problem(102, "Robot is stuck"), "Robot is stuck")     # the library's own words
+        self.assertEqual(_problem(999, None), "Error 999")
+        self.assertEqual(_public({"activity": Activity.DOCKED, "problem": _problem(305, "x")})["problem"],
+                         "The dirty water tank is full. Empty it and put it back.")
+
+    def test_cloud_reconnects_are_one_short_log_line(self):
+        import logging
+        import app.adapters.ecovacs  # noqa: F401
+        seen = []
+
+        class Keep(logging.Handler):
+            def emit(self, record):
+                seen.append((record.getMessage(), record.exc_info))
+
+        handler = Keep()
+        loggers = [logging.getLogger(n) for n in ("deebot_client.mqtt_client", "deebot_client.mqtt_client.client")]
+        for lg in loggers:
+            lg.addHandler(handler)
+        try:
+            loggers[1].error("failed to receive on socket: [Errno 54] Connection reset by peer")
+            try:
+                raise ConnectionError("Disconnected during message iteration")
+            except ConnectionError:
+                loggers[0].warning("Connection lost; Reconnecting in %d seconds ...", 5, exc_info=True)
+                loggers[0].exception("An exception occurred")           # real faults keep their trace
+        finally:
+            for lg in loggers:
+                lg.removeHandler(handler)
+        self.assertEqual([m for m, _ in seen], ["Connection lost; Reconnecting in 5 seconds ...", "An exception occurred"])
+        self.assertIsNone(seen[0][1])
+        self.assertIsNotNone(seen[1][1])
+
     def test_library_debug_logging_is_capped(self):
         import logging
         import app.adapters.ecovacs  # noqa: F401

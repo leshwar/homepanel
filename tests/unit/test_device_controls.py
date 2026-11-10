@@ -23,6 +23,11 @@ class DeviceControlTests(unittest.TestCase):
             assert.match(powerControls({caps:['power'],state:{on:false}}), /Turn on/);
             assert.match(powerControls({caps:['power'],state:{}}), /disabled/);
             assert.match(powerControls({caps:['mute'],state:{muted:true}}), /Unmute/);
+            // Off and no mute reading (a TV in standby): no "Mute: Unknown" button, only power.
+            const off = powerControls({caps:['power','mute'],state:{on:false}});
+            assert.match(off, /data-power/); assert.doesNotMatch(off, /data-mute|Unknown/);
+            assert.match(powerControls({caps:['power','mute'],state:{on:false,muted:false}}), /Mute: Off/);
+            assert.match(powerControls({caps:['power','mute'],state:{on:true}}), /Mute: Unknown/);
             assert.match(deviceHeading({name:'<device>',caps:[]}), /&lt;device>/);
             assert.match(deviceHeading({name:'Device',caps:['power'],state:{online:true}}), /power not reported/);
             assert.equal(relativeValue(30, 100, 100, 200), 30);

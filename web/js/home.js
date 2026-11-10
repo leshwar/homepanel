@@ -16,7 +16,7 @@ import { store, devicesIn, roomGroups, OTHER } from "./store.js";
 import { $, esc, icon, toast } from "./util.js";
 import { openSettings } from "./settings.js";
 import { svg, roomIcon } from "./icons.js";
-import { haptic } from "./tiles.js";
+import { haptic, tileHtml } from "./tiles.js";
 import { currentWeather, weatherStatus, refreshWeather } from "./sky.js";
 import { weatherBackdrop, watchWeatherEffects } from "./weather-effects.js";
 import { photoTile, watchPhotoTiles } from "./photo-tile.js";
@@ -24,7 +24,8 @@ import { weatherIcon } from "./clockfaces.js";
 import { SIZES, SIZE_NAMES, columnsFor, arrange, remember, place, fits, placementStyle, gridStyle, bindGridEditor, watchGridWidth } from "./grid.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
-const TYPE_NAMES = { clock: "Clock", zone: "Clock", weather: "Weather", scenes: "Scenes", rooms: "Rooms", photos: "Photos" };
+const TYPE_NAMES = { clock: "Clock", zone: "Clock", weather: "Weather", scenes: "Scenes", rooms: "Rooms", photos: "Photos", favourites: "Favourites" };
+export const MAX_FAVOURITES = 8;
 let syncPhotoTiles = () => {};
 
 // ---------- time zones ----------
@@ -150,6 +151,34 @@ function roomsWidget() {
     rows.join("") || `<p>Add devices and rooms to see them here.</p>`}</div></div>`;
 }
 
+// The devices a Favourites widget shows: the chosen ones that still exist (in the order
+// chosen), or, when none were chosen, the first few the person can use.
+export function favouriteDevices(options, devices, max = MAX_FAVOURITES) {
+  const all = [...devices];
+  const chosen = (options?.devices || []).map((id) => all.find((d) => d.id === id)).filter(Boolean);
+  const usable = (d) => d.caps.includes("power") || d.caps.includes("clean");
+  return (chosen.length ? chosen : all.filter(usable)).slice(0, max);
+}
+
+// True when a Favourites widget on screen no longer lists the devices it should
+// (one was added, removed or shared). State changes alone never make it stale.
+export function favouritesStale() {
+  return layout().widgets.some((w) => {
+    if (w.hidden || w.type !== "favourites") return false;
+    const box = document.querySelector(`#home .widget[data-wid="${CSS.escape(w.id)}"]`);
+    if (!box) return false;
+    const shown = [...box.querySelectorAll(".tile")].map((el) => el.dataset.id).join();
+    return shown !== favouriteDevices(w.options, store.devices.values()).map((d) => d.id).join();
+  });
+}
+
+function favouritesWidget(w) {
+  const list = favouriteDevices(w.options, store.devices.values());
+  const rows = list.map((d) => tileHtml(d, { ctx: "home", size: "1x1", sub: d.room || "", editing: isEditing() }));
+  return `<div class="w-fill w-favs"><span class="w-label">Favourites</span><div class="w-fav-list">${
+    rows.join("") || `<p>Add a device to see it here.</p>`}</div></div>`;
+}
+
 function widgetBody(w, now) {
   switch (w.type) {
     case "clock": return clockWidget(w, now);
@@ -158,6 +187,7 @@ function widgetBody(w, now) {
     case "scenes": return scenesWidget();
     case "rooms": return roomsWidget();
     case "photos": return photoTile();
+    case "favourites": return favouritesWidget(w);
     default: return null;                     // e.g. an old "device" widget: devices are on the Rooms pages now
   }
 }
@@ -236,7 +266,7 @@ export function tickHome(now = new Date()) {
 }
 
 // Something about rooms or weather changed: redraw those widgets only.
-export function refreshHomeParts(types = ["rooms", "weather", "scenes", "photos"]) {
+export function refreshHomeParts(types = ["rooms", "weather", "scenes", "photos", "favourites"]) {
   const el = $("#home");
   if (!el || el.hidden || isEditing()) return;
   const now = new Date();
@@ -328,10 +358,16 @@ function widgetMenu(id) {
       ${ZONES.map(([tz, name]) => `<option value="${tz}" ${zoneOf(w.options) === tz ? "selected" : ""}>${
         tz === "Asia/Kolkata" ? "India" : `US · ${name}`}</option>`).join("")}
     </select></label>` : "";
+  const chosen = w.options?.devices || [];
+  const favs = w.type === "favourites" ? `
+    <p class="group-label">Devices to show (up to ${MAX_FAVOURITES}). None chosen = the first few.</p>
+    <div class="wmenu-list fav-pick">${[...store.devices.values()].map((d) => `
+      <label class="chip"><input type="checkbox" data-fav-pick="${esc(id)}" value="${esc(d.id)}" ${chosen.includes(d.id) ? "checked" : ""}>${
+        esc(d.name)}${d.room ? ` <small>${esc(d.room)}</small>` : ""}</label>`).join("") || "<p>No devices yet.</p>"}</div>` : "";
   openMenu(`<h3>${esc(widgetName(w))}</h3>
     <div class="seg" role="radiogroup" aria-label="Size">${SIZES.map((s) =>
       `<button role="radio" aria-checked="${w.size === s}" data-size-pick="${s}" data-wid="${esc(id)}">${SIZE_NAMES[s]}</button>`).join("")}</div>
-    ${zones}
+    ${zones}${favs}
     <div class="wmenu-row">
       <button class="btn small" data-move="-1,0" data-wid="${esc(id)}">Left</button>
       <button class="btn small" data-move="1,0" data-wid="${esc(id)}">Right</button>
@@ -350,6 +386,8 @@ function addMenu() {
       `<button class="chip" data-unhide="${esc(w.id)}">${icon("plus")}${esc(widgetName(w))}</button>`).join("")}</div>` : ""}
     <p class="group-label">Clock for another place</p>
     <div class="wmenu-list"><button class="chip" data-add-zone>${icon("plus")}Clock</button></div>
+    ${store.devices.size ? `<p class="group-label">Shortcuts</p>
+      <div class="wmenu-list"><button class="chip" data-add-favourites>${icon("plus")}Favourites</button></div>` : ""}
     ${!draft.widgets.some(w => w.type === "photos") ? `<p class="group-label">Photo library</p>
       <div class="wmenu-list"><button class="chip" data-add-photos>${icon("plus")}Photos</button></div>` : ""}
     <button class="btn small primary" data-menu-close>Close</button>`, "Add to Home");
@@ -431,11 +469,28 @@ export function setupHome({ goRoom, showAmbient }) {
       return addWidget({ id: `zone-${Date.now().toString(36)}`, type: "zone", size: "1x1", hidden: false,
                          options: { tz: null, label: "US" } });
     }
+    if (t.closest("[data-add-favourites]")) {
+      return addWidget({ id: `favs-${Date.now().toString(36)}`, type: "favourites", size: "2x2", hidden: false,
+                         options: { devices: [] } });
+    }
     if (t.closest("[data-add-photos]")) {
       return addWidget({ id: `photos-${Date.now().toString(36)}`, type: "photos", size: "2x2", hidden: false, options: {} });
     }
   });
   document.addEventListener("change", (e) => {
+    const fav = e.target.closest("[data-fav-pick]");
+    if (fav && isEditing()) {
+      const w = find(fav.dataset.favPick);
+      const picked = [...fav.closest(".fav-pick").querySelectorAll("input:checked")].map((box) => box.value);
+      if (picked.length > MAX_FAVOURITES) {
+        fav.checked = false;
+        return toast(`Favourites can show up to ${MAX_FAVOURITES} devices.`, true);
+      }
+      // Keep the order they were chosen in: earlier picks stay first.
+      const before = (w.options?.devices || []).filter((id) => picked.includes(id));
+      w.options = { devices: [...before, ...picked.filter((id) => !before.includes(id))] };
+      return renderHome();
+    }
     const sel = e.target.closest("[data-zone-pick]");
     if (!sel || !isEditing()) return;
     const w = find(sel.dataset.zonePick);

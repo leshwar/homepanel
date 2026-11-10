@@ -73,6 +73,14 @@ class CleanLayoutTests(unittest.TestCase):
         self.assertIsNone(migrate_layout(None))
         self.assertNotIn("device", WIDGET_TYPES)
 
+    def test_favourites_keep_their_chosen_devices_in_order(self):
+        lay = clean_layout({"widgets": [
+            {"id": "favs", "type": "favourites", "size": "2x2", "options": {"devices": ["lr-tv", "bd-lamp", "lr-tv"], "x": 1}},
+            {"id": "auto", "type": "favourites"}]})
+        self.assertEqual(lay["widgets"][0]["options"], {"devices": ["lr-tv", "bd-lamp"]})     # no repeats, nothing extra
+        self.assertEqual(lay["widgets"][1]["options"], {"devices": []})                       # empty = the UI picks
+        self.assertEqual(clean_layout(lay), lay)
+
     def test_rejects_bad_layouts_with_plain_messages(self):
         bad = [
             ("nope", "list of widgets"),
@@ -81,6 +89,9 @@ class CleanLayoutTests(unittest.TestCase):
             ({"widgets": [{"id": "a", "type": "clock"}, {"id": "a", "type": "weather"}]}, "its own short id"),
             ({"widgets": [{"id": "a", "type": "zone", "options": {"tz": "../../etc/passwd"}}]}, "time zone"),
             ({"widgets": [{"id": f"w{i}", "type": "clock"} for i in range(41)]}, "up to 40"),
+            ({"widgets": [{"id": "f", "type": "favourites", "options": {"devices": "lr-tv"}}]}, "list of device ids"),
+            ({"widgets": [{"id": "f", "type": "favourites", "options": {"devices": ["../x"]}}]}, "list of device ids"),
+            ({"widgets": [{"id": "f", "type": "favourites", "options": {"devices": [f"d{i}" for i in range(9)]}}]}, "up to 8"),
         ]
         for value, msg in bad:
             with self.subTest(msg=msg), self.assertRaises(LayoutError) as cm:

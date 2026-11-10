@@ -4,9 +4,11 @@ Version 3 adds optional `positions`: {"4": {"x": 2, "y": 3, "size": "2x2"}}.
 Each 2/4/6-column grid keeps its own geometry, so narrower screens do not destroy
 the arrangement saved on a wider one. Older layouts keep their order and sizes.
 
-Devices live on the Rooms pages, not on Home. Layouts saved before version 2 could
-hold "device" widgets; `migrate_layout` drops them, and a "device" widget sent by an
-old screen is dropped too, so nobody is left with an empty slot.
+Devices live on the Rooms pages. Home can hold "favourites" widgets: a short list of
+chosen devices (`options.devices`, up to 8 ids; empty = the UI picks the first ones).
+Layouts saved before version 2 could hold one "device" widget per device;
+`migrate_layout` drops them, and a "device" widget sent by an old screen is dropped
+too, so nobody is left with an empty slot.
 
 Sizes are columns x rows of the Home grid. The UI decides how each widget looks
 at each size. `options.tz = None` on a clock means "this screen's own time zone".
@@ -20,7 +22,8 @@ VERSION = 3
 SIZES = ("1x1", "2x1", "2x2")
 COLUMNS = ("2", "4", "6")
 MAX_ROWS = 200
-WIDGET_TYPES = ("clock", "zone", "weather", "scenes", "rooms", "photos")
+WIDGET_TYPES = ("clock", "zone", "weather", "scenes", "rooms", "photos", "favourites")
+MAX_FAVOURITES = 8
 RETIRED_TYPES = ("device",)      # from version 1; dropped quietly
 MAX_WIDGETS = 40
 
@@ -65,6 +68,14 @@ def _options(kind: str, raw: Any) -> dict:
             raise LayoutError(f"'{tz}' isn't a time zone name like America/New_York.")
         label = " ".join(str(raw.get("label") or "").split())[:24]
         return {"tz": tz or None, "label": label}
+    if kind == "favourites":
+        ids = raw.get("devices", [])
+        if not isinstance(ids, list) or not all(isinstance(i, str) and _ID.fullmatch(i) for i in ids):
+            raise LayoutError("Favourites should be a list of device ids.")
+        ids = list(dict.fromkeys(ids))
+        if len(ids) > MAX_FAVOURITES:
+            raise LayoutError(f"Favourites can hold up to {MAX_FAVOURITES} devices.")
+        return {"devices": ids}
     return {}
 
 

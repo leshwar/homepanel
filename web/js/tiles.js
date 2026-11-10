@@ -31,6 +31,9 @@ export function primaryAction(d) {
     glyph: "power", disabled: disabled || !known };
 }
 
+// A wide TV or speaker tile shows its level between − and +, when the device reports one.
+const volumeLevel = (s) => (Number.isFinite(s.volume) ? Math.max(0, Math.min(100, Math.round(s.volume))) : null);
+
 // size: the widget size on Home ("1x1", "2x1", "2x2"); ctx: "rooms" or "home".
 // sub: optional text before the status, e.g. the room name on Home.
 export function tileHtml(d, { size = "", ctx = "rooms", sub = "", editing = false } = {}) {
@@ -46,6 +49,7 @@ export function tileHtml(d, { size = "", ctx = "rooms", sub = "", editing = fals
   const tvControls = isMedia(d) && d.caps.includes("volume") && on && wide ? `
       <div class="tile-tv-ctl">
         <button type="button" data-act="volume_down" aria-label="${esc(d.name)} volume down" ${busy || editing || offline || s.online !== true ? "disabled" : ""}>${icon("minus")}</button>
+        ${volumeLevel(s) == null ? "" : `<output class="tile-vol" aria-label="Volume ${volumeLevel(s)}%">${s.muted ? "Muted" : volumeLevel(s)}</output>`}
         <button type="button" data-act="volume_up" aria-label="${esc(d.name)} volume up" ${busy || editing || offline || s.online !== true ? "disabled" : ""}>${icon("plus")}</button>
       </div>` : "";
   return `
@@ -75,7 +79,7 @@ function tilePicture(d, offline, ctx) {
 
 // Re-draw every tile showing this device (it can be on Home and in Rooms).
 // Returns false if none is on screen.
-export function updateTiles(id, subFor = () => "") {
+export function updateTiles(id, subFor = (d, el) => (el.dataset.ctx === "home" ? d.room || "" : "")) {
   const d = store.devices.get(id);
   const els = document.querySelectorAll(`.tile[data-id="${CSS.escape(id)}"]`);
   if (!d || !els.length) return false;
@@ -101,6 +105,12 @@ export function updateTiles(id, subFor = () => "") {
           if (current.innerHTML !== next.innerHTML) current.innerHTML = next.innerHTML;
         } else {
           current.querySelectorAll("[data-act]").forEach(button => syncAttributes(button, next.querySelector(`[data-act="${button.dataset.act}"]`)));
+          const level = current.querySelector(".tile-vol"), nextLevel = next.querySelector(".tile-vol");
+          if (level && nextLevel) {
+            syncAttributes(level, nextLevel);
+            if (level.textContent !== nextLevel.textContent) level.textContent = nextLevel.textContent;
+          } else if (level) level.remove();
+          else if (nextLevel) current.insertBefore(nextLevel, current.querySelector('[data-act="volume_up"]'));
         }
       } else if (current) {
         const focused = current.contains(document.activeElement);

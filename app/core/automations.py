@@ -6,7 +6,8 @@ An automation is stored as:
       "id": "a1b2c3", "name": "Porch light at sunset", "enabled": true,
       "when": {"type": "time", "at": "07:00", "days": [0,1,2,3,4]}      # 0 = Monday
            |  {"type": "sun", "event": "sunset", "offset_min": -15}
-           |  {"type": "presence", "event": "all_away" | "someone_home"},
+           |  {"type": "presence", "event": "all_away" | "someone_home"}
+           |  {"type": "device", "device_id": "...", "event": "on" | "off"},   # it turns on / off
       "do":   {"type": "scene", "scene_id": "movie"}
            |  {"type": "all_off"}
            |  {"type": "command", "device_id": "...", "action": "power", "value": true},
@@ -31,7 +32,9 @@ log = logging.getLogger("homepanel.automations")
 
 CHECK_EVERY = 15
 WINDOW = 120          # fire if we're within 2 minutes after the target (survives restarts)
-WHEN_TYPES = ("time", "sun", "presence")
+WHEN_TYPES = ("time", "sun", "presence", "device")
+EVENT_TYPES = ("presence", "device")   # run when something happens, not at a time
+DEVICE_COOLDOWN = 10  # seconds before the same device trigger may run again (flapping, loops)
 DO_TYPES = ("scene", "all_off", "command")
 
 
@@ -66,6 +69,14 @@ class Automations:
                 raise AdapterError("Set your location first (Settings → Location and presence).")
         if when["type"] == "presence" and when.get("event") not in ("all_away", "someone_home"):
             raise AdapterError("Choose 'everyone leaves' or 'someone comes home'.")
+        if when["type"] == "device":
+            if when.get("device_id") not in self.svc.store.devices:
+                raise AdapterError("Choose the device to watch.")
+            if when.get("event") not in ("on", "off"):
+                raise AdapterError("Choose 'turns on' or 'turns off'.")
+            if do["type"] == "command" and do.get("device_id") == when["device_id"]:
+                raise AdapterError("Choose a different device to control than the one being watched.")
+            when = {"type": "device", "device_id": when["device_id"], "event": when["event"]}
         if do["type"] == "scene" and not any(s["id"] == do.get("scene_id") for s in self.svc.store.scenes):
             raise AdapterError("Choose a scene.")
         if do["type"] == "command" and do.get("device_id") not in self.svc.store.devices:
@@ -98,6 +109,9 @@ class Automations:
             return f"{what} at {when['at']}"
         if when["type"] == "sun":
             return f"{what} at {when['event']}"
+        if when["type"] == "device":
+            d = self.svc.store.devices.get(when.get("device_id"))
+            return f"{what} when {d.name if d else 'a device'} turns {when['event']}"
         return f"{what} when {'everyone leaves' if when['event'] == 'all_away' else 'someone comes home'}"
 
     def public(self, a: dict) -> dict:
@@ -133,7 +147,7 @@ class Automations:
         return None
 
     def next_run(self, a: dict, now: datetime | None = None) -> datetime | None:
-        if not a.get("enabled") or a["when"]["type"] == "presence":
+        if not a.get("enabled") or a["when"]["type"] in EVENT_TYPES:
             return None
         now = now or datetime.now().astimezone()
         for i in range(8):
@@ -184,6 +198,19 @@ class Automations:
         for a in list(self.items):
             if a.get("enabled") and a["when"]["type"] == "presence" and a["when"].get("event") == event:
                 await self.execute(a, event.replace("_", " "))
+
+    async def on_device(self, device_id: str, on: bool) -> None:
+        """A device just turned on or off (by the panel, its own remote, or anything else)."""
+        event = "on" if on else "off"
+        for a in list(self.items):
+            when = a["when"]
+            if not (a.get("enabled") and when["type"] == "device"
+                    and when.get("device_id") == device_id and when.get("event") == event):
+                continue
+            if time.time() - (a.get("last_run") or 0) < DEVICE_COOLDOWN:
+                continue          # a device that flickers, or two automations switching each other
+            d = self.svc.store.devices.get(device_id)
+            await self.execute(a, f"{d.name if d else 'device'} turned {event}")
 
     async def tick(self, now: datetime | None = None) -> None:
         now = now or datetime.now().astimezone()

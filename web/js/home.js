@@ -386,7 +386,7 @@ function addMenu() {
       `<button class="chip" data-unhide="${esc(w.id)}">${icon("plus")}${esc(widgetName(w))}</button>`).join("")}</div>` : ""}
     <p class="group-label">Clock for another place</p>
     <div class="wmenu-list"><button class="chip" data-add-zone>${icon("plus")}Clock</button></div>
-    ${store.devices.size ? `<p class="group-label">Devices you use most</p>
+    ${store.devices.size ? `<p class="group-label">Shortcuts</p>
       <div class="wmenu-list"><button class="chip" data-add-favourites>${icon("plus")}Favourites</button></div>` : ""}
     ${!draft.widgets.some(w => w.type === "photos") ? `<p class="group-label">Photo library</p>
       <div class="wmenu-list"><button class="chip" data-add-photos>${icon("plus")}Photos</button></div>` : ""}

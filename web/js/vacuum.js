@@ -1,6 +1,6 @@
-// Robot vacuum controls for the device sheet: the map, a status line, one main
-// button that does the obvious next thing, rooms as chips, an Options section
-// (suction, mode, station jobs) and parts wear behind a Maintenance row.
+// Robot vacuum panel. Stage: what it is doing, the map, and one main button that does the
+// obvious next thing (with Stop / Dock / Find beside it). Tabs: Rooms (pick some and the
+// main button becomes "Clean 2 rooms"), Options (suction, mode), Station, Care (parts wear).
 
 import { api } from "./api.js";
 import { esc, icon, WORN_PERCENT } from "./util.js";
@@ -26,7 +26,7 @@ const seg = (list, current, attr, iconFor) => `<div class="seg ${iconFor ? "with
   return `<button ${attr}="${esc(id)}" aria-pressed="${String(current) === id}">${iconFor ? icon(iconFor(id)) : ""}<span>${esc(o.name)}</span></button>`;
 }).join("")}</div>`;
 
-export function vacuumBody(d) {
+export function vacuumPanel(d) {
   const s = d.state || {};
   const a = s.activity;
   const m = d.meta || {};
@@ -36,18 +36,17 @@ export function vacuumBody(d) {
   const running = a === "cleaning";
 
   // The one big button: pause while cleaning, resume when paused, otherwise start
-  // (or clean just the rooms the user picked).
+  // (or clean just the rooms the person picked).
   const main = !ACTIVITY[a] ? `<button class="btn primary vac-main" data-refresh>Refresh status</button>`
     : running ? `<button class="btn primary vac-main" data-clean="pause" data-activity="paused">${icon("pause")}Pause</button>`
     : a === "paused" ? `<button class="btn primary vac-main" data-clean="resume" data-activity="cleaning">${icon("play")}Keep cleaning</button>`
     : chosen.size ? `<button class="btn primary vac-main" data-clean-rooms>${icon("play")}Clean ${chosen.size === 1 ? "1 room" : `${chosen.size} rooms`}</button>`
     : `<button class="btn primary vac-main" data-clean="start" data-activity="cleaning">${icon("play")}Start cleaning</button>`;
+  const round = (attrs, glyph, label) => `<button class="rkey" ${attrs} aria-label="${label}">${icon(glyph)}<span>${label}</span></button>`;
   const side = [
-    (running || a === "paused") && `<button class="vac-act" data-clean="stop" data-activity="idle">${icon("stop")}<span>Stop</span></button>`,
-  ].filter(Boolean).join("");
-  const secondary = [
-    ACTIVITY[a] && has(d, "dock") && a !== "docked" && a !== "returning" && `<button class="vac-act" data-dock>${icon("home")}<span>Dock</span></button>`,
-    has(d, "locate") && `<button class="vac-act" data-locate>${icon("target")}<span>Find</span></button>`,
+    (running || a === "paused") && round('data-clean="stop" data-activity="idle"', "stop", "Stop"),
+    ACTIVITY[a] && has(d, "dock") && a !== "docked" && a !== "returning" && round("data-dock", "home", "Dock"),
+    has(d, "locate") && round("data-locate", "target", "Find"),
   ].filter(Boolean).join("");
 
   const [label, ic] = ACTIVITY[a] || ["Connecting…", "vacuum"];
@@ -56,48 +55,45 @@ export function vacuumBody(d) {
   const lastText = last && (last.area_m2 != null || last.minutes != null)
     ? `Last clean ${[last.area_m2 != null ? `${last.area_m2} m²` : "", last.minutes != null ? `${last.minutes} min` : ""].filter(Boolean).join(" in ")}` : "";
 
+  const stage = `<div class="vac-stage">
+      <div class="vac-status" role="status">
+        <span class="vac-state ${a || ""}">${icon(ic)}<b>${charging ? "Charging" : label}</b></span>
+        ${s.battery != null ? `<span class="vac-batt ${s.battery <= 20 ? "low" : ""}" style="--pct:${s.battery}"
+          role="meter" aria-label="Battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${s.battery}">
+          <i aria-hidden="true"></i>${s.battery}%</span>` : ""}
+      </div>
+      ${s.problem ? `<div class="note warn">${esc(s.problem)}</div>` : ""}
+      ${has(d, "map") ? `<div class="vac-map loading" aria-busy="true"><img src="${api.mapUrl(d.id, s.map_rev || 0)}" alt="Map of your home">
+        <span role="status">Loading map...</span></div>` : ""}
+      ${lastText ? `<p class="stage-hint">${esc(lastText)}</p>` : ""}
+      <div class="vac-actions">${main}${side}</div>
+    </div>`;
+
+  const parts = s.parts || [];
+  const worst = parts.reduce((w, p) => (w && w.percent <= p.percent ? w : p), null);
+  const worn = !!worst && worst.percent <= WORN_PERCENT;
   const options = [
     has(d, "suction") && m.suction_levels?.length && `<div class="opt"><div class="opt-label">${icon("fan")}Suction</div>
       ${seg(m.suction_levels, s.suction, "data-suction")}</div>`,
     has(d, "clean_mode") && m.clean_modes?.length && `<div class="opt"><div class="opt-label">${icon("drop")}Mode</div>
       ${seg(m.clean_modes, s.clean_mode, "data-clean-mode", modeIcon)}</div>`,
-    has(d, "station") && m.station_actions?.length && `<details class="control-section" data-control-section="station"><summary>Dock actions</summary>
-      <div class="station">${m.station_actions.map((o) => `<button class="btn" data-station="${esc(String(o.id))}">
-        ${icon(stationIcon(String(o.id)))}<span>${esc(o.name)}</span></button>`).join("")}</div></details>`,
   ].filter(Boolean).join("");
 
-  const parts = s.parts || [];
-  const worst = parts.reduce((w, p) => (w && w.percent <= p.percent ? w : p), null);
-
-  return `<div class="vac">
-    <div class="vac-col">
-      <div class="vac-status" role="status">
-        <span class="vac-state ${a || ""}">${icon(ic)}<b>${charging ? "Charging" : label}</b></span>
-        ${s.battery != null ? `<span class="vac-batt ${s.battery <= 20 ? "low" : ""}" style="--pct:${s.battery}"
-          role="meter" aria-label="Battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${s.battery}">
-          <i aria-hidden="true"></i>Battery ${s.battery}%</span>` : ""}
-      </div>
-      ${lastText ? `<p class="vac-last">${esc(lastText)}</p>` : ""}
-      ${s.problem ? `<div class="note warn">${esc(s.problem)}</div>` : ""}
-      <div class="vac-actions">${main}${side}</div>
-      ${secondary ? `<div class="vac-secondary" role="group" aria-label="Dock and locate">${secondary}</div>` : ""}
-      ${has(d, "map") ? `<div class="vac-map loading" aria-busy="true"><img src="${api.mapUrl(d.id, s.map_rev || 0)}" alt="Map of your home">
-        <span role="status">Loading map...</span></div>` : ""}
-    </div>
-    <div class="vac-col">
-      ${rooms.length ? `<details class="control-section" data-control-section="vac-rooms"><summary>Choose rooms${chosen.size ? ` (${chosen.size} selected)` : ""}</summary>
-        <div class="section-label"><span>Rooms</span>
-          ${chosen.size ? `<button class="link" data-rooms-clear>Clear</button>` : `<b class="soft">Tap rooms to clean only those</b>`}</div>
-        <div class="chips">${rooms.map((r) => { const on = chosen.has(String(r.id)); return `<button class="chip room-chip"
-          data-room-pick="${esc(String(r.id))}" aria-pressed="${on}">${on ? icon("check") : ""}${esc(r.name)}</button>`; }).join("")}</div></details>` : ""}
-      ${options ? `<details class="control-section" data-control-section="vac-options"><summary>Cleaning options</summary><div class="opts">${options}</div></details>` : ""}
-      ${parts.length ? `<details class="vac-parts" data-control-section="maintenance">
-          <summary class="maint-row">${icon("wrench")}<span class="grow"><span class="title">Maintenance</span>
-            <span class="sub ${worst.percent <= WORN_PERCENT ? "warn" : ""}">${worst.percent <= WORN_PERCENT ? `${esc(worst.name)} needs replacing`
-              : `All parts good. ${esc(worst.name)} at ${worst.percent}%`}</span></span>${icon("down", "chev")}</summary>
-          ${parts.map((p) => `<div class="part"><span>${esc(p.name)}</span>
-            <div class="meter small"><div class="meter-fill ${p.percent <= 10 ? "low" : ""}" style="width:${p.percent}%"></div></div>
-            <b>${p.percent}%</b></div>`).join("")}</details>` : ""}
-    </div>
-  </div>`;
+  const tabs = [
+    rooms.length && { id: "rooms", label: "Rooms", html: `<div class="pane-bar">
+        <span class="pane-help">${chosen.size ? `${chosen.size} selected` : "Tap rooms to clean only those"}</span>
+        ${chosen.size ? `<button class="link" data-rooms-clear>Clear</button>` : ""}</div>
+      <div class="chips" role="group" aria-label="Rooms">${rooms.map((r) => { const on = chosen.has(String(r.id)); return `<button class="chip room-chip"
+        data-room-pick="${esc(String(r.id))}" aria-pressed="${on}">${on ? icon("check") : ""}<span>${esc(r.name)}</span></button>`; }).join("")}</div>` },
+    options && { id: "options", label: "Options", html: `<div class="opts">${options}</div>` },
+    has(d, "station") && m.station_actions?.length && { id: "station", label: "Station",
+      html: `<div class="station">${m.station_actions.map((o) => `<button class="btn" data-station="${esc(String(o.id))}">
+        ${icon(stationIcon(String(o.id)))}<span>${esc(o.name)}</span></button>`).join("")}</div>` },
+    parts.length && { id: "care", label: "Care", alert: worn, html: `<p class="care-line ${worn ? "warn" : ""}">${icon("wrench")}${
+        worn ? `${esc(worst.name)} needs replacing` : `All parts good. ${esc(worst.name)} at ${worst.percent}%`}</p>
+      <div class="parts">${parts.map((p) => `<div class="part"><span>${esc(p.name)}</span>
+        <div class="meter small"><div class="meter-fill ${p.percent <= WORN_PERCENT ? "low" : ""}" style="width:${p.percent}%"></div></div>
+        <b>${p.percent}%</b></div>`).join("")}</div>` },
+  ].filter(Boolean);
+  return { stage, tabs };
 }

@@ -254,7 +254,7 @@ class WeatherTileTests(unittest.TestCase):
         self.assertEqual(result, {"node": True, "animation": True})
         self.page.evaluate("async () => (await import('/js/sheet.js')).openDevice('lr-soundbar')")
         self.assertEqual(self.page.locator(".w-fx-clouds").evaluate("e => getComputedStyle(e).animationPlayState"), "paused")
-        self.page.click(".speaker-head [data-close]")
+        self.page.click("#sheet .panel-head [data-close]")
         self.page.wait_for_selector("#sheet", state="hidden")
         self.assertEqual(self.page.locator(".w-fx-clouds").evaluate("e => getComputedStyle(e).animationPlayState"), "running")
         self.page.click("#open-settings")

@@ -1,30 +1,5 @@
-// Shared sheet labels and release-to-apply sliders. Device-specific layouts stay separate.
-import { esc, icon, statusText } from "./util.js";
-
-export function deviceHeading(d) {
-  const s = d.state || {};
-  const status = s.online === true && !s.needs_pairing && d.caps.includes("power") && typeof s.on !== "boolean"
-    ? "Connected; power not reported" : statusText(d);
-  return `<div class="device-head sheet-head">
-    <div class="grow"><h2>${esc(d.name)}</h2><p role="status">${esc(status)}</p></div>
-    <button class="icon-btn" data-close aria-label="Close device controls">${icon("close")}</button>
-  </div>`;
-}
-
-export function powerControls(d) {
-  const s = d.state || {};
-  const toggle = (attr, title, known, state, action, glyph, disabled = false) => `
-    <button class="speaker-toggle" ${attr} aria-pressed="${!!state}" ${!known || disabled ? "disabled" : ""}>
-      ${icon(glyph)}<span><b>${title}: ${known ? state ? "On" : "Off" : "Unknown"}</b>
-      <small>${known ? action : "Refresh the device status"}</small></span>
-    </button>`;
-  const power = d.caps.includes("power") ? toggle("data-power", "Power", typeof s.on === "boolean",
-    s.on, s.on ? "Turn off" : "Turn on", "power") : "";
-  // A device that is off can't say whether it is muted: leave the button out instead of "Unknown".
-  const mute = d.caps.includes("mute") && !(s.on === false && typeof s.muted !== "boolean") ? toggle("data-mute", "Mute", typeof s.muted === "boolean",
-    s.muted, s.muted ? "Unmute" : "Mute audio", s.muted ? "mute" : "vol", s.on === false) : "";
-  return power || mute ? `<div class="device-power speaker-toggles">${power}${mute}</div>` : "";
-}
+// Release-to-apply sliders shared by the device panels: a tap never jumps the value,
+// a drag previews, and one command is sent when the finger lifts.
 
 export const relativeValue = (base, start, point, length, min = 0, max = 100, step = 1) =>
   Math.max(min, Math.min(max, Math.round((base + (point - start) / Math.max(1, length) * (max - min)) / step) * step));

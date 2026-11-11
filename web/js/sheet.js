@@ -1,45 +1,44 @@
-// Bottom sheet with the full controls for one device. Lights get a big brightness
-// pill, a color wheel and a warm-to-cool slider; TVs get the remote (remote.js);
-// robot vacuums get their own layout (vacuum.js). Controls come from the device's caps.
+// The device panel: a sheet that opens from a tile with everything one device can do.
+// panel.js gives every device the same shape (header with a switch, one large "stage"
+// control, tabs for the rest); the stage and tabs come from the device's kind and caps:
+// light.js, remote.js (TVs), speaker.js, vacuum.js, purifier.js, or a big power button.
+//
+// Opening a panel never sends a command. This file owns opening and closing, redrawing
+// without disturbing a finger that is down, and the clicks.
 
 import { api } from "./api.js";
 import { store, command } from "./store.js";
-import { $, esc, icon, glowVar, isMedia, kelvinToRgb, toast } from "./util.js";
+import { $, esc, icon, glowVar, isMedia, toast } from "./util.js";
 import { openSettings } from "./settings.js";
-import { remoteBody, attachRemote, remoteClick, remoteBusy, startRepeat, stopTilt, cancelRemoteInteraction, onRemoteChange } from "./remote.js";
-import { deviceHeading, powerControls, controlGestureBusy, clearControlGestures } from "./device-controls.js";
+import { panelHead, panelBody, powerHero, setTab, tabKey } from "./panel.js";
+import { isLight, lightPanel, attachLight, lightBusy, cancelLightDrag, rgbOf } from "./light.js";
+import { remotePanel, attachRemote, remoteClick, remoteBusy, startRepeat, stopTilt, cancelRemoteInteraction, onRemoteChange } from "./remote.js";
+import { controlGestureBusy, clearControlGestures } from "./device-controls.js";
 import { setMarkup, invalidateMarkup } from "./render.js";
-import { purifierBody } from "./purifier.js";
+import { purifierPanel } from "./purifier.js";
+import { vacuumPanel, picked } from "./vacuum.js";
+import { effectsClick, attachEffects, effectsBusy, keepEffects } from "./effects.js";
+import { simpleSpeaker, speakerPanel, attachSpeaker, speakerBusy, clearSpeakerInteraction } from "./speaker.js";
 
-import { vacuumBody, picked } from "./vacuum.js";
-import { effectsBody, effectsClick, attachEffects, effectsBusy, keepEffects } from "./effects.js";
-import { simpleSpeaker, speakerTop, speakerBody, attachSpeaker, speakerBusy, clearSpeakerInteraction } from "./speaker.js";
 const sheetState = { shownId: null, missed: false, force: false };
 const pressedPointers = new Set();
 let pendingClick = null;
-
 let currentId = null;
-let dragging = null;
-let cancelLightDrag = () => {};
 let returnFocus = null;
-
-const KMIN = 2200, KMAX = 6500;
-const WHITE_PRESETS = [{ k: 2700, name: "Warm white" }, { k: 4000, name: "Neutral white" }, { k: 6000, name: "Daylight" }];
-const COLOR_PRESETS = [
-  { c: "#ff5a3c", name: "Red" }, { c: "#ffa53c", name: "Amber" }, { c: "#5ee07a", name: "Green" },
-  { c: "#3fd6d0", name: "Teal" }, { c: "#4f7bff", name: "Blue" }, { c: "#a35cff", name: "Purple" }, { c: "#ff5cb8", name: "Pink" },
-];
 
 export const isSheetOpen = () => !$("#sheet").hidden;
 
-let closing = null;
-export function openDevice(id) {
-  cancelLightDrag(); clearControlGestures(); cancelRemoteInteraction();
+function dropInteractions() {
+  cancelLightDrag(); clearControlGestures(); cancelRemoteInteraction(); clearSpeakerInteraction();
   pressedPointers.clear();
   pendingClick = null;
+}
+
+let closing = null;
+export function openDevice(id) {
+  dropInteractions();
   sheetState.missed = false; sheetState.force = false;
   if (!isSheetOpen()) returnFocus = document.activeElement;
-  clearSpeakerInteraction();
   clearTimeout(closing);
   $("#sheet").classList.remove("closing"); $("#scrim").classList.remove("closing");
   currentId = id;
@@ -50,10 +49,7 @@ export function openDevice(id) {
 }
 
 export function closeSheet() {
-  cancelLightDrag(); clearControlGestures(); cancelRemoteInteraction();
-  pressedPointers.clear();
-  pendingClick = null;
-  clearSpeakerInteraction();
+  dropInteractions();
   currentId = null;
   const sheet = $("#sheet"), scrim = $("#scrim");
   if (sheet.hidden) return;
@@ -70,10 +66,12 @@ export function closeSheet() {
 new MutationObserver(() => { if ($("#sheet").hidden) { sheetState.shownId = null; stopTilt(); } })
   .observe($("#sheet"), { attributes: true, attributeFilter: ["hidden"] });
 
+// A live update arrived. Redraw unless a finger is down or a gesture is running; then
+// remember that we missed one and catch up as soon as the person lets go.
 export function refreshSheet(id, force = false) {
   if (!currentId) return;
   if (id && id !== currentId) return;
-  if (pendingClick || pressedPointers.size || dragging || controlGestureBusy() || remoteBusy.active || effectsBusy() || speakerBusy()) {
+  if (pendingClick || pressedPointers.size || lightBusy() || controlGestureBusy() || remoteBusy.active || effectsBusy() || speakerBusy()) {
     sheetState.missed = true; sheetState.force ||= force; return;
   }
   force ||= sheetState.force;
@@ -84,333 +82,96 @@ export function refreshSheet(id, force = false) {
 }
 onRemoteChange(() => refreshSheet(), () => { if (sheetState.missed) refreshSheet(); });
 
-const hex = ({ r, g, b }) => "#" + [r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("");
-const rgbOf = (c) => ({ r: parseInt(c.slice(1, 3), 16), g: parseInt(c.slice(3, 5), 16), b: parseInt(c.slice(5, 7), 16) });
 const has = (d, c) => d.caps.includes(c);
-const isLight = (d) => d.kind === "light" || has(d, "brightness") || has(d, "color") || has(d, "color_temp");
+
+// Which panel a device gets. Media first: a TV with a colour cap is still a TV.
+export function panelKind(d) {
+  if (isMedia(d)) return simpleSpeaker(d) ? "speaker" : "remote";
+  if (has(d, "clean")) return "vacuum";
+  if (d.kind === "purifier") return "purifier";
+  if (isLight(d)) return "light";
+  return "switch";
+}
+
+// A plug, a switch or anything else that only turns on and off: one big button,
+// with its energy use when it reports watts.
+function switchPanel(d) {
+  const s = d.state || {};
+  const energyBlock = s.power_w != null ? `<div class="energy" id="energy">${energyHtml(d, s)}</div>` : "";
+  if (!has(d, "power")) return { stage: `<p class="stage-hint">No controls are reported for this device.</p>${energyBlock}`, tabs: [] };
+  return { stage: powerHero(d) + energyBlock, tabs: [] };
+}
+
+const PANELS = { light: lightPanel, remote: remotePanel, speaker: speakerPanel, vacuum: vacuumPanel, purifier: purifierPanel, switch: switchPanel };
+
+function blockedNote(d, s) {
+  if (s.needs_pairing) {
+    return `<div class="note">${esc(s.error || "This device needs to be paired.")}
+      ${d.kind === "tv" ? "<br>Turn the TV on, tap Pair, then accept the prompt on the TV screen." : ""}</div>
+      <button class="btn primary" data-pair>${icon("link")}Pair now</button>`;
+  }
+  return `<div class="note warn">${esc(s.error || "This device isn't responding.")}
+    Check its power and connection. For account-connected devices, check the device's app and account sign-in.</div>
+    <button class="btn" data-refresh>${icon("search")}Try again</button>`;
+}
 
 function render(force = false) {
   const d = store.devices.get(currentId);
   if (!d) return;
   const s = d.state || {};
   const sheet = $("#sheet");
-  const tv = isMedia(d);              // TVs and speakers share the remote
-  const speaker = simpleSpeaker(d);
-  const vac = has(d, "clean");
-  let notes = "";
-
-  if (s.needs_pairing) {
-    notes += `<div class="note">${esc(s.error || "This device needs to be paired.")}
-      ${d.kind === "tv" ? "<br>Turn the TV on, tap Pair, then accept the prompt on the TV screen." : ""}</div>
-      <button class="btn primary" data-pair>${icon("link")}Pair now</button>`;
-  } else if (s.online === false) {
-    notes += `<div class="note warn">${esc(s.error || "This device isn't responding.")}
-      Check its power and connection. For account-connected devices, check the device's app and account sign-in.</div>
-      <button class="btn" data-refresh>${icon("search")}Try again</button>`;
-  }
+  const kind = panelKind(d);
   const blocked = !!s.needs_pairing || s.online === false;
+  const body = blocked ? `<div class="panel solo"><div class="panel-stage">${blockedNote(d, s)}</div></div>` : panelBody(d, PANELS[kind](d));
 
-  let body = notes;
-  if (!blocked) {
-    if (!speaker) body += powerControls(d);
-    if (tv) body += speaker ? speakerBody(d) : remoteBody(d);
-    else if (vac) body += vacuumBody(d);
-    else if (d.kind === "purifier") body += purifierBody(d);
-    else if (isLight(d)) body += lightBody(d);
-    else if (!has(d, "power")) body += '<p class="control-help">No controls are reported for this device.</p>';
-    if (!speaker && ((has(d, "power") && typeof s.on !== "boolean")
-      || ["brightness", "color_temp"].some(cap => has(d, cap) && !Number.isFinite(s[cap])))) {
-      body += '<button class="btn" data-refresh>Refresh status</button>';
-    }
-    if (!tv && s.power_w != null) body += `<div class="section-label"><span>Energy</span></div><div id="energy">${energyHtml(d, s)}</div>`;
-  }
-
-  // keep scroll positions (sheet, app pages) across re-renders of the same device
+  // Keep the scroll position and the focused control across redraws of the same device.
   const same = sheetState.shownId === d.id;
   if (!same) stopTilt();
   sheetState.shownId = d.id;
-  const keep = same ? { top: sheet.scrollTop, pages: $("#sheet [data-keep-scroll]")?.scrollLeft || 0 } : { top: 0, pages: 0 };
+  const top = same ? sheet.scrollTop : 0;
   const focused = same && sheet.contains(document.activeElement) ? document.activeElement : null;
-  const focusAttribute = focused && [...focused.attributes].find(a => a.name.startsWith("data-") && a.name !== "data-repeat");
+  const focusAttribute = focused && [...focused.attributes].find((a) => a.name.startsWith("data-") && a.name !== "data-repeat");
   const focusKey = focused?.id ? `#${CSS.escape(focused.id)}`
-    : focusAttribute ? `[${focusAttribute.name}="${CSS.escape(focusAttribute.value)}"]`
-      : focused?.tagName === "SUMMARY" && focused.parentElement.dataset.controlSection
-        ? `[data-control-section="${focused.parentElement.dataset.controlSection}"] > summary` : null;
-  const sections = same ? new Map([...sheet.querySelectorAll("details[data-control-section]")].map(el => [el.dataset.controlSection, el.open])) : new Map();
-  const advancedOpen = same && !!sheet.querySelector(".speaker-advanced")?.open;
-  const head = speaker ? speakerTop(d) : deviceHeading(d);
-  sheet.classList.toggle("sheet-tv", tv && !speaker);
-  sheet.classList.toggle("sheet-speaker", speaker);
-  sheet.classList.toggle("sheet-vac", !tv && vac);
-  sheet.classList.toggle("sheet-light", !tv && !vac && isLight(d));
-  sheet.classList.toggle("sheet-purifier", d.kind === "purifier");
-  sheet.style.setProperty("--glow", glowVar(d));
+    : focusAttribute ? `[${focusAttribute.name}="${CSS.escape(focusAttribute.value)}"]` : null;
+  sheet.dataset.kind = kind;
   sheet.dataset.deviceId = d.id;
+  sheet.style.setProperty("--glow", glowVar(d));
   sheet.setAttribute("aria-label", `${d.name} controls`);
   keepEffects(sheet, same);
-  const markup = `
-    <div class="grab" aria-hidden="true"></div>
-    ${head}
-    <div class="sheet-body">${body}</div>
-    <div class="meta-line"><span>${esc(d.room || "No room")}. ${esc(d.adapter_name)}${d.meta?.model ? `, ${esc(d.meta.model)}` : ""}</span>
-      <button class="link" data-edit>Edit device</button></div>`;
+  const markup = `<div class="grab" aria-hidden="true"></div>${panelHead(d, { controls: !blocked })}${body}`;
   if (!same || force) invalidateMarkup(sheet);
   if (!setMarkup(sheet, markup)) return;
-  sheet.scrollTop = keep.top;
-  const pages = $("#sheet [data-keep-scroll]");
-  if (pages) pages.scrollLeft = keep.pages;
-  if (advancedOpen && sheet.querySelector(".speaker-advanced")) sheet.querySelector(".speaker-advanced").open = true;
-  for (const section of sheet.querySelectorAll("details[data-control-section]")) {
-    if (sections.has(section.dataset.controlSection)) section.open = sections.get(section.dataset.controlSection);
+  sheet.scrollTop = top;
+  // On a phone the tab row scrolls sideways: keep the chosen tab in view.
+  const bar = sheet.querySelector(".panel-tabs"), chosen = bar?.querySelector('[aria-selected="true"]');
+  if (chosen && (chosen.offsetLeft < bar.scrollLeft || chosen.offsetLeft + chosen.offsetWidth > bar.scrollLeft + bar.clientWidth)) {
+    bar.scrollLeft = chosen.offsetLeft - 8;
   }
 
-  if (!tv && s.power_w != null) loadEnergy(d.id);
-  const mapImg = $("#sheet .vac-map img");
-  if (mapImg) {
-    const finishMap = (available) => {
-      mapImg.parentNode.classList.remove("loading");
-      mapImg.parentNode.classList.toggle("empty", !available);
-      mapImg.parentNode.setAttribute("aria-busy", "false");
-      if (!available) mapImg.nextElementSibling.textContent = "Map unavailable. Refresh status or check the device's app.";
-    };
-    mapImg.addEventListener("error", () => finishMap(false));
-    mapImg.addEventListener("load", () => finishMap(true));
-    if (mapImg.complete) finishMap(mapImg.naturalWidth > 0);
+  if (!blocked) {
+    const idle = (redraw = true) => refreshSheet(d.id, redraw);
+    if (kind === "light") { attachLight(sheet, d, (redraw) => refreshSheet(undefined, redraw)); attachEffects(sheet, d, idle); }
+    else if (kind === "remote") attachRemote(sheet, d);
+    else if (kind === "speaker") attachSpeaker(sheet, d, idle);
+    else if (kind === "vacuum") watchMap(sheet);
+    if (sheet.querySelector("#energy")) loadEnergy(d.id);
   }
-  if (speaker && !blocked) attachSpeaker(sheet, d, () => refreshSheet(d.id, true));
-  else if (tv) attachRemote(sheet, d);
   if (focusKey) sheet.querySelector(focusKey)?.focus({ preventScroll: true });
-  if (!blocked && isLight(d)) {
-    attachLight(d);
-    attachEffects(sheet, d, () => refreshSheet(d.id, true));
-  }
 }
 
-// ---------- lights ----------
-function lightBody(d) {
-  const s = d.state || {};
-  const on = s.on !== false;
-  const dim = has(d, "brightness");
-  const brightnessKnown = Number.isFinite(s.brightness);
-  const level = on ? (dim ? s.brightness ?? 0 : 100) : 0;
-  const colorOn = on && s.color_mode === "color" && s.color;
-  const tempOn = on && s.color_mode !== "color" && s.color_temp;
-  const temperatureKnown = Number.isFinite(s.color_temp);
-  const k = Math.max(KMIN, Math.min(KMAX, s.color_temp || 3000));
-  const kPct = ((k - KMIN) / (KMAX - KMIN)) * 100;
-
-  const tone = `${on ? "on" : ""} ${level >= 86 ? "high" : ""} ${level >= 16 ? "lit" : ""}`;
-  const value = !brightnessKnown ? "Not reported" : on ? `${level}%` : "Off";
-  const pill = dim ? `<div class="pill-wrap"><h3>Brightness</h3><output class="control-value" id="bri-val">${value}</output>
-    <div class="pill ${tone}" id="bri" role="slider" tabindex="${brightnessKnown ? 0 : -1}"
-      aria-label="Brightness" aria-disabled="${!brightnessKnown}" aria-valuemin="${has(d, "power") ? 0 : 1}" aria-valuemax="100"
-      aria-valuenow="${level}" aria-valuetext="${value}">
-      <div class="pill-fill" style="height:${level}%"></div>
-      <span class="pill-icon">${icon(on ? "bulb" : "power")}</span>
-    </div><p class="hint">${brightnessKnown ? "Drag up or down.<br>Release to apply." : "No level reported."}</p></div>` : "";
-
-  let side = "";
-  if (has(d, "color")) {
-    const pos = colorOn ? wheelPos(s.color) : { x: 50, y: 50 };
-    side = `<div class="wheel-wrap"><h3>Color</h3><div class="wheel" id="wheel" role="slider" tabindex="0" aria-label="Color"
-        aria-valuetext="${colorOn ? hex(s.color) : "None"}">
-        <i class="wheel-thumb ${colorOn ? "" : "idle"}" style="left:${pos.x}%;top:${pos.y}%;${colorOn ? `background:${hex(s.color)}` : ""}"></i>
-      </div></div>`;
-  } else if (has(d, "color_temp")) {
-    side = `<div class="pill-wrap"><h3>White tone</h3><div class="pill temp" id="ct" role="slider" tabindex="${temperatureKnown ? 0 : -1}" aria-label="White temperature"
-        aria-disabled="${!temperatureKnown}" aria-valuemin="${KMIN}" aria-valuemax="${KMAX}" aria-valuenow="${k}" aria-valuetext="${temperatureKnown ? `${k} kelvin` : "Not reported"}">
-        <i class="temp-thumb ${tempOn ? "" : "idle"}" style="--p:${kPct}"></i>
-        <b class="pill-val">${temperatureKnown ? tempWord(k) : "Unknown"}</b><span class="pill-icon">${icon("warm")}</span>
-      </div><p class="hint">Drag warm to cool.<br>Release to apply.</p></div>`;
-  }
-
-  const strip = has(d, "color") && has(d, "color_temp") ? `
-    <div class="section-label"><span>White</span><b id="ct-val">${tempOn ? tempWord(k) : ""}</b></div>
-    <div class="temp-strip" id="ct" role="slider" tabindex="${temperatureKnown ? 0 : -1}" aria-label="White temperature"
-      aria-disabled="${!temperatureKnown}" aria-valuemin="${KMIN}" aria-valuemax="${KMAX}" aria-valuenow="${k}" aria-valuetext="${temperatureKnown ? `${k} kelvin` : "Not reported"}">
-      <i class="temp-thumb ${tempOn ? "" : "idle"}" style="--p:${kPct}"></i></div>
-    <div class="temp-ends" aria-hidden="true"><span>Warm</span><span>Cool</span></div>
-    <p class="hint">Drag to adjust; release to apply.</p>` : "";
-
-  const whites = has(d, "color_temp") ? WHITE_PRESETS.slice(0, has(d, "color") ? 2 : 3) : [];
-  const colors = has(d, "color") ? COLOR_PRESETS.slice(0, has(d, "color_temp") ? 4 : 6) : [];
-  const cur = s.color ? hex(s.color) : "";
-  const presets = whites.length + colors.length ? `<div class="presets" role="group" aria-label="Presets">
-      ${whites.map((w) => `<button class="swatch" data-kelvin="${w.k}" style="--sw:rgb(${kelvinToRgb(w.k).join(" ")})"
-        aria-label="${w.name}" aria-pressed="${!!(tempOn && Math.abs(s.color_temp - w.k) < 300)}"></button>`).join("")}
-      ${colors.map((c) => `<button class="swatch" data-color="${c.c}" style="--sw:${c.c}" aria-label="${c.name}"
-        aria-pressed="${!!(colorOn && cur === c.c)}"></button>`).join("")}</div>` : "";
-
-  const more = strip + presets;
-  const color = side || more ? `<details class="control-section" data-control-section="light-color">
-    <summary>${has(d, "color") ? has(d, "color_temp") ? "Color and white" : "Color" : "White tone"}</summary>
-    <div class="light-color-controls">${side}${more ? `<div class="light-more">${more}</div>` : ""}</div>
-  </details>` : "";
-  return `<div class="light"><div class="light-ctl">${pill}</div>${color}</div>`
-    + effectsBody(d);
-}
-
-const tempWord = (k) => (k < 3000 ? "Warm" : k < 4500 ? "Neutral" : "Cool");
-
-function rgbToHs({ r, g, b }) {
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), c = max - min;
-  let h = 0;
-  if (c) h = max === r ? ((g - b) / c) % 6 : max === g ? (b - r) / c + 2 : (r - g) / c + 4;
-  return { h: (h * 60 + 360) % 360, s: max ? c / max : 0 };
-}
-function hsToHex(h, s) {
-  const f = (n) => { const k = (n + h / 60) % 6; return Math.round(255 * (1 - s * Math.max(0, Math.min(k, 4 - k, 1)))); };
-  return hex({ r: f(5), g: f(3), b: f(1) });
-}
-function wheelPos(rgb) {
-  const { h, s } = rgbToHs(rgb);
-  const rad = (h * Math.PI) / 180;
-  return { x: 50 + 50 * s * Math.sin(rad), y: 50 - 50 * s * Math.cos(rad) };
-}
-
-// Pointer drag helper: calls move(x, y, rect, final) with client coordinates, tap() for a short
-// touch that didn't move. Holds re-renders while the finger is down.
-function drag(el, { move, tap }) {
-  let start = null;
-  el.addEventListener("pointerdown", (e) => {
-    if (e.button > 0 || dragging || el.getAttribute("aria-disabled") === "true") return;
-    e.preventDefault();
-    try { el.setPointerCapture(e.pointerId); } catch { /* not a real pointer (tests) */ }
-    el.focus({ preventScroll: true });
-    cancelLightDrag = () => { start = null; dragging = null; };
-    start = { pointer: e.pointerId, x: e.clientX, y: e.clientY, moved: false, rect: el.getBoundingClientRect() };
-    dragging = start;
-  });
-  el.addEventListener("pointermove", (e) => {
-    if (!start || start.pointer !== e.pointerId) return;
-    if (!start.moved && Math.hypot(e.clientX - start.x, e.clientY - start.y) < 6) return;
-    start.moved = true;
-    move(e.clientX, e.clientY, start, false);
-  });
-  const end = async (e) => {
-    if (!start || start.pointer !== e.pointerId) return;
-    const s = start;
-    start = null;
-    if (e.type === "pointerup") {
-      if (tap && !s.moved) await tap(e.clientX, e.clientY, s);
-      else if (s.moved) await move(e.clientX, e.clientY, s, true);
-    }
-    if (dragging === s) { dragging = null; refreshSheet(undefined, s.moved || !!tap); }
+// The vacuum's map is a picture from the device: say so plainly when it can't be loaded.
+function watchMap(sheet) {
+  const img = sheet.querySelector(".vac-map img");
+  if (!img) return;
+  const done = (available) => {
+    img.parentNode.classList.remove("loading");
+    img.parentNode.classList.toggle("empty", !available);
+    img.parentNode.setAttribute("aria-busy", "false");
+    if (!available) img.nextElementSibling.textContent = "Map unavailable. Refresh status or check the device's app.";
   };
-  el.addEventListener("pointerup", end);
-  el.addEventListener("pointercancel", end);
-  el.addEventListener("lostpointercapture", end);
-}
-
-function attachLight(dev) {
-  // Handlers read the live device: updates can replace it while the sheet stays the same.
-  const d = { id: dev.id, get state() { return (store.devices.get(dev.id) || dev).state || {}; } };
-  const s = d.state;
-  const sheet = $("#sheet");
-  const bri = $("#bri");
-  if (bri) {
-    const fill = bri.querySelector(".pill-fill"), val = $("#bri-val");
-    const shown = (v) => {
-      fill.style.height = `${v}%`;
-      val.textContent = v ? `${v}%` : "Off";
-      bri.classList.toggle("on", v > 0);
-      bri.classList.toggle("high", v >= 86);
-      bri.classList.toggle("lit", v >= 16);
-      bri.setAttribute("aria-valuenow", v);
-      bri.setAttribute("aria-valuetext", v ? `${v}%` : "Off");
-    };
-    drag(bri, {
-      move: (x, y, st, final) => {
-        if (st.base == null) st.base = d.state?.on === false ? 0 : d.state.brightness;
-        const v = Math.max(has(dev, "power") ? 0 : 1, Math.min(100, Math.round(st.base + ((st.y - y) / st.rect.height) * 100)));
-        shown(v);
-        if (final) {
-          if (v === 0) return command(d.id, "power", false, { on: false });
-          return command(d.id, "brightness", v, { on: true, brightness: v });
-        }
-      },
-    });
-    bri.addEventListener("keydown", (e) => {
-      if (bri.getAttribute("aria-disabled") === "true") return;
-      const cur = d.state?.on === false ? 0 : d.state.brightness;
-      const step = { ArrowUp: 10, ArrowRight: 10, ArrowDown: -10, ArrowLeft: -10 }[e.key];
-      if (!step && !["Home", "End"].includes(e.key)) return;
-      e.preventDefault();
-      const v = Math.max(has(dev, "power") ? 0 : 1, Math.min(100, e.key === "Home" ? 0 : e.key === "End" ? 100 : cur + step));
-      shown(v);
-      if (v === 0) command(d.id, "power", false, { on: false });
-      else command(d.id, "brightness", v, { on: true, brightness: v });
-    });
-  }
-
-  const wheel = $("#wheel");
-  if (wheel) {
-    const thumb = wheel.querySelector(".wheel-thumb");
-    let last = s.color ? hex(s.color) : "#ffffff";
-    const pick = (x, y, st, final) => {
-      const r = st.rect, cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      let dx = x - cx, dy = y - cy;
-      const dist = Math.hypot(dx, dy), max = r.width / 2;
-      if (dist > max) { dx *= max / dist; dy *= max / dist; }
-      const h = ((Math.atan2(dx, -dy) * 180) / Math.PI + 360) % 360;
-      const raw = Math.min(1, Math.hypot(dx, dy) / max);
-      const sat = raw > 0.93 ? 1 : raw;          // the outer rim snaps to the pure color
-      last = hsToHex(h, sat);
-      thumb.classList.remove("idle");
-      thumb.style.left = `${50 + (dx / max) * 50}%`;
-      thumb.style.top = `${50 + (dy / max) * 50}%`;
-      thumb.style.background = last;
-      const rgb = rgbOf(last);
-      sheet.style.setProperty("--glow", glowFromRgb(rgb));
-      if (final) return command(d.id, "color", last, { on: true, color: rgb, color_mode: "color" });
-    };
-    drag(wheel, { move: pick, tap: (x, y, st) => pick(x, y, st, true) });
-    wheel.addEventListener("keydown", (e) => {
-      const step = { ArrowRight: 15, ArrowUp: 15, ArrowLeft: -15, ArrowDown: -15 }[e.key];
-      if (!step) return;
-      e.preventDefault();
-      const { h } = rgbToHs(rgbOf(last));
-      last = hsToHex((h + step + 360) % 360, 1);
-      command(d.id, "color", last, { on: true, color: rgbOf(last), color_mode: "color" });
-    });
-  }
-
-  for (const ct of document.querySelectorAll("#sheet #ct")) {
-    const thumb = ct.querySelector(".temp-thumb");
-    const vertical = ct.classList.contains("pill");
-    const set = (k, final) => {
-      const pct = ((k - KMIN) / (KMAX - KMIN)) * 100;
-      thumb.classList.remove("idle");
-      thumb.style.setProperty("--p", pct);
-      ct.setAttribute("aria-valuenow", k);
-      ct.setAttribute("aria-valuetext", `${k} kelvin`);
-      const word = vertical ? ct.querySelector(".pill-val") : $("#ct-val");
-      if (word) word.textContent = tempWord(k);
-      sheet.style.setProperty("--glow", glowFromRgb(rgbOfKelvin(k)));
-      if (final) return command(d.id, "color_temp", k, { on: true, color_temp: k, color_mode: "temp" });
-    };
-    drag(ct, {
-      move: (x, y, st, final) => {
-        const r = st.rect;
-        if (st.base == null) st.base = d.state?.color_temp || 3000;
-        const change = vertical ? (st.y - y) / r.height : (x - st.x) / r.width;
-        return set(Math.round(Math.max(KMIN, Math.min(KMAX, st.base + change * (KMAX - KMIN)))), final);
-      },
-    });
-    ct.addEventListener("keydown", (e) => {
-      if (ct.getAttribute("aria-disabled") === "true") return;
-      const step = { ArrowRight: 300, ArrowUp: 300, ArrowLeft: -300, ArrowDown: -300 }[e.key];
-      if (!step && !["Home", "End"].includes(e.key)) return;
-      e.preventDefault();
-      set(Math.max(KMIN, Math.min(KMAX, e.key === "Home" ? KMIN : e.key === "End" ? KMAX : d.state.color_temp + step)), true);
-    });
-  }
-}
-
-const rgbOfKelvin = (k) => { const [r, g, b] = kelvinToRgb(k); return { r, g, b }; };
-function glowFromRgb({ r, g, b }) {
-  const max = Math.max(r, g, b, 1);
-  return [r, g, b].map((v) => Math.round((v / max) * 255)).join(" ");
+  img.addEventListener("error", () => done(false));
+  img.addEventListener("load", () => done(true));
+  if (img.complete) done(img.naturalWidth > 0);
 }
 
 // ---------- energy ----------
@@ -458,7 +219,7 @@ $("#scrim").addEventListener("click", closeSheet);
 $("#sheet").addEventListener("pointerdown", e => {
   if (e.button > 0) return;
   pressedPointers.add(e.pointerId);
-  const control = e.target.closest("button, summary");
+  const control = e.target.closest("button");
   pendingClick = control?.matches(":disabled") ? null : control;
 }, { capture: true });
 for (const event of ["pointerup", "pointercancel"]) addEventListener(event, e => {
@@ -476,10 +237,17 @@ addEventListener("blur", () => {
   clearControlGestures();
   refreshSheet(undefined, true);
 });
+$("#sheet").addEventListener("keydown", (e) => {
+  const tab = tabKey(e);
+  if (!tab || !currentId) return;
+  setTab(currentId, tab);
+  render();
+  $(`#sheet [data-tab="${CSS.escape(tab)}"]`)?.focus({ preventScroll: true });
+});
 document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isSheetOpen()) closeSheet(); });
 $("#sheet").addEventListener("keydown", (e) => {
   if (e.key !== "Tab") return;
-  const items = [...$("#sheet").querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), summary, a[href], [tabindex="0"]')]
+  const items = [...$("#sheet").querySelectorAll('button:not([disabled]):not([tabindex="-1"]), input:not([disabled]), a[href], [tabindex="0"]')]
     .filter(el => el.getClientRects().length && el.getAttribute("aria-disabled") !== "true");
   const first = items[0], last = items.at(-1);
   if (e.shiftKey && (document.activeElement === first || document.activeElement === $("#sheet"))) {
@@ -502,6 +270,7 @@ $("#sheet").addEventListener("click", async (e) => {
   if (!d) return;
   const t = (sel) => e.target.closest(sel);
   if (t("[data-close]")) return closeSheet();
+  if (t("[data-tab]")) { setTab(d.id, t("[data-tab]").dataset.tab); return render(); }
   if (t("[data-edit]")) { const id = d.id; closeSheet(); return openSettings("device", id); }
   if (t("[data-energy-refresh]")) { energy.at = 0; return loadEnergy(d.id); }
   if (t("[data-power]")) { const on = !d.state?.on; return command(d.id, "power", on, { on }); }

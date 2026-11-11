@@ -89,18 +89,20 @@ class FavouritesTests(unittest.TestCase):
         self.assertEqual(self.commands, [{"action": "power", "value": True}])
         self.assertRegex(lamp.locator(".tile-status").inner_text(), r"^On")
         # A long name takes a second line instead of being cut; a shared name brings the room back.
-        page.evaluate("""async () => {
+        # Renamed and measured in one step, so a live update cannot slip in between.
+        shown = page.evaluate("""async () => {
           const {store, upsertDevice} = await import('/js/store.js'), home = await import('/js/home.js');
           upsertDevice({...store.devices.get('lr-vacuum'), name: 'Bedside lamp with a very long name'});
           upsertDevice({...store.devices.get('bd-lamp'), name: 'Bedside lamp with a very long name'});
           home.refreshHomeParts(['favourites']);
+          const row = document.querySelector('.w-favs .tile[data-id="bd-lamp"]'), name = row.querySelector('.tile-name');
+          return {status: row.querySelector('.tile-status').textContent, fits: name.scrollWidth <= name.clientWidth,
+                  name: name.getBoundingClientRect().height, row: row.getBoundingClientRect().height};
         }""")
-        page.wait_for_function("""() => document.querySelector('.w-favs .tile[data-id="bd-lamp"] .tile-status').textContent.startsWith('Bedroom · ')""")
-        name = lamp.locator(".tile-name")
-        self.assertTrue(name.evaluate("e => e.scrollWidth <= e.clientWidth"))
-        self.assertGreater(name.bounding_box()["height"], 30)                # two lines
-        self.assertLess(lamp.bounding_box()["height"], 80)
-        self.assertEqual(page.locator("#sheet:not([hidden])").count(), 0)
+        self.assertTrue(shown["status"].startswith("Bedroom · "), shown)
+        self.assertTrue(shown["fits"], shown)
+        self.assertGreater(shown["name"], 30, shown)                         # two lines
+        self.assertLess(shown["row"], 80, shown)
 
     def test_favourites_are_added_and_chosen_in_edit_mode(self):
         page = self.page

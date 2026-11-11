@@ -88,26 +88,27 @@ class UITests(unittest.TestCase):
     def test_sound_bar_opens_media_controls_and_picks_sound_mode(self):
         self.page.wait_for_selector('.tile[data-id="lr-soundbar"].wide')
         self.tile("lr-soundbar").locator(".tile-name").click()
-        self.page.click('[data-control-section="speaker-options"] > summary')
-        self.page.wait_for_selector('[data-speaker-select="set_sound_mode"]')
+        self.page.wait_for_selector('#sheet[data-kind="speaker"] .dial')
         self.assertTrue(self.tile("lr-soundbar").evaluate("el => el.classList.contains('on')"))  # tap didn't turn it off
         self.assertEqual(self.page.locator(".dpad").count(), 0)       # no TV remote for a speaker
-        self.assertTrue(self.page.locator('[data-speaker-select="set_input"]').is_visible())
-        self.page.select_option('[data-speaker-select="set_sound_mode"]', "cinema")
-        self.page.wait_for_function("document.querySelector('[data-speaker-select=\"set_sound_mode\"]').value === 'cinema'")
-        box = self.page.locator('[data-speaker-select="set_sound_mode"]').bounding_box()
+        self.assertTrue(self.page.locator('#sheet [data-input="arc"]').is_visible())   # inputs are one tap away, not folded
+        self.page.click('#sheet [data-tab="sound"]')
+        self.page.click('#sheet [data-sound-mode="cinema"]')
+        self.page.wait_for_selector('#sheet [data-sound-mode="cinema"][aria-pressed="true"]')
+        box = self.page.locator('#sheet [data-sound-mode="cinema"]').bounding_box()
         self.assertGreaterEqual(box["height"], 48)
-        # A labeled speaker panel, without TV keys or touchpad.
+        # A speaker panel: the header switch, a dial, mute; no TV keys or touchpad.
         sheet = self.page.locator("#sheet")
-        for sel in (".speaker-controls [data-power]", ".speaker-controls [data-mute]", '.speaker-volume [data-act="volume_up"]'):
+        for sel in (".panel-head [data-power]", ".speaker-stage [data-mute]", '.speaker-stage [data-act="volume_up"]'):
             self.assertEqual(sheet.locator(sel).count(), 1, sel)
         for sel in ("[data-mode]", "#touchpad", "[data-key]", "[data-app]"):
             self.assertEqual(sheet.locator(sel).count(), 0, sel)
-        self.page.select_option('#sheet [data-speaker-select="set_input"]', "bt")
-        self.page.wait_for_function("document.querySelector('[data-speaker-select=\"set_input\"]').value === 'bt'")
+        self.page.click('#sheet [data-tab="input"]')
+        self.page.click('#sheet [data-input="bt"]')
+        self.page.wait_for_selector('#sheet [data-input="bt"][aria-pressed="true"]')
 
     def test_brightness_pill(self):
-        # Brightness applies on release; power now has its own explicit button.
+        # Brightness applies on release; power is the switch in the header.
         self.tile("lr-ceiling").locator("[data-more]").click()
         self.sheet_settled()
         box = self.page.locator("#bri").bounding_box()
@@ -128,10 +129,10 @@ class UITests(unittest.TestCase):
         self.page.wait_for_function("!document.querySelector('.tile[data-id=\"lr-ceiling\"]').classList.contains('on')")
         self.page.locator("#sheet [data-power]").click()
         self.page.wait_for_function("document.querySelector('#bri-val').textContent === '30%'")
-        # this light has white temperature only: a warm-to-cool pill, no color wheel
-        self.assertEqual(self.page.locator("#sheet #wheel").count(), 0)
-        self.page.click('[data-control-section="light-color"] > summary')
+        # this light has white temperature only: a warm-to-cool strip beside the bar, no color wheel, no tab row
+        self.assertEqual(self.page.locator("#sheet #wheel, #sheet [data-tab]").count(), 0)
         ct = self.page.locator("#sheet #ct")
+        self.assertTrue(ct.is_visible())
         ct.focus()
         ct.press("End")
         for _ in range(15):
@@ -140,7 +141,7 @@ class UITests(unittest.TestCase):
 
     def test_light_color_wheel_and_presets(self):
         self.tile("lr-lamp").locator("[data-more]").click()
-        self.page.click('[data-control-section="light-color"] > summary')
+        self.page.click('#sheet [data-tab="color"]')
         # Locator clicks wait for the sheet to finish sliding in, so the spot is where we mean it.
         wheel = self.page.locator("#sheet #wheel")
         wheel.click(position={"x": wheel.bounding_box()["width"] / 2, "y": 3})   # top edge of the wheel = red
@@ -149,23 +150,27 @@ class UITests(unittest.TestCase):
                                     ".getPropertyValue('--glow'); return s.trim() === '255 0 0'; })()")
         self.page.click('#sheet [data-color="#5ee07a"]')
         self.page.wait_for_selector('#sheet [data-color="#5ee07a"][aria-pressed="true"]')
-        # White presets are explicit choices; a slider track tap cannot jump.
+        heights = self.page.evaluate("['#bri', '#wheel', '.swatch'].map("
+                                     "s => document.querySelector('#sheet ' + s).getBoundingClientRect().height)")
+        # White is its own tab. Presets are explicit choices; a slider track tap cannot jump.
+        self.page.click('#sheet [data-tab="white"]')
         self.page.click('#sheet [data-kelvin="2700"]')
+        self.page.wait_for_selector('#sheet [data-kelvin="2700"][aria-pressed="true"]')
         self.page.locator("#sheet .temp-strip").focus()
         self.page.locator("#sheet .temp-strip").press("ArrowLeft")
         self.page.locator("#sheet .temp-strip").press("ArrowLeft")
         self.page.wait_for_function("document.querySelector('#sheet .temp-strip').getAttribute('aria-valuenow') < 2400")
-        self.page.wait_for_selector("#sheet .wheel-thumb.idle")
+        heights += self.page.evaluate("['.temp-strip', '.swatch-chip'].map("
+                                      "s => document.querySelector('#sheet ' + s).getBoundingClientRect().height)")
         self.page.wait_for_timeout(1800)                                   # the follow-up refresh keeps white
-        self.assertEqual(self.page.locator("#sheet .wheel-thumb.idle").count(), 1)
-        heights = self.page.evaluate("['#bri', '#wheel', '.temp-strip', '.swatch'].map("
-                                     "s => document.querySelector('#sheet ' + s).getBoundingClientRect().height)")
+        self.page.click('#sheet [data-tab="color"]')
+        self.assertEqual(self.page.locator("#sheet .wheel-thumb.idle").count(), 1)   # no color is chosen any more
         self.assertTrue(all(h >= 48 for h in heights), heights)
 
     def test_light_effects_pick_a_scene_music_and_strip_parts(self):
         self.tile("lr-strip").locator("[data-more]").click()
         sheet = self.page.locator("#sheet")
-        self.page.click('[data-control-section="scenes"] > summary')
+        self.page.click('#sheet [data-tab="scenes"]')
         self.page.wait_for_selector("#sheet:not([hidden]) [data-effect]")
         # search narrows the chips without redrawing the sheet, then a tap picks the scene
         self.page.fill("#sheet .fx-search", "sun")
@@ -181,12 +186,12 @@ class UITests(unittest.TestCase):
         self.assertEqual(sheet.locator(".fx-group-name").all_text_contents(), ["Scenes", "DIY", "Snapshots"])
         self.assertEqual(sheet.locator("[data-fx-group]:visible").count(), 1)     # only the group with a match
         # music: pick a mode; the scene is no longer the active one
-        self.page.click('[data-control-section="music"] > summary')
+        self.page.click('#sheet [data-tab="music"]')
         self.page.click('#sheet [data-music-mode="spectrum"]')
         self.page.wait_for_selector('#sheet [data-music-mode="spectrum"][aria-pressed="true"]')
         self.assertEqual(sheet.locator('[data-effect][aria-pressed="true"]').count(), 0)
         # strip parts: a color first asks for parts; tap two parts, then a color
-        self.page.click('[data-control-section="segments"] > summary')
+        self.page.click('#sheet [data-tab="segments"]')
         self.page.click('#sheet [data-seg-color="#4f7bff"]')
         self.page.wait_for_selector("#toast:not([hidden])")
         self.assertIn("Tap the parts", self.page.inner_text("#toast"))
@@ -196,7 +201,7 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector('#sheet [data-seg="3"].lit')
         self.assertEqual(sheet.locator(".seg-part.lit").count(), 2)
         # a toggle switches and stays switched after the follow-up refresh
-        self.page.click('[data-control-section="light-options"] > summary')
+        self.page.click('#sheet [data-tab="options"]')
         pressed = self.page.get_attribute('#sheet [data-toggle="sync"]', "aria-pressed")
         self.page.click('#sheet [data-toggle="sync"]')
         want = "false" if pressed == "true" else "true"
@@ -213,7 +218,7 @@ class UITests(unittest.TestCase):
         for w, h in ((393, 852), (820, 1180), (1280, 720)):
             page = self.open(width=w, height=h, view="rooms")
             page.locator('.tile[data-id="lr-strip"] [data-more]').click()
-            page.click('[data-control-section="segments"] > summary')
+            page.click('#sheet [data-tab="segments"]')
             page.wait_for_selector("#sheet:not([hidden]) [data-seg]")
             wide = page.evaluate("document.documentElement.scrollWidth > innerWidth"
                                  " || document.querySelector('#sheet').scrollWidth > document.querySelector('#sheet').clientWidth")
@@ -221,7 +226,7 @@ class UITests(unittest.TestCase):
             # lights without effects don't get the sections
             page.click("#sheet [data-close]")
             page.locator('.tile[data-id="lr-lamp"] [data-more]').click()
-            page.click('[data-control-section="light-color"] > summary')
+            page.click('#sheet [data-tab="color"]')
             page.wait_for_selector("#sheet:not([hidden]) #wheel")
             self.assertEqual(page.locator("#sheet .fx").count(), 0)
             page.close()
@@ -774,14 +779,14 @@ class UITests(unittest.TestCase):
         tile.click()                                         # opens controls, never starts cleaning by itself
         self.page.wait_for_selector("#sheet:not([hidden]) [data-clean]")
         self.assertEqual(self.page.locator("#sheet [data-power]").count(), 0)   # no on/off button
-        self.assertIn("Battery", self.page.locator("#sheet").inner_text())
+        self.assertEqual(self.page.locator('#sheet .vac-batt[aria-label="Battery"]').count(), 1)
         self.page.click("#sheet [data-clean=start]")
         self.page.wait_for_selector("#sheet [data-clean=pause]")
         self.page.wait_for_function(
             "document.querySelector('.tile[data-id=\"lr-vacuum\"] .tile-status').textContent.startsWith('Cleaning')")
         self.page.click("#sheet [data-dock]")
         self.page.wait_for_function(
-            "document.querySelector('#sheet .sheet-head p').textContent.startsWith('Going back to dock')")
+            "document.querySelector('#sheet .panel-head p').textContent.startsWith('Going back to dock')")
         box = self.page.locator("#sheet [data-clean]").bounding_box()
         self.assertGreaterEqual(box["height"], 48)               # touch target
         self.assertEqual(self.errors, [])
@@ -790,20 +795,22 @@ class UITests(unittest.TestCase):
         self.page.locator('.tile[data-id="lr-vacuum"]').click()
         self.page.wait_for_function("(() => { const i = document.querySelector('#sheet .vac-map img');"
                                     " return i && i.complete && i.naturalWidth > 0; })()")      # the map loaded
-        self.page.click('[data-control-section="vac-rooms"] > summary')
-        self.page.click('#sheet [data-room-pick="2"]')
+        self.page.click('#sheet [data-room-pick="2"]')                 # Rooms is the first tab: nothing to unfold
         self.page.click('#sheet [data-room-pick="3"]')
         self.page.wait_for_selector("#sheet [data-clean-rooms] >> text=Clean 2 rooms")
         self.page.click("#sheet [data-clean-rooms]")
         self.page.wait_for_selector("#sheet [data-clean=pause]")
-        self.page.click('[data-control-section="vac-options"] > summary')
+        self.page.click('#sheet [data-tab="options"]')
         self.page.click('#sheet [data-suction="quiet"]')
         self.page.wait_for_selector('#sheet [data-suction="quiet"][aria-pressed="true"]')
         self.page.click("#sheet [data-locate]")
         self.page.wait_for_selector("text=Your vacuum is making a sound")
-        self.assertIn("Filter", self.page.locator("#sheet .vac-parts").text_content())   # folded away until tapped
-        for sel in ('[data-room-pick="1"]', '[data-suction="quiet"]', "[data-locate]"):
+        for sel in ('[data-suction="quiet"]', "[data-locate]", '[data-tab="care"]'):
             self.assertGreaterEqual(self.page.locator(f"#sheet {sel}").bounding_box()["height"], 48)
+        self.page.click('#sheet [data-tab="care"]')
+        self.assertIn("Filter", self.page.locator("#sheet .parts").inner_text())
+        self.page.click('#sheet [data-tab="rooms"]')
+        self.assertGreaterEqual(self.page.locator('#sheet [data-room-pick="1"]').bounding_box()["height"], 48)
         self.page.click("#sheet [data-dock]")                      # leave it docked for the other tests
         self.page.wait_for_selector("#sheet [data-clean=start]")
         self.assertEqual(self.errors, [])
@@ -843,20 +850,20 @@ class UITests(unittest.TestCase):
 
     def open_tv(self, did):
         self.tile(did).locator("[data-more]").click()
-        self.page.wait_for_selector("#sheet:not([hidden]) .device-head")
-        if self.page.locator("#sheet .tv-off").count():
-            self.page.click("#sheet [data-power]")
+        self.page.wait_for_selector("#sheet:not([hidden]) .panel-head")
+        if self.page.locator("#sheet .power-orb").count():          # it is off: the stage is one big power button
+            self.page.click("#sheet .power-orb")
         self.page.wait_for_selector("#sheet .remote")
 
     def test_remote_layout_and_modes(self):
         sent = self.commands()
         self.open_tv("lr-tv")                       # demo "Samsung TV": no pointer
-        top = self.page.locator("#sheet .device-power")
-        self.assertEqual(top.locator("[data-power]").count(), 1)
-        self.assertIn("Samsung TV", self.page.locator("#sheet .device-head h2").inner_text())
-        self.assertEqual(top.locator("[data-mute]").count(), 1)
-        for key in ("MENU", "SOURCE", "EXIT", "CHANNEL_LIST", "UP", "OK", "HOME", "BACK"):
-            self.assertEqual(self.page.locator(f'#sheet [data-key="{key}"]').count(), 1, key)
+        self.assertEqual(self.page.locator('#sheet .panel-head [data-power][role="switch"][aria-checked="true"]').count(), 1)
+        self.assertIn("Samsung TV", self.page.locator("#sheet .panel-head h2").inner_text())
+        self.assertEqual(self.page.locator("#sheet .remote-keys [data-mute]").count(), 1)   # mute sits with the remote's keys
+        for key in ("UP", "OK", "HOME", "BACK"):
+            self.assertEqual(self.page.locator(f'#sheet .remote [data-key="{key}"]').count(), 1, key)
+        self.assertEqual(self.page.locator("#sheet [data-tab]").all_inner_texts(), ["Apps", "Inputs", "Keys"])
         self.assertEqual(self.page.locator("#sheet [data-mode=touchpad]").count(), 0)   # only when the TV has a pointer
         self.page.click('#sheet [data-key="OK"]')
         self.page.click('#sheet [data-act="volume_up"]')
@@ -867,7 +874,7 @@ class UITests(unittest.TestCase):
         self.page.wait_for_function("document.querySelector('#sheet [data-mode=numbers]').getAttribute('aria-pressed') === 'true'")
         self.page.click("#sheet [data-mode=dpad]")
         self.page.wait_for_selector("#sheet .dpad")
-        self.page.click('[data-control-section="apps"] > summary')
+        self.page.click('#sheet [data-tab="apps"]')
         self.page.click("#sheet [data-app]:not([aria-pressed=true]) >> nth=0")
         self.page.wait_for_function("() => true")
         self.page.wait_for_timeout(300)
@@ -876,10 +883,14 @@ class UITests(unittest.TestCase):
         self.assertIn(("volume_up", None), actions)
         self.assertIn(("key", "7"), actions)
         self.assertTrue(any(a == "launch_app" for a, _ in actions))
-        self.page.click('[data-control-section="remote-more"] > summary')
-        for sel in ("[data-key=MENU]", "[data-key=UP]", "[data-act=volume_up]", "[data-mode=dpad]", "[data-app]"):
+        for sel in ("[data-key=UP]", "[data-key=BACK]", "[data-act=volume_up]", "[data-mode=dpad]", "[data-app]", "[data-tab=keys]"):
             box = self.page.locator(f"#sheet {sel}").first.bounding_box()
             self.assertGreaterEqual(min(box["width"], box["height"]), 48, sel)
+        self.page.click('#sheet [data-tab="keys"]')                 # the rarer keys are one tap away
+        for key in ("MENU", "SOURCE", "EXIT", "CHANNEL_LIST"):
+            box = self.page.locator(f'#sheet .key-grid [data-key="{key}"]').bounding_box()
+            self.assertGreaterEqual(min(box["width"], box["height"]), 48, key)
+        self.page.click('#sheet [data-tab="apps"]')
 
     def test_remote_fits_a_phone_with_accessible_primary_controls_and_close(self):
         self.page.set_viewport_size({"width": 393, "height": 852})
@@ -936,34 +947,33 @@ class UITests(unittest.TestCase):
     def test_robot_vacuum_options_and_maintenance(self):
         self.page.set_viewport_size({"width": 393, "height": 852})
         self.tile("lr-vacuum").click()
-        self.page.wait_for_selector("#sheet .vac")
-        self.page.click('[data-control-section="vac-options"] > summary')
+        self.page.wait_for_selector("#sheet .vac-stage")
+        self.assertEqual(self.page.locator("#sheet [data-tab]").all_inner_texts(), ["Rooms", "Options", "Station", "Care"])
+        self.page.click('#sheet [data-tab="options"]')
         opts = self.page.locator("#sheet .opts")
         self.assertIn("Suction", opts.inner_text())
         self.assertIn("Mode", opts.inner_text())
-        self.assertIn("Dock actions", opts.inner_text())
         self.assertEqual(opts.locator("[data-clean-mode] svg").count(), 3)          # every mode has an icon
         self.page.click('#sheet [data-clean-mode="mop"]')
         self.page.wait_for_selector('#sheet [data-clean-mode="mop"][aria-pressed="true"]')
         self.page.click('#sheet [data-clean-mode="vacuum"]')
         self.page.wait_for_selector('#sheet [data-clean-mode="vacuum"][aria-pressed="true"]')
-        self.page.click('[data-control-section="station"] > summary')
+        heights = [self.page.locator(f"#sheet {sel}").bounding_box()["height"] for sel in ('[data-suction="max"]', '[data-clean-mode="mop"]')]
+        self.page.click('#sheet [data-tab="station"]')
         self.page.click('#sheet [data-station="empty_dustbin"]')
         self.page.wait_for_selector("text=Empty dustbin: sent to the station")
-        # parts wear stays folded behind one Maintenance row
-        part = self.page.locator("#sheet .vac-parts .part").first
-        self.assertFalse(part.is_visible())
-        self.assertIn("Filter", self.page.locator("#sheet .maint-row").inner_text())
-        self.page.click("#sheet .maint-row")
-        part.wait_for(state="visible")
+        # parts wear has its own tab, with a one-line verdict first
+        self.page.click('#sheet [data-tab="care"]')
+        self.assertIn("All parts good. Filter at 18%", self.page.locator("#sheet .care-line").inner_text())
+        self.page.locator("#sheet .parts .part").first.wait_for(state="visible")
         # picking rooms turns the main button into "Clean 1 room"; Clear undoes it
-        self.page.click('[data-control-section="vac-rooms"] > summary')
+        self.page.click('#sheet [data-tab="rooms"]')
         self.page.click('#sheet [data-room-pick="2"]')
         self.page.wait_for_selector("#sheet .vac-main >> text=Clean 1 room")
         self.page.click("#sheet [data-rooms-clear]")
         self.page.wait_for_selector("#sheet .vac-main >> text=Start cleaning")
-        for sel in (".vac-main", "[data-locate]", '[data-suction="max"]', '[data-clean-mode="mop"]', ".maint-row"):
-            self.assertGreaterEqual(self.page.locator(f"#sheet {sel}").bounding_box()["height"], 48, sel)
+        heights += [self.page.locator(f"#sheet {sel}").bounding_box()["height"] for sel in (".vac-main", "[data-locate]", '[data-room-pick="2"]')]
+        self.assertTrue(all(h >= 48 for h in heights), heights)
         no_overflow = self.page.evaluate("document.querySelector('#sheet').scrollWidth <= 393")
         self.assertTrue(no_overflow)
 

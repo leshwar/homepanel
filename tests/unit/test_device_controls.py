@@ -1,4 +1,4 @@
-"""Shared control labels and gesture safety without a browser or devices."""
+"""Release-to-apply slider safety without a browser or devices."""
 import base64
 import shutil
 import subprocess
@@ -11,25 +11,12 @@ SOURCE = Path(__file__).resolve().parents[2] / "web/js/device-controls.js"
 
 @unittest.skipUnless(NODE, "Node.js is needed for the JS unit tests")
 class DeviceControlTests(unittest.TestCase):
-    def test_labels_capabilities_and_relative_gesture_lifecycle(self):
+    def test_relative_gesture_lifecycle(self):
         source = "\n".join(line for line in SOURCE.read_text().splitlines() if not line.startswith("import "))
-        source = """const esc = s => String(s).replaceAll('<','&lt;'), icon = () => '<svg></svg>', statusText = () => 'Offline';\n""" + source
         module = "data:text/javascript;base64," + base64.b64encode(source.encode()).decode()
         result = subprocess.run([NODE, "--input-type=module", "-e", """
             import assert from 'node:assert/strict';
-            const {powerControls,deviceHeading,relativeValue,bindRelativeRange,controlGestureBusy,clearControlGestures}
-              = await import(process.argv[1]);
-            assert.equal(powerControls({caps:[],state:{}}), '');
-            assert.match(powerControls({caps:['power'],state:{on:false}}), /Turn on/);
-            assert.match(powerControls({caps:['power'],state:{}}), /disabled/);
-            assert.match(powerControls({caps:['mute'],state:{muted:true}}), /Unmute/);
-            // Off and no mute reading (a TV in standby): no "Mute: Unknown" button, only power.
-            const off = powerControls({caps:['power','mute'],state:{on:false}});
-            assert.match(off, /data-power/); assert.doesNotMatch(off, /data-mute|Unknown/);
-            assert.match(powerControls({caps:['power','mute'],state:{on:false,muted:false}}), /Mute: Off/);
-            assert.match(powerControls({caps:['power','mute'],state:{on:true}}), /Mute: Unknown/);
-            assert.match(deviceHeading({name:'<device>',caps:[]}), /&lt;device>/);
-            assert.match(deviceHeading({name:'Device',caps:['power'],state:{online:true}}), /power not reported/);
+            const {relativeValue,bindRelativeRange,controlGestureBusy,clearControlGestures} = await import(process.argv[1]);
             assert.equal(relativeValue(30, 100, 100, 200), 30);
             assert.equal(relativeValue(30, 100, 140, 200), 50);
             assert.equal(relativeValue(90, 0, 100, 200), 100);

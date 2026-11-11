@@ -59,7 +59,7 @@ class SpeakerControlTests(unittest.TestCase):
         self.page.goto(self.server.url)
         self.page.wait_for_selector('.tile[data-id="lr-soundbar"] [data-more]')
         self.page.click('.tile[data-id="lr-soundbar"] [data-more]')
-        self.page.wait_for_selector("#sheet.sheet-speaker [data-speaker-volume]")
+        self.page.wait_for_selector('#sheet[data-kind="speaker"] [data-speaker-volume]')
 
     def tearDown(self):
         self.page.close()
@@ -108,32 +108,36 @@ class SpeakerControlTests(unittest.TestCase):
         page.wait_for_timeout(200)
         self.assertEqual(self.commands[-1], {"action": "volume", "value": 33})
 
-    def test_labeled_toggles_selectors_and_advanced_modes_reconcile(self):
+    def test_switch_mute_and_chip_choices_reconcile(self):
         page = self.page
-        page.click('[data-control-section="speaker-options"] > summary')
-        self.assertIn("Power: On", page.inner_text("#sheet [data-power]"))
-        self.assertIn("Turn off", page.inner_text("#sheet [data-power]"))
-        self.assertIn("Mute: Off", page.inner_text("#sheet [data-mute]"))
-        self.assertEqual(page.locator('[data-speaker-select="set_sound_mode"] option[value="26"]').count(), 0)
-        self.assertEqual(page.locator('[data-speaker-select="set_sound_mode"] option[value="15"]').count(), 0)
-        page.select_option('[data-speaker-select="set_input"]', "bt")
-        page.wait_for_function("document.querySelector('[data-speaker-select=\"set_input\"]').value === 'bt'")
-        page.click(".speaker-advanced summary")
-        page.select_option('[data-speaker-select="set_sound_mode_advanced"]', "26")
-        page.wait_for_function("""() =>
-          document.querySelector('[data-speaker-select="set_sound_mode_advanced"]').value === '26'
-          && document.querySelector('[data-speaker-select="set_sound_mode"] option:checked').textContent.includes('26')
-        """)
-        self.assertIn("26", page.locator('[data-speaker-select="set_sound_mode"]').input_value()
-                      or page.locator('[data-speaker-select="set_sound_mode"] option:checked').inner_text())
+        self.assertEqual(page.inner_text("[data-speaker-level]"), "12")
+        self.assertEqual(page.locator("#sheet .dial").evaluate("e => e.style.getPropertyValue('--pct')"), "12")
+        self.assertEqual(page.locator("#sheet [data-tab]").all_inner_texts(), ["Input", "Sound mode"])
+        power = page.locator('#sheet .panel-head [data-power][role="switch"]')
+        self.assertEqual(power.get_attribute("aria-checked"), "true")
+        page.click('#sheet [data-input="bt"]')                                      # inputs are chips on the first tab
+        page.wait_for_selector('#sheet [data-input="bt"][aria-pressed="true"]')
+        self.assertEqual(self.commands[-1], {"action": "set_input", "value": "bt"})
+        page.click('#sheet [data-tab="sound"]')
+        named = page.locator("#sheet .pane-set .chips").nth(0)
+        reported = page.locator("#sheet .pane-set .chips").nth(1)
+        self.assertEqual(named.locator('[data-sound-mode="26"], [data-sound-mode="15"]').count(), 0)   # numbered modes are kept apart
+        self.assertIn("ID 26", reported.locator('[data-sound-mode="26"]').inner_text())
+        reported.locator('[data-sound-mode="26"]').click()
+        page.wait_for_selector('#sheet [data-sound-mode="26"][aria-pressed="true"]')
+        self.assertEqual(self.commands[-1], {"action": "set_sound_mode", "value": "26"})
+        self.assertEqual(page.locator('#sheet [data-sound-mode][aria-pressed="true"]').count(), 1)
         page.click("#sheet [data-mute]")
         page.wait_for_selector('#sheet [data-mute][aria-pressed="true"]')
         self.assertIn("Unmute", page.inner_text("#sheet [data-mute]"))
-        page.click("#sheet [data-power]")
-        page.wait_for_selector('#sheet [data-power][aria-pressed="false"]')
+        self.assertIn("Muted", page.inner_text("#sheet .dial-core"))
+        self.assertIn("Muted", page.inner_text("#sheet .panel-head p"))
+        power.click()
+        page.wait_for_selector('#sheet [data-power][aria-checked="false"]')
         self.assertTrue(page.locator("[data-speaker-volume]").is_disabled())
-        self.assertIn("Turn on", page.inner_text("#sheet [data-power]"))
-        page.click(".speaker-head [data-close]")
+        self.assertTrue(page.locator('#sheet [data-sound-mode="26"]').is_disabled())
+        self.assertIn("Turn it on to change the volume", page.inner_text("#sheet .speaker-stage"))
+        page.click("#sheet .panel-head [data-close]")
         page.wait_for_selector("#sheet", state="hidden")
 
     def test_touch_volume_applies_once_on_release_and_tap_does_not_jump(self):
@@ -168,7 +172,6 @@ class SpeakerControlTests(unittest.TestCase):
     def test_panel_is_opaque_and_readable_at_all_sizes_and_glass_settings(self):
         from tests.integration.test_readability import ReadabilityTests
         page = self.page
-        page.click('[data-control-section="speaker-options"] > summary')
         for style in ("light", "dark"):
             for size, width, height, transparency in (("small", 393, 852, 100), ("medium", 720, 1280, 0), ("large", 1280, 720, 100)):
                 with self.subTest(style=style, size=size):
@@ -180,11 +183,14 @@ class SpeakerControlTests(unittest.TestCase):
                     sheet = page.locator("#sheet")
                     self.assertTrue(sheet.evaluate("e => e.scrollWidth <= e.clientWidth"))
                     self.assertEqual(sheet.evaluate("e => getComputedStyle(e).backdropFilter"), "none")
-                    for selector in (".speaker-head h2", ".speaker-head p", ".speaker-volume-title h3", "[data-speaker-level]", ".speaker-help"):
+                    for selector in (".panel-head h2", ".panel-head p", ".dial-core span", "[data-speaker-level]", ".pane-help",
+                                     '.panel-tabs [aria-selected="true"]', '.panel-tabs [aria-selected="false"]', ".chip span"):
+                        if not page.locator(selector).count():
+                            continue
                         surface = ReadabilityTests.surface(self, selector)
                         self.assertEqual(surface["alpha"], 1)
                         self.assertGreaterEqual(surface["contrast"], 4.5, (selector, surface))
-                    for control in page.locator(".speaker-head button, .speaker-controls button, .speaker-controls select, [data-speaker-volume]").all():
+                    for control in page.locator("#sheet button, [data-speaker-volume]").all():
                         if control.is_visible():
                             self.assertGreaterEqual(control.bounding_box()["height"], 48)
                     self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)

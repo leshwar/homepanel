@@ -12,7 +12,7 @@ web/
 ├── photoframe.css  photo frame slideshow and its settings
 ├── clockfaces.css  resting clock faces and the face picker previews
 ├── voice.css       the voice sheet: big mic with a level ring, chat bubbles, typed box
-├── controls.css    device sheets: light pill and color wheel, TV remote, robot vacuum
+├── controls.css    device panels: header switch, stage, tabs; light bar and wheel, TV remote, dial, vacuum
 ├── auth.css        profile picker, optional password form, avatars, the profile menu
 └── js/
     ├── api.js      the ONLY file that calls the server (/api/v1) + live events
@@ -33,13 +33,15 @@ web/
     ├── sky.js      weather from the server → html[data-sky] / [data-period] for the Sky background
     ├── weather-effects.js shared weather scenes and tile-only animation visibility
     ├── typography.js shared Small/Medium/Large display preference and cancelable preview
-    ├── sheet.js    bottom sheet: light controls and the TV remote
+    ├── sheet.js    the device panel: opening, redrawing without disturbing a touch, clicks
+    ├── panel.js    the shape every panel shares: header with a switch, stage, tabs
+    ├── light.js    light panel: brightness bar, color wheel, white strip
     ├── voice.js    the mic: speech to text in the browser (or a typed box), reply, choices, confirm
-    ├── remote.js   TV and speaker remote: D-pad / touchpad / number pad, rockers, apps, pointer
-    ├── speaker.js  opaque simple-speaker controls: labeled power/mute, relative volume and compact selectors
-    ├── purifier.js generic purifier modes/speeds and reported air/filter readings
-    ├── device-controls.js shared headings/power states and safe release-to-apply range gestures
-    ├── vacuum.js   robot vacuum: map, status, main button, rooms, Options, Maintenance
+    ├── remote.js   TV panel: D-pad / touchpad / number pad, rockers, keys; Apps, Inputs, Sound, Keys tabs
+    ├── speaker.js  speaker panel: volume dial, release-to-apply slider, mute; Input and Sound mode tabs
+    ├── purifier.js purifier panel: reported air/filter readings; Mode and Fan speed tabs
+    ├── device-controls.js safe release-to-apply range gestures shared by the panels
+    ├── vacuum.js   vacuum panel: status, map, main button; Rooms, Options, Station, Care tabs
     ├── effects.js  light effects in the light sheet: searchable scenes (Scenes / DIY / Snapshots),
     │               music mode + sensitivity, strip parts (tap parts, then a color), toggles
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
@@ -150,11 +152,8 @@ keyboard behavior and guarded persistence; the library only handles dragging.
 - **Device controls.** Opaque, theme-aware panels have a named status header, a
   reachable Close button and labeled Power/Mute actions where supported. TV
   navigation/volume stay primary; apps, inputs and extra keys are grouped.
-  Lights keep distinct brightness/color/white controls, with scenes, music sync,
-  strip segments and options in expandable sections. Vacuum status and the
-  primary cleaning action come before its map; room selection, cleaning options,
-  dock actions and maintenance expand separately. Expanded sections and keyboard
-  focus survive live updates, and reset when another device opens.
+  Every panel has a header switch, one large stage control and tabs (see Device panels).
+  The chosen tab and keyboard focus survive live updates.
   Brightness, white-temperature and numeric range controls apply on release;
   tapping a slider track, canceling a drag or closing the panel does not send a
   command. Color-wheel taps and named presets remain explicit choices. Offline
@@ -225,40 +224,50 @@ stable per-device SVG IDs avoid defeating markup caches. Unchanged room structur
 retain their tiles even through full snapshots. Active presses keep their intended
 action until click delivery completes.
 
-## Device sheets
+## Device panels
 
-Tap any tile's body/name (or long-press) for controls. A sheet shows only what the
-device can do (its `caps`):
+Tap any tile's body/name (or long-press) for its panel. Opening one never sends a command.
+Every panel has the same shape (`panel.js`), filled in from what the device can do (its `caps`):
 
-- *Lights*: explicit power and a relative brightness pill are primary.
-  Color/white controls and presets expand separately, only when supported.
-  Dragging previews locally and applies on release; track taps/canceled gestures
-  send nothing. A no-op gesture does not rebuild the panel.
-  Lights that list effects add Scenes (search box, grouped Scenes / DIY / Snapshots, the
-  playing one highlighted, Update list), Music (mode chips and a sensitivity slider), Strip
-  parts (tap parts, then a color) and Options toggles (`effects.js`).
-- *TV remote*: labeled power/mute, device name/status and navigation; a switch
-  between buttons, touchpad (TVs with `pointer`)
-  and number pad; volume and channel rockers (hold to repeat), Home, Play/Pause, Back; and
-  expandable apps/inputs and extra keys. Secondary controls scroll on short screens;
-  the close control remains reachable. The touchpad sends pointer moves batched (one request in
-  flight, ~30 ms apart): drag to move, tap to click, two fingers to scroll. On phones,
-  **Aim** moves the pointer by tilting the phone (iOS asks for motion access first).
-- *Simple speakers and sound bars* have an opaque, theme-appropriate control panel
-  independent of dashboard glass transparency. The header has status and Close;
-  Power/Mute show both state and action. The volume slider uses relative drag
-  and applies on release (a track tap or canceled gesture sends no command),
-  with keyboard support and native step buttons. Input and Sound mode expand
-  separately as compact selected-value controls; undocumented or format-dependent modes stay under
-  Device-reported modes. Device updates do not replace a control during interaction.
-  Richer speakers and TVs keep their existing transport/app controls.
-- *Robot vacuum*: status and battery, one main button (start, pause, keep cleaning,
-  or clean the picked rooms), with docking/location secondary. Unknown status requests
-  a refresh instead of guessing an action. Rooms, Options (suction, mode, station jobs) and
-  parts wear folded behind Maintenance.
+- **Header**: the device's picture, name and live status, an on/off **switch** (disabled
+  while the device hasn't reported whether it is on), the settings gear and Close.
+- **Stage**: one large control you operate directly.
+- **Tabs**: everything else, one tap away. One pane shows at a time; the panel opens on what
+  the device is doing now, then remembers the tab you pick. One tab = no tab row. Arrow keys
+  walk the tabs. On wide screens the stage and tabs sit side by side; on narrow ones they stack.
+
+Per kind:
+
+- *Lights* (`light.js`): the stage is a tall brightness bar filled in the lamp's colour.
+  Tabs: Color (wheel and presets), White (warm-to-cool strip and presets), and, when the light
+  lists them, Scenes (search, grouped Scenes / DIY / Snapshots, Update list), Music (modes and
+  sensitivity), Segments (tap parts, then a colour) and Options (`effects.js`).
+- *TVs and richer speakers* (`remote.js`): volume rocker, the pad (buttons, a touchpad for TVs
+  with `pointer`, or numbers), channel rocker, then Back / Home / Play-pause / Mute. Tabs: Apps
+  (well-known ones first), Inputs, Sound, Keys (Menu, Exit and the rarer ones). While the TV
+  is off the stage is one big power button, so no key can be pressed by mistake. The touchpad
+  sends pointer moves batched (one request in flight, ~30 ms apart): drag to move, tap to
+  click, two fingers to scroll. On phones, **Aim** moves the pointer by tilting the phone.
+- *Simple speakers and sound bars* (`speaker.js`): a volume dial with the level in the middle,
+  a slider with − and + under it, and Mute. Tabs: Input and Sound mode, as chips; modes the
+  speaker lists only by number are shown apart, with their ids.
+- *Robot vacuum* (`vacuum.js`): status and battery, any problem, the map, and one main button
+  (start, pause, keep cleaning, or clean the picked rooms) with Stop / Dock / Find beside it.
+  Tabs: Rooms, Options (suction, mode), Station, Care (parts wear; a dot on the tab when a
+  part is worn). Unknown status asks for a refresh instead of guessing an action.
+- *Air purifiers* (`purifier.js`): the stage shows its readings; tabs: Mode and Fan speed.
+- *Plugs, switches and anything else*: one big power button, with energy use when the
+  device reports watts.
+
+Safety rules every control keeps: sliders, the brightness bar and the white strip preview
+while dragging and send one command on release; a tap on a track, a cancelled drag or closing
+the panel sends nothing; a control under a finger is never replaced by a live update; and
+keyboard focus and the chosen tab survive updates. Panels are opaque, theme-aware surfaces,
+independent of the dashboard's glass.
 
 ## Adding a control for a new capability
 
 1. Add the capability/action in `app/core/adapter.py` (`Cap`, `Action`).
-2. Render it in `sheet.js` (TVs: `remote.js`, vacuums: `vacuum.js`, light effects: `effects.js`), guarded by the cap.
+2. Render it in the device kind's panel file (`light.js`, `remote.js`, `speaker.js`, `vacuum.js`, `purifier.js`;
+   light effects: `effects.js`) as part of its stage or as a tab, guarded by the cap. `panel.js` draws the shell.
 3. Send it with `command(d.id, "your_action", value, {optimistic state})`.

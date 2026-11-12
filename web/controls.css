@@ -253,7 +253,14 @@ html[data-tiles="light"] .sheet {
 .dial-core output { font-size: calc(52px * var(--readout-scale, 1)); font-weight: 650; line-height: 1; font-variant-numeric: tabular-nums; }
 .dial-core span { margin-top: 4px; color: var(--haze); font-size: calc(14px * var(--text-scale)); }
 .dial-row { display: grid; grid-template-columns: 56px minmax(0, 1fr) 56px; align-items: center; gap: 12px; width: 100%; max-width: 420px; }
-.level-range { min-width: 0; width: 100%; height: 56px; accent-color: var(--lavender); touch-action: none; }
+.level-range { appearance: none; -webkit-appearance: none; min-width: 0; width: 100%; height: 56px;
+               background: transparent; touch-action: none; cursor: ew-resize; }
+.level-range::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: var(--track); border: 1px solid var(--key-edge); }
+.level-range::-moz-range-track { height: 6px; border-radius: 4px; background: var(--track); border: 1px solid var(--key-edge); }
+.level-range::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; border-radius: 50%;
+                                    margin-top: -9px; background: var(--lavender); border: 0; }
+.level-range::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: var(--lavender); border: 0; }
+.level-range:disabled { cursor: default; opacity: .5; }
 .mute-chip { min-width: 132px; justify-content: center; }
 
 /* ---------- air purifiers ---------- */

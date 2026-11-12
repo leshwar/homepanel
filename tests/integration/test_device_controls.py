@@ -1,9 +1,12 @@
 """Device-panel usability and command safety on isolated household fixtures."""
 import itertools
+import io
 import os
 import shutil
 import tempfile
 import unittest
+
+from PIL import Image
 
 from tests.helpers import DemoServer
 
@@ -133,6 +136,22 @@ class DevicePanelTests(unittest.TestCase):
             thumb, track = switch.evaluate("e => [getComputedStyle(e,'::after').backgroundColor, getComputedStyle(e).backgroundColor]")
             self.assertGreaterEqual(page.evaluate(graphic_contrast, [thumb, track]), 3)
             self.open("lr-soundbar")
+            page.evaluate("""async () => {
+              const {store,upsertDevice} = await import('/js/store.js'), d = store.devices.get('lr-soundbar');
+              upsertDevice({...d,state:{...d.state,on:true,volume:12}});
+            }""")
+            # Inspect the rendered native range, not just accent-color: Chromium can
+            # otherwise choose a bright white track even on a dark surface.
+            slider = page.locator("[data-speaker-volume]")
+            image = Image.open(io.BytesIO(slider.screenshot())).convert("RGB")
+            track = image.getpixel((image.width - 8, image.height // 2))
+            thumb = image.getpixel((round(12 + (image.width - 24) * .12), image.height // 2))
+            colors = ["rgb(%s)" % ", ".join(map(str, color)) for color in (thumb, track)]
+            self.assertGreaterEqual(page.evaluate(graphic_contrast, colors), 3)
+            if theme == "dark":
+                self.assertLess(max(track), 65)
+            else:
+                self.assertGreater(min(track), 130)
             page.evaluate("""async () => {
               const {store,upsertDevice} = await import('/js/store.js'), d = store.devices.get('lr-soundbar');
               upsertDevice({...d,state:{...d.state,on:false,volume:12}});

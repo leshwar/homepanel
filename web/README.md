@@ -27,6 +27,8 @@ web/
     ├── room-layout.js per-profile room tile layouts and their editor
     ├── room-sort.js three-line room grips, touch sorting, keyboard announcements and persistence
     ├── home.js     the Home page: widgets (clock, other places' clocks, weather, scenes, rooms)
+    ├── home-overview.js time-first overview and real permission-filtered device attention
+    ├── room-cards.js compact capability-driven cards and safe inline level controls
     │               and edit mode (hold to move, drag a corner to resize, hide, Done)
     ├── tiles.js    open-first device tiles, explicit quick actions and stable in-place updates
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
@@ -182,6 +184,26 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   scroll without shrinking their touch targets.
 - **Animations** are short (150–300 ms) and only move or fade: tile press and "pop" when
   something turns on, tab and page switches, and the sheet sliding in and out.
+- **Layout views.** Rooms default to **Compact**: content-sized cards, full-width on
+  phones/portrait and two columns when the content area is wide enough. Each keeps
+  name/status and an explicit quick action together; lights have release-to-apply
+  brightness, speakers have reported volume and mute, and vacuums show real
+  activity/problem with battery labeled separately. Faulted vacuums do not offer a
+  blind Start shortcut. Unknown/offline controls are disabled rather than guessed.
+  The **Free layout** choice restores the existing per-breakpoint placement and
+  sizes; Edit tiles still opens that editor, even from Compact. No saved geometry
+  is deleted or rewritten by viewing or switching modes.
+  Home defaults to **Overview**, with time/date on the left and actionable device
+  notifications on the right (stacked on phones). Alerts are real offline/pairing,
+  problem or maintenance states, prioritized and deduplicated; they only open controls.
+  The main grid clock is shown in the overview instead, not duplicated. Existing
+  non-clock coordinates are retained; only automatic placements without saved
+  coordinates are derived normally. Home's **Free layout** and editor restore the
+  original clock and geometry. Both choices belong to the signed-in profile and
+  persist through the existing profile API, including for members.
+  The fixed dock's measured height and safe-area offset reserve bottom scroll
+  clearance; the last card can be fully scrolled above navigation. Resize, view/profile
+  changes, overlays and cancellation discard in-progress inline slider gestures.
 - **Room selection.** The sidebar and mobile picker use "All rooms", named rooms
   and "Other" (devices without a room). Swipe the grid sideways to change room;
   the chosen room is remembered. Each room has a heading with

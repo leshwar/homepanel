@@ -82,6 +82,12 @@ curl -b hp.txt http://homepanel.local:8080/api/v1/state
 
 ## Reading state
 
+`settings.room_view` (`compact` or `free`) and `settings.home_view` (`overview` or
+`free`) are the signed-in profile's presentation preferences. They default to
+`compact`/`overview` without migrating or replacing any saved Home or room geometry.
+Use `PATCH /profiles/me` to change either preference. Members can change their own
+view, not another profile's access or layout.
+
 Devices that support a startup destination expose `startup_screens` as `{id,name}`
 choices and a persisted `power_on_screen` (default `"previous"`). Admins can update
 `power_on_screen` through the existing device PATCH endpoint. Unsupported choices

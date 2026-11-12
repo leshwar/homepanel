@@ -8,6 +8,7 @@ import { SIZES, SIZE_NAMES, columnsFor, arrange, remember, place, placementStyle
 
 let draft = null, editingRoom = null, redraw = () => {}, cancelGesture = () => {}, saving = false;
 export const isRoomEditing = () => draft !== null;
+export const compactRooms = () => store.settings.room_view !== "free" && !isRoomEditing();
 const columns = () => columnsFor($("#grid").clientWidth);
 const label = (r) => r || "Other";
 const KIND_ORDER = { tv: 0, speaker: 1, light: 2, switch: 3, fan: 4, purifier: 5, plug: 6, vacuum: 7, other: 8 };
@@ -21,13 +22,17 @@ function roomWidgets(room) {
 export function roomLayoutKey(room) {
   const editing = isRoomEditing() && room === editingRoom;
   const items = editing ? draft.widgets : roomWidgets(room);
-  return [room, columns(), editing, saving, items,
+  return [room, compactRooms(), columns(), editing, saving, items,
     items.map(w => { const d = store.devices.get(w.id); return [w.id, d?.name, d?.kind]; })];
 }
 
 export function roomTiles(room) {
   const editing = isRoomEditing() && room === editingRoom;
   const items = editing ? draft.widgets : roomWidgets(room);
+  if (compactRooms()) return `<div class="compact-rooms">${items.map(w => {
+    const d = store.devices.get(w.id);
+    return `<div class="room-card" data-wid="${esc(w.id)}">${tileHtml(d, {compact:true})}</div>`;
+  }).join("")}</div>`;
   const positions = arrange(items, columns());
   return `<div class="tiles layout-grid${editing ? " editing" : ""}" style="${gridStyle(items, columns(), editing)}">${
     items.map((w) => {

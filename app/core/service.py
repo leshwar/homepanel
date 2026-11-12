@@ -552,6 +552,8 @@ class HomeService:
             s.pop("presence", None)          # phones' addresses: admins only
         s["home_layout"] = self.layout_for(viewer)
         s["room_layouts"] = self.room_layouts_for(viewer)
+        s["room_view"] = viewer.profile.get("room_view", "compact") if viewer else "compact"
+        s["home_view"] = viewer.profile.get("home_view", "overview") if viewer else "overview"
         s["photo_library"] = self.photo_library.status()
         return s
 
@@ -1219,7 +1221,7 @@ class HomeService:
         viewer = current_viewer.get()
         if viewer is None:
             raise AdapterError("Sign in first.")
-        mine = {k: data[k] for k in ("name", "color", "email", "pin", "password") if k in data}
+        mine = {k: data[k] for k in ("name", "color", "email", "pin", "password", "room_view", "home_view") if k in data}
         return await self.update_profile(viewer.id, mine)
 
     def delete_profile(self, profile_id: str) -> None:

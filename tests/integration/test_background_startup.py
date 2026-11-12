@@ -170,6 +170,8 @@ class BackgroundStartupBrowserTests(unittest.TestCase):
         self.settings("display")
         page.click("[data-browse-wallpapers]")
         self.assertEqual(page.locator('[data-builtin="true"] [data-del-wall]').count(), 0)
+        self.assertEqual(page.locator('[data-included-wallpapers] [data-builtin="false"]').count(), 0)
+        self.assertEqual(page.locator('[data-included-wallpapers] [data-builtin="true"]').count(), 5)
         self.assertEqual(page.locator(f'[data-del-wall="{uploaded["id"]}"]').count(), 1)
         self.assertEqual(page.request.delete(self.server.url + "/api/v1/wallpapers/" + uploaded["id"]).status, 200)
         page.request.post(self.server.url + "/api/v1/auth/sign-in", data={"profile_id": "sam"})

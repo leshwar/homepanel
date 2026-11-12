@@ -749,18 +749,20 @@ async function loadWallGrid() {
   let walls = [];
   try { walls = (await api.wallpapers()).wallpapers || []; } catch (e) { grid.innerHTML = `<p class="sub">${esc(e.message)}</p>`; return; }
   const current = $("[data-display]")?.dataset.wall ?? store.settings.wallpaper ?? "shuffle";
-  grid.innerHTML = `
-    <label class="wall-choice shuffle"><input type="radio" name="wallpaper" value="shuffle" ${current === "shuffle" ? "checked" : ""}>
-      <span class="wall-thumb">${icon("shuffle")}</span><span>Shuffle</span></label>
-    ${walls.map((w) => `
+  const items = (list) => list.map((w) => `
       <div class="wall-item" data-builtin="${!!w.builtin}">
         <label class="wall-choice"><input type="radio" name="wallpaper" value="${esc(w.id)}" ${current === w.id ? "checked" : ""}>
           <span class="wall-thumb" style="background-image:url('${esc(w.thumbnail_url || w.url)}')"></span>
           <span>${w.builtin ? esc(w.name) : w.width && w.height ? (w.height > w.width ? "Portrait upload" : "Landscape upload") : "Uploaded picture"}</span>
           ${w.builtin ? '<small>Built-in artwork</small>' : ""}</label>
         ${w.builtin ? "" : `<button type="button" class="wall-del" data-del-wall="${esc(w.id)}" aria-label="Remove this wallpaper">${icon("trash")}</button>`}
-      </div>`).join("")}
-    ${walls.length ? "" : `<p class="sub">No wallpapers yet. Add some below.</p>`}`;
+      </div>`).join("");
+  const uploaded = walls.filter(w => !w.builtin);
+  grid.innerHTML = `<section class="wall-collection" data-included-wallpapers><h4>Included artwork</h4><div class="wall-grid">
+    <label class="wall-choice shuffle"><input type="radio" name="wallpaper" value="shuffle" ${current === "shuffle" ? "checked" : ""}>
+      <span class="wall-thumb">${icon("shuffle")}</span><span>Shuffle</span><small>Art and uploads</small></label>
+    ${items(walls.filter(w => w.builtin))}</div></section>
+    ${uploaded.length ? `<section class="wall-collection"><h4>Your uploads</h4><div class="wall-grid">${items(uploaded)}</div></section>` : ""}`;
 }
 
 function displayPreview() {

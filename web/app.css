@@ -396,6 +396,11 @@ html[data-bg="wallpaper"] .clock-time { text-shadow: 0 2px 24px rgb(0 0 0 / .45)
 
 /* Settings → Display: wallpaper picker */
 .wall-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 12px; }
+.wall-panel, .wall-collection { scroll-margin-top: 100px; }
+.wall-collection { grid-column: 1 / -1; min-width: 0; }
+.wall-collection h4 { margin: 12px 0; font-size: calc(16px * var(--text-scale)); font-weight: 600; }
+.wall-collection .wall-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 520px) { .wall-collection .wall-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .wall-item { position: relative; }
 .wall-choice { display: grid; gap: 6px; justify-items: center; font-size: calc(14px * var(--text-scale)); color: var(--haze); cursor: pointer; }
 .wall-choice input { position: absolute; opacity: 0; pointer-events: none; }

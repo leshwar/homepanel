@@ -1,22 +1,27 @@
-// Purifier controls use generic capability metadata, never a brand protocol.
+// Air purifier panel. Stage: what the purifier reports (air quality, filter).
+// Tabs: Mode and Fan speed. Uses generic capability metadata, never a brand protocol.
 import { esc } from "./util.js";
+import { powerHero, chipChoices } from "./panel.js";
 
-export function purifierBody(d) {
+export function purifierPanel(d) {
   const s = d.state || {};
-  const choices = (cap, key, attr, title, selected) => !d.caps.includes(cap) ? "" : `
-    <section class="purifier-options"><h3>${title}</h3>
-      <div class="chips" role="group" aria-label="${title}">${(d.meta?.[key] || []).map(option =>
-        `<button class="chip" ${attr}="${esc(option.id)}" aria-pressed="${s.on === true && String(selected) === String(option.id)}">${esc(option.name)}</button>`).join("")}</div>
-    </section>`;
   const reading = (label, value, unit = "") => `<div><span>${label}</span>
     <b>${value == null ? "Not reported" : esc(value)}</b>${value != null && unit ? `<small>${unit}</small>` : ""}</div>`;
-  return `<div class="purifier-controls">
-    ${choices("fan_mode", "fan_modes", "data-fan-mode", "Mode", s.fan_mode)}
-    ${choices("fan_speed", "fan_speeds", "data-fan-speed", "Fan speed", s.fan_mode === "manual" ? s.fan_speed : null)}
-    <p class="control-help">Selecting a speed uses Manual mode. Selecting a mode or speed turns the purifier on.</p>
-    <section><h3>Device readings</h3><div class="purifier-readings">
-      ${d.caps.includes("air_quality") ? reading("PM2.5", s.pm25, "µg/m³") + reading("Air quality", s.air_quality) : ""}
-      ${d.caps.includes("filter_life") ? reading("Filter life remaining", s.filter_life, "%") : ""}
-    </div><p class="control-help">${s.on === false ? "Last reported values; the purifier is off." : "Reported by the purifier, refreshed periodically."}</p></section>
-  </div>`;
+  const readings = [
+    d.caps.includes("air_quality") && reading("PM2.5", s.pm25, "µg/m³") + reading("Air quality", s.air_quality),
+    d.caps.includes("filter_life") && reading("Filter life left", s.filter_life, "%"),
+  ].filter(Boolean).join("");
+  const stage = readings ? `<div class="purifier-stage"><div class="purifier-readings">${readings}</div>
+      ${s.on === false ? `<p class="stage-hint">Last readings; the purifier is off.</p>` : ""}</div>`
+    : d.caps.includes("power") ? powerHero(d) : "";
+  // A mode or speed only counts as "current" while the purifier is running.
+  const current = (value) => (s.on === true ? value : null);
+  const tabs = [
+    d.caps.includes("fan_mode") && { id: "mode", label: "Mode",
+      html: chipChoices(d.meta?.fan_modes || [], current(s.fan_mode), "data-fan-mode", { label: "Mode" }) },
+    d.caps.includes("fan_speed") && { id: "speed", label: "Fan speed",
+      html: `${chipChoices(d.meta?.fan_speeds || [], current(s.fan_mode === "manual" ? s.fan_speed : null), "data-fan-speed", { label: "Fan speed" })}
+        <p class="pane-help">Picking a speed switches to Manual mode and turns the purifier on.</p>` },
+  ].filter(Boolean);
+  return { stage, tabs };
 }

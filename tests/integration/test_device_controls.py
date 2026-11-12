@@ -74,15 +74,20 @@ class DevicePanelTests(unittest.TestCase):
                         self.assertEqual(page.locator("#sheet").evaluate("e => getComputedStyle(e).backdropFilter"), "none")
                         self.assertTrue(page.locator("#sheet").evaluate("e => e.scrollWidth <= e.clientWidth"))
                         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), w)
-                        for selector in (".device-head h2", ".device-head p", ".device-power b", ".control-section > summary", "#bri-val"):
+                        for selector in (".panel-head h2", ".panel-head p", ".power-orb b", '.panel-tabs [aria-selected="true"]',
+                                         '.panel-tabs [aria-selected="false"]', ".stage-hint", ".pane-help", ".rkey span", "#bri-val"):
                             if page.locator(selector).count():
                                 surface = ReadabilityTests.surface(self, selector)
                                 self.assertEqual(surface["alpha"], 1)
                                 self.assertGreaterEqual(surface["contrast"], 4.5, (selector, surface))
-                        for control in page.locator("#sheet button, #sheet summary").all():
+                        for control in page.locator("#sheet button").all():
                             if control.is_visible():
-                                self.assertGreaterEqual(control.bounding_box()["height"], 48)
-                        self.assertTrue(page.locator(".device-head [data-close]").is_visible())
+                                box = control.bounding_box()
+                                self.assertGreaterEqual(min(box["width"], box["height"]), 48, control.evaluate("e => e.outerHTML.slice(0, 80)"))
+                        self.assertTrue(page.locator(".panel-head [data-close]").is_visible())
+                        for selector in (".panel-head", ".panel-tabs"):                      # nothing is cut off sideways
+                            if page.locator(selector).count():
+                                self.assertLessEqual(page.locator(selector).bounding_box()["width"], w)
         self.assertEqual(self.commands, [])
 
     def test_light_slider_taps_cancel_and_close_send_nothing_then_release_sends_once(self):
@@ -93,7 +98,6 @@ class DevicePanelTests(unittest.TestCase):
         page.locator("#bri").evaluate("e=>{window.noopBrightness=e;}")
         page.click("#bri")
         self.assertEqual(page.inner_text("#bri-val"), before)
-        page.click('[data-control-section="light-color"] > summary')
         page.click("#ct")
         self.assertEqual(self.commands, [])
         self.assertTrue(page.locator("#bri").evaluate("e=>e===window.noopBrightness"))
@@ -125,23 +129,35 @@ class DevicePanelTests(unittest.TestCase):
         self.assertEqual(self.commands[0]["action"], "brightness")
         self.assertTrue(slider.evaluate("e => e === document.activeElement"))
 
-    def test_sections_and_keyboard_focus_survive_snapshots_and_reset_for_another_device(self):
+    def test_tabs_and_keyboard_focus_survive_snapshots_and_reopening(self):
         page = self.page
         self.open("lr-strip")
-        self.assertFalse(page.locator('[data-control-section="scenes"]').evaluate("e => e.open"))
-        summary = page.locator('[data-control-section="scenes"] > summary')
-        summary.focus(); summary.press("Enter")
+        self.assertEqual(page.locator("#sheet [data-tab]").all_inner_texts(), ["Color", "White", "Scenes", "Music", "Segments", "Options"])
+        self.assertEqual(page.locator("#sheet [role=tabpanel]").count(), 1)          # one pane at a time
+        tab = page.locator('#sheet [data-tab="scenes"]')
+        tab.focus(); tab.press("Enter")
         page.wait_for_selector(".fx-search")
+        self.assertEqual(tab.get_attribute("aria-selected"), "true")
+        self.assertEqual(page.locator("#sheet [role=tabpanel]").get_attribute("aria-labelledby"), "tab-scenes")
         page.evaluate("async () => (await import('/js/store.js')).reload()")
-        self.assertTrue(page.locator('[data-control-section="scenes"]').evaluate("e => e.open"))
-        self.assertTrue(summary.evaluate("e => e === document.activeElement"))
-        self.open("lr-lamp")
+        self.assertTrue(page.locator(".fx-search").is_visible())                     # a live update keeps the tab
+        self.assertTrue(tab.evaluate("e => e === document.activeElement"))           # and the keyboard focus
+        tab.press("ArrowRight")                                                      # arrow keys walk the tab list
+        page.wait_for_selector("[data-music-mode]")
+        self.assertTrue(page.locator('#sheet [data-tab="music"]').evaluate("e => e === document.activeElement"))
+        page.keyboard.press("ArrowLeft")
+        page.wait_for_selector(".fx-search")
+        self.open("lr-lamp")                                                         # another device has its own tabs
         self.assertEqual(page.locator("#sheet .fx").count(), 0)
-        close = page.locator(".device-head [data-close]")
-        close.focus(); close.press("Shift+Tab")
-        self.assertTrue(page.locator('#sheet [data-edit]').evaluate("e => e === document.activeElement"))
+        self.assertEqual(page.locator("#sheet [data-tab]").all_inner_texts(), ["Color", "White"])
+        self.open("lr-strip")                                                        # and coming back remembers the choice
+        self.assertEqual(page.locator('#sheet [data-tab="scenes"]').get_attribute("aria-selected"), "true")
+        # Tab stays inside the panel: from the first control back to the last and round again.
+        first = page.locator("#sheet .panel-head [data-power]")
+        first.focus(); first.press("Shift+Tab")
+        self.assertTrue(page.evaluate("document.querySelector('#sheet').contains(document.activeElement) && document.activeElement !== document.querySelector('#sheet [data-power]')"))
         page.keyboard.press("Tab")
-        self.assertTrue(close.evaluate("e => e === document.activeElement"))
+        self.assertTrue(first.evaluate("e => e === document.activeElement"))
         self.assertEqual(self.commands, [])
 
     def test_unchanged_snapshots_keep_panel_nodes_and_rapid_reopen_cancels_close(self):
@@ -170,7 +186,7 @@ class DevicePanelTests(unittest.TestCase):
         page = self.page
         self.open("lr-lamp")
         for state, expected in (({"online": False, "error": "Device unavailable"}, "Try again"),
-                                ({"needs_pairing": True}, "Pair now"), ({"online": True}, "Unknown")):
+                                ({"needs_pairing": True}, "Pair now"), ({"online": True}, "power not reported")):
             with self.subTest(state=state):
                 page.evaluate("""async state => {
                   const {store,upsertDevice} = await import('/js/store.js');
@@ -179,7 +195,8 @@ class DevicePanelTests(unittest.TestCase):
                 }""", state)
                 self.assertIn(expected, page.locator("#sheet").inner_text())
                 if state.get("online") is False or state.get("needs_pairing"):
-                    self.assertEqual(page.locator("#sheet [data-power], #bri, #wheel").count(), 0)
+                    self.assertEqual(page.locator("#sheet [data-power], #bri, #wheel, #sheet [data-tab]").count(), 0)
+                    self.assertTrue(page.locator("#sheet .panel-head [data-close]").is_visible())
                     self.assertNotIn("same Wi-Fi", page.locator("#sheet").inner_text())
                 else:
                     self.assertTrue(page.locator("#sheet [data-power]").is_disabled())
@@ -191,13 +208,13 @@ class DevicePanelTests(unittest.TestCase):
           const {store,upsertDevice}=await import('/js/store.js'), d=store.devices.get('lr-lamp');
           upsertDevice({...d,state:{online:true,on:true,brightness:50}});
         }""")
-        page.wait_for_selector('#sheet [data-power][aria-pressed="true"]:not([disabled])')
+        page.wait_for_selector('#sheet [data-power][aria-checked="true"]:not([disabled])')
         self.assertEqual(self.commands, [])
 
     def test_music_sensitivity_and_remote_holds_cancel_without_commands(self):
         page = self.page
         self.open("lr-strip")
-        page.click('[data-control-section="music"] > summary')
+        page.click('#sheet [data-tab="music"]')
         slider = page.locator("[data-sensitivity]")
         original = slider.input_value()
         slider.click(position={"x": 20, "y": 24})
@@ -215,7 +232,7 @@ class DevicePanelTests(unittest.TestCase):
     def test_search_blur_does_not_replace_a_scene_button_while_pressed(self):
         page = self.page
         self.open("lr-strip")
-        page.click('[data-control-section="scenes"] > summary')
+        page.click('#sheet [data-tab="scenes"]')
         page.fill(".fx-search", "sunset")
         button = page.locator('[data-effect="scene-sunset"]')
         button.evaluate("e => {window.pressedScene=e;}")

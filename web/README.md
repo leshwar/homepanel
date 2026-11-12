@@ -185,7 +185,7 @@ keyboard behavior and guarded persistence; the library only handles dragging.
 - **Animations** are short (150–300 ms) and only move or fade: tile press and "pop" when
   something turns on, tab and page switches, and the sheet sliding in and out.
 - **Layout views.** Rooms default to **Compact**: content-sized cards, full-width on
-  phones/portrait and two columns when the content area is wide enough. Each keeps
+  phones and two columns above a 600px content width. Each keeps
   name/status and an explicit quick action together; lights have release-to-apply
   brightness, speakers have reported volume and mute, and vacuums show real
   activity/problem with battery labeled separately. Faulted vacuums do not offer a

@@ -252,7 +252,7 @@ function roomHead(r, linked) {
   // In "All" an empty room is one line with its own Add button, not a full empty page.
   const add = linked && !list.length
     ? `<button class="btn small" data-add-device aria-label="Add a device to ${name}">${icon("plus")}<span>Add a device</span></button>` : "";
-  return `<div class="room-head${linked ? "" : " single"}" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>
+  return `<div class="room-head${linked ? "" : " single"}${list.length ? "" : " empty-room"}" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>
     ${!linked && !isRoomEditing() ? viewChoices("room_view", store.settings.room_view || "compact", [["compact","Compact"],["free","Free layout"]]) : ""}${
     offable ? `<button class="room-off" data-room-off="${esc(r)}" aria-label="Turn off ${name}">${icon("power")}<span>Turn off</span></button>` : ""}
     ${list.length ? `<button class="btn small" data-edit-room="${esc(r)}" aria-label="Edit ${name} tiles">${svg("pencil")}<span>Edit tiles</span></button>` : add}</div>`;

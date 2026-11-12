@@ -362,7 +362,7 @@ html[data-tiles="light"] .tile-quick { background: rgb(20 26 39 / .08); }
 .layout-view-choice [aria-pressed="true"] { color: var(--paper); background: var(--slate); box-shadow: inset 0 0 0 1px var(--line); }
 .layout-view-choice button:disabled { opacity: .6; }
 .compact-rooms { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
-@container (min-width: 820px) { .compact-rooms { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (min-width: 600px) { .compact-rooms { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .room-card { min-width: 0; }
 .tile.compact-card { min-height: 0; padding: 12px 14px; gap: 8px; border-radius: 20px; overflow: visible; }
 .tile.compact-card:active { transform: none; }
@@ -378,8 +378,9 @@ html[data-tiles="light"] .tile-quick { background: rgb(20 26 39 / .08); }
 html[data-tiles="light"] .compact-card.attn .card-detail { color: #7a4a00; }
 .card-controls { display: flex; align-items: end; gap: 12px; min-width: 0; }
 .card-controls:empty { display: none; }
-.card-range { flex: 1; min-width: 0; color: var(--haze); font-size: calc(14px * var(--text-scale)); }
-.card-range > span { display: flex; justify-content: space-between; gap: 12px; }
+.card-range { flex: 1; min-width: 0; color: var(--haze); font-size: calc(14px * var(--text-scale));
+  display: grid; grid-template-columns: max-content minmax(48px, 1fr); align-items: center; gap: 12px; }
+.card-range > span { display: flex; flex-direction: column; justify-content: space-between; gap: 2px; }
 .card-range output { color: var(--paper); font-variant-numeric: tabular-nums; }
 .card-range input { display: block; width: 100%; margin: 0; height: 48px; touch-action: none; accent-color: var(--lamp); }
 .card-range.volume input { accent-color: var(--lavender); }
@@ -400,6 +401,10 @@ html[data-tiles="light"] .compact-card { --well:#e0e7f0; --line:#9bacbf; --lamp:
 .card-controls button:disabled, .compact-card .tile-quick:disabled { opacity: .5; cursor: default; }
 .room-head .room-status { flex: 1; }
 .room-head.single .layout-view-choice { margin: 0 auto 0 0; }
+.room-head.empty-room:not(.single) { gap: 8px; }
+.room-head.empty-room:not(.single) .room-status { order: 0; flex: 0 1 auto; margin: 0; font-size: calc(13px * var(--text-scale)); }
+.room-head.empty-room .room-title { min-width: 0; }
+.room-section + .room-section:has(.empty-room) { margin-top: 12px; }
 @media (max-width: 520px) {
   .room-head .room-off { width: 48px; padding: 0; justify-content: center; }
   .room-head .room-off span { display: none; }

@@ -66,11 +66,19 @@ export function closeSheet() {
 new MutationObserver(() => { if ($("#sheet").hidden) { sheetState.shownId = null; stopTilt(); } })
   .observe($("#sheet"), { attributes: true, attributeFilter: ["hidden"] });
 
+function showBusy() {
+  const sheet = $("#sheet"), busy = store.busy.has(currentId);
+  sheet.setAttribute("aria-busy", String(busy));
+  const pending = sheet.querySelector(".panel-pending");
+  if (pending) pending.hidden = !busy;
+}
+
 // A live update arrived. Redraw unless a finger is down or a gesture is running; then
 // remember that we missed one and catch up as soon as the person lets go.
 export function refreshSheet(id, force = false) {
   if (!currentId) return;
   if (id && id !== currentId) return;
+  showBusy();
   if (pendingClick || pressedPointers.size || lightBusy() || controlGestureBusy() || remoteBusy.active || effectsBusy() || speakerBusy()) {
     sheetState.missed = true; sheetState.force ||= force; return;
   }
@@ -140,7 +148,9 @@ function render(force = false) {
   keepEffects(sheet, same);
   const markup = `<div class="grab" aria-hidden="true"></div>${panelHead(d, { controls: !blocked })}${body}`;
   if (!same || force) invalidateMarkup(sheet);
-  if (!setMarkup(sheet, markup)) return;
+  const changed = setMarkup(sheet, markup);
+  showBusy();
+  if (!changed) return;
   sheet.scrollTop = top;
   // On a phone the tab row scrolls sideways: keep the chosen tab in view.
   const bar = sheet.querySelector(".panel-tabs"), chosen = bar?.querySelector('[aria-selected="true"]');

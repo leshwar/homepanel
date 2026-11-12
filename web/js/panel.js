@@ -7,7 +7,7 @@
 // Each device kind (light.js, remote.js, speaker.js, vacuum.js, purifier.js) returns
 // { stage, tabs: [{ id, label, html, alert? }], note? }; this file draws it.
 
-import { esc, icon, isMedia, statusText } from "./util.js";
+import { esc, icon, isMedia, statusText, needsAttention } from "./util.js";
 import { deviceIcon } from "./icons.js";
 import { devicePicture } from "./art.js";
 
@@ -32,9 +32,10 @@ export function powerSwitch(d) {
 
 export function panelHead(d, { controls = true } = {}) {
   const picture = devicePicture(d, `panel-${d.id}`);
-  return `<header class="panel-head">
+  return `<header class="panel-head${needsAttention(d) ? " attn" : ""}">
     <div class="panel-pic ${picture ? picture.kind : "line"}" aria-hidden="true">${picture ? picture.html : deviceIcon(d)}</div>
-    <div class="panel-title"><h2>${esc(d.name)}</h2><p role="status">${esc(panelStatus(d))}</p></div>
+    <div class="panel-title"><h2>${esc(d.name)}</h2><p role="status">${esc(panelStatus(d))}</p>
+      <span class="panel-pending" role="status" hidden>Applying change...</span></div>
     ${controls ? powerSwitch(d) : ""}
     <button class="icon-btn" data-edit aria-label="Device settings">${icon("gear")}</button>
     <button class="icon-btn" data-close aria-label="Close device controls">${icon("close")}</button>

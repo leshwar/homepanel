@@ -12,15 +12,20 @@
 }
 
 :root {
-  --night: #151a22;        /* page */
-  --dusk: #1d232d;         /* tiles, sheets */
-  --slate: #272e3a;        /* raised controls */
-  --line: #313948;         /* hairlines, slider tracks */
-  --paper: #ede7dc;        /* primary text (warm, easy on eyes at night) */
-  --haze: #949ba7;         /* secondary text */
-  --lamp: #f2b35b;         /* lights on */
-  --jade: #7cc7a5;         /* plugs / switches on */
-  --indigo: #96a6ff;       /* TVs on */
+  --night: #191919;        /* page */
+  --dusk: #1a1a19;         /* tiles, sheets */
+  --slate: #252523;        /* raised controls */
+  --line: #313130;         /* hairlines */
+  --paper: #f0efec;        /* primary text */
+  --haze: #c3c2b8;         /* secondary text */
+  --well: #151515;        /* inset controls */
+  --surface-rgb: 26 26 25;
+  --inset-rgb: 21 21 21;
+  --lamp: #e3a344;         /* brightness, attention */
+  --jade: #4b9c78;         /* switches on */
+  --indigo: #7aa5e6;       /* focus, selected choices */
+  --lavender: #7e77d6;     /* volume */
+  --selected: #0b1f40;
   --ember: #e8796b;        /* warnings, destructive */
 
   --r-tile: 22px;
@@ -84,9 +89,9 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .rooms { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; scroll-behavior: smooth;
          position: sticky; top: -1px; z-index: 5; margin: 0 calc(-1 * var(--pad)) 10px;
          padding: 9px var(--pad) 8px; transition: background-color .2s, box-shadow .2s; }
-.rooms.stuck { background: rgb(10 16 38 / min(.92, calc(var(--glass-alpha, .54) + .3)));
+.rooms.stuck { background: rgb(var(--surface-rgb) / max(.9, var(--glass-alpha, .54)));
                -webkit-backdrop-filter: blur(var(--glass-blur, 0px)); backdrop-filter: blur(var(--glass-blur, 0px));
-               box-shadow: 0 10px 24px rgb(0 4 30 / .3); }
+               box-shadow: 0 8px 20px rgb(0 0 0 / .18); }
 .room { flex: none; display: flex; align-items: center; gap: 8px; height: 52px; padding: 0 20px;
         border-radius: 26px; color: var(--paper); font-size: calc(17px * var(--text-scale)); font-weight: 500;
         border: 1px solid rgb(255 255 255 / .09); transition: background-color .2s, color .2s; }
@@ -109,7 +114,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .room-status { color: var(--haze); font-size: calc(15px * var(--text-scale)); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .room-off { flex: none; display: flex; align-items: center; gap: 6px; height: 48px; padding: 0 16px 0 12px;
             border-radius: 24px; font-weight: 500; font-size: calc(16px * var(--text-scale)); border: 1px solid rgb(255 255 255 / .09);
-            background: rgb(12 18 40 / var(--glass-alpha, .54)); }
+            background: rgb(var(--surface-rgb) / max(.8, var(--glass-alpha, .54))); }
 .room-off .i { width: 20px; height: 20px; color: var(--ember); }
 .room-off:active { background: var(--slate); }
 
@@ -134,13 +139,13 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .tile:active { transform: scale(.97); }
 .tile::before { /* the glow: colored light spilling from the icon */
   content: ""; position: absolute; inset: 0; z-index: -1; opacity: 0; transition: opacity .35s var(--ease);
-  background: radial-gradient(120% 90% at 18% 12%, rgb(var(--glow) / .42), rgb(var(--glow) / .10) 55%, transparent 80%); }
+  background: radial-gradient(120% 90% at 18% 12%, rgb(var(--glow) / .18), rgb(var(--glow) / .04) 55%, transparent 80%); }
 .tile.on::before { opacity: calc(.35 + var(--level, 1) * .65); }
-.tile.on { background: #232a35; }
+.tile.on { background: var(--slate); }
 
 .tile-icon { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
              background: var(--slate); color: var(--haze); transition: background .3s, color .3s, box-shadow .3s; }
-.tile.on .tile-icon { background: rgb(var(--glow)); color: #1a1d22; box-shadow: 0 0 28px rgb(var(--glow) / .55); }
+.tile.on .tile-icon { background: rgb(var(--glow)); color: #1a1d22; }
 .tile-name { font-size: calc(18px * var(--text-scale)); font-weight: 500; margin-top: 18px; line-height: 1.25;
              display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tile-status { color: var(--haze); font-size: calc(15px * var(--text-scale)); margin-top: 2px; font-variant-numeric: tabular-nums; }
@@ -319,40 +324,37 @@ html[data-bg="ocean"] .clock-time, html[data-bg="aurora"] .clock-time { text-sha
 
 /* --- glass surfaces --- */
 .tile, .scene, .btn-alloff, .icon-btn, .rocker, .dpad, .round, .chip, .list, .card, .btn:not(.primary) {
-  background-color: rgb(12 18 40 / var(--glass-alpha));
-  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
-  backdrop-filter: blur(var(--glass-blur)) saturate(150%);
+  background-color: rgb(var(--surface-rgb) / max(.8, var(--glass-alpha)));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  backdrop-filter: blur(var(--glass-blur));
 }
 .tile, .scene, .btn-alloff, .icon-btn, .list, .card {
-  border: 1px solid rgb(255 255 255 / .09);
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / .12), 0 14px 34px rgb(0 4 30 / .22);
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 16px rgb(0 0 0 / .12);
 }
-.tile { background-image: linear-gradient(160deg, rgb(255 255 255 / .07), rgb(255 255 255 / 0) 55%); }
-.tile.on { background-color: rgb(24 32 62 / min(.95, calc(var(--glass-alpha) + .06))); }
-.tile-icon { background: rgb(255 255 255 / .08); }
+.tile.on { background-color: rgb(var(--surface-rgb) / min(.98, max(.86, calc(var(--glass-alpha) + .06)))); }
+.tile-icon { background: var(--well); }
 .tile-more:active, .tile-tv-ctl button:active { background: rgb(255 255 255 / .14); }
 .tile-tv-ctl button { background: rgb(255 255 255 / .09); }
 .dpad .ok { background: rgb(255 255 255 / .08); }
-.room:not([aria-selected="true"]) { background: rgb(12 18 40 / var(--glass-alpha));
+.room:not([aria-selected="true"]) { background: rgb(var(--surface-rgb) / max(.8, var(--glass-alpha)));
   -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
 
 .sheet {
-  background-color: rgb(10 16 38 / min(.96, calc(var(--glass-alpha) + .26)));
-  -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.4)) saturate(160%);
-  backdrop-filter: blur(calc(var(--glass-blur) * 1.4)) saturate(160%);
-  border: 1px solid rgb(255 255 255 / .10); border-bottom: 0;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / .14), 0 -20px 60px rgb(0 4 30 / .35);
+  background-color: var(--dusk);
+  border: 1px solid var(--line); border-bottom: 0;
+  box-shadow: 0 -12px 40px rgb(0 0 0 / .25);
 }
 .page {
-  background-color: rgb(8 12 30 / min(.94, calc(var(--glass-alpha) + .3)));
+  background-color: rgb(var(--inset-rgb) / clamp(.8, calc(var(--glass-alpha) + .3), .94));
   -webkit-backdrop-filter: blur(calc(var(--glass-blur) * 1.4));
   backdrop-filter: blur(calc(var(--glass-blur) * 1.4));
 }
-.page-head { background: transparent; }
+.page-head { background: var(--night); }
 #settings :is(.card, .list) { background-color: var(--dusk); -webkit-backdrop-filter: none; backdrop-filter: none; }
-.slider { background: rgb(0 0 20 / .35); box-shadow: inset 0 1px 3px rgb(0 0 0 / .3); }
-.field input, .field select { background: rgb(0 0 20 / .35); border-color: rgb(255 255 255 / .12); }
-.scrim { background: rgb(0 4 20 / .45); }
+.slider { background: var(--well); }
+.field input, .field select { background: var(--well); border-color: var(--line); }
+.scrim { background: rgb(0 0 0 / .45); }
 
 /* Display settings: background choices */
 .btn.locate { box-shadow: inset 0 0 0 1px rgb(255 255 255 / .22); margin-top: 6px; }
@@ -368,7 +370,7 @@ html[data-bg="ocean"] .clock-time, html[data-bg="aurora"] .clock-time { text-sha
 .bg-choice input:focus-visible + .bg-swatch { outline: 3px solid var(--indigo); outline-offset: 3px; }
 .bg-swatch.swatch-ocean { background: linear-gradient(165deg, #2a50f0, #0b1a5e); }
 .bg-swatch.swatch-aurora { background: linear-gradient(160deg, #1fa595, #6d3fd8); }
-.bg-swatch.swatch-night { background: #151a22; }
+.bg-swatch.swatch-night { background: var(--night); }
 input[type="range"].glass-range { width: 100%; height: 48px; accent-color: var(--paper); }
 .font-size-labels { display: flex; justify-content: space-between; gap: 8px; margin: -4px 0 12px; color: var(--haze); font-size: calc(14px * var(--text-scale)); }
 
@@ -429,9 +431,9 @@ html[data-bg="wallpaper"] .clock-time { text-shadow: 0 2px 24px rgb(0 0 0 / .45)
 .dev-pic-row .tile-icon { margin: 0; }
 
 /* Tiles: Auto / Light / Dark (tone.js sets html[data-tiles]). Light tiles are frosted
-   white glass with dark text, for dark backgrounds; dark tiles are the original look.
+   white glass with dark text, for dark backgrounds; dark tiles use matte charcoal.
    Inside a light tile the text colors (--paper, --haze) flip, so everything in it
-   follows. Settings pages and device sheets keep their own dark look. */
+   follows. Settings stay dark; device sheets follow the tile theme. */
 .seg-choice { position: relative; display: grid; }
 .seg-choice input { position: absolute; opacity: 0; pointer-events: none; }
 .seg-choice span { height: 48px; display: grid; place-items: center; border-radius: 14px; font-weight: 600; cursor: pointer;
@@ -468,17 +470,17 @@ html[data-tone="light"] .rail { background: rgb(246 248 253 / min(.9, calc(var(-
 html[data-tone="light"] .rail-item:active { background: rgb(20 26 39 / .08); }
 html[data-tone="light"] .room-head .room-off { color: var(--paper); }
 html[data-tone="light"][data-tiles="dark"] :is(.tile, .widget:not(.t-device), .scene, .btn-alloff, .topbar .icon-btn, .room-off) {
-  --paper: #ede7dc; --haze: #949ba7; color: var(--paper);
+  --paper: #f0efec; --haze: #c3c2b8; color: var(--paper);
 }
 
 /* Finish the wallpaper readability guardrails: the picture may have any color.
    Dark tiles need enough backing for secondary labels, not only device names.
    Keep these surface colors separate from the title's background-aware tone. */
 html.has-wallpaper[data-tiles="dark"] :is(.tile, .widget:not(.t-device), .scene, .btn-alloff, .topbar .icon-btn, .topbar-clock, .room-off) {
-  --paper: #ede7dc; --haze: #c3cbdc; color: var(--paper);
-  background-color: rgb(12 18 40 / max(.8, var(--glass-alpha)));
+  --paper: #f0efec; --haze: #c3c2b8; color: var(--paper);
+  background-color: rgb(var(--surface-rgb) / max(.8, var(--glass-alpha)));
 }
-html.has-wallpaper[data-tiles="dark"] .tile.on { background-color: rgb(24 32 62 / min(.98, max(.86, calc(var(--glass-alpha) + .06)))); }
+html.has-wallpaper[data-tiles="dark"] .tile.on { background-color: rgb(var(--surface-rgb) / min(.98, max(.86, calc(var(--glass-alpha) + .06)))); }
 /* An offline device already has a warning and a disconnected icon. Fading its
    entire tile would also fade the backing and undo the contrast protection. */
 html[data-tiles] .tile.offline { opacity: 1; }
@@ -488,5 +490,5 @@ html.has-wallpaper[data-tone="dark"] :is(.topbar-title, .room-head) { text-shado
 html.has-wallpaper[data-tone="light"] :is(.topbar-title, .room-head) { text-shadow: 0 1px 10px rgb(255 255 255 / .7); }
 /* Surface labels must not inherit a shadow meant for text on the picture. */
 html.has-wallpaper .room-off { text-shadow: none; }
-html.has-wallpaper .rail { --haze: #c3cbdc; background: rgb(8 12 32 / max(.8, calc(var(--glass-alpha) * .75))); }
+html.has-wallpaper .rail { --haze: #c3c2b8; background: rgb(var(--inset-rgb) / max(.8, calc(var(--glass-alpha) * .75))); }
 html.has-wallpaper[data-tone="light"] .rail { --haze: #3d4657; background: rgb(246 248 253 / max(.72, calc(var(--glass-alpha) + .1))); }

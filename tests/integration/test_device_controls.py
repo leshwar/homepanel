@@ -1,4 +1,5 @@
 """Device-panel usability and command safety on isolated household fixtures."""
+import itertools
 import os
 import shutil
 import tempfile
@@ -46,6 +47,14 @@ class DevicePanelTests(unittest.TestCase):
                      if r.method == "POST" and r.url.endswith("/command") else None)
         self.page.goto(self.server.url)
         self.page.wait_for_selector(".tile, .widget")
+        self.page.evaluate("""async () => {
+          const {upsertDevice} = await import('/js/store.js');
+          upsertDevice({id:'test-purifier', name:'Air purifier with a long room name', kind:'purifier',
+            caps:['power','air_quality','filter_life','fan_mode','fan_speed'],
+            meta:{fan_modes:[{id:'auto',name:'Automatic'},{id:'manual',name:'Manual'}],
+                  fan_speeds:[{id:'1',name:'Low'},{id:'3',name:'High'}]},
+            state:{online:true,on:true,pm25:12,air_quality:'Good',filter_life:80,fan_mode:'auto'}});
+        }""")
 
     def tearDown(self):
         self.page.close()
@@ -59,9 +68,8 @@ class DevicePanelTests(unittest.TestCase):
         from tests.integration.test_readability import ReadabilityTests
         page = self.page
         for theme in ("light", "dark"):
-            for size, w, h in (("small", 393, 852), ("medium", 720, 1280), ("large", 1280, 720),
-                                ("large", 393, 852), ("large", 720, 1280)):
-                for did in ("lr-tv", "lr-strip", "kt-fridge", "lr-vacuum"):
+            for size, (w, h) in itertools.product(("small", "medium", "large"), ((390, 844), (720, 1280), (1280, 720))):
+                for did in ("lr-tv", "lr-strip", "kt-fridge", "lr-vacuum", "lr-soundbar", "test-purifier"):
                     with self.subTest(theme=theme, size=size, device=did):
                         page.set_viewport_size({"width": w, "height": h})
                         page.evaluate("""async prefs => {
@@ -75,7 +83,9 @@ class DevicePanelTests(unittest.TestCase):
                         self.assertTrue(page.locator("#sheet").evaluate("e => e.scrollWidth <= e.clientWidth"))
                         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), w)
                         for selector in (".panel-head h2", ".panel-head p", ".power-orb b", '.panel-tabs [aria-selected="true"]',
-                                         '.panel-tabs [aria-selected="false"]', ".stage-hint", ".pane-help", ".rkey span", "#bri-val"):
+                                         '.panel-tabs [aria-selected="false"]', ".stage-hint", ".pane-help", ".rkey span", "#bri-val",
+                                         ".dial-core output", ".dial-core span", '.chip[aria-pressed="true"] span',
+                                         ".purifier-readings b", ".purifier-readings span"):
                             if page.locator(selector).count():
                                 surface = ReadabilityTests.surface(self, selector)
                                 self.assertEqual(surface["alpha"], 1)
@@ -89,6 +99,87 @@ class DevicePanelTests(unittest.TestCase):
                             if page.locator(selector).count():
                                 self.assertLessEqual(page.locator(selector).bounding_box()["width"], w)
         self.assertEqual(self.commands, [])
+
+    def test_fill_readout_idle_volume_and_selected_controls_keep_contrast(self):
+        from tests.integration.test_readability import ReadabilityTests
+        page = self.page
+        graphic_contrast = """([front, back]) => {
+          const rgb = value => value.match(/[\\d.]+/g).slice(0, 3).map(Number);
+          const luma = value => rgb(value).map(v => v / 255)
+            .map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)
+            .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
+          const values = [luma(front), luma(back)].sort((a,b) => a-b);
+          return (values[1]+.05) / (values[0]+.05);
+        }"""
+        for theme, (w, h) in itertools.product(("light", "dark"), ((390, 844), (720, 1280), (1280, 720))):
+            page.set_viewport_size({"width": w, "height": h})
+            page.evaluate("""async theme => {
+              const {store, emit} = await import('/js/store.js');
+              store.settings.tile_style = theme; store.settings.font_size = 'large'; emit('all');
+            }""", theme)
+            self.open("lr-lamp")
+            for brightness in (0, 1, 16, 24, 50, 80, 85, 86, 90, 100):
+                page.evaluate("""async brightness => {
+                  const {store,upsertDevice} = await import('/js/store.js'), d = store.devices.get('lr-lamp');
+                  upsertDevice({...d,state:{...d.state,on:true,brightness,color_mode:'color',color:{r:0,g:0,b:255}}});
+                }""", brightness)
+                self.assertGreaterEqual(ReadabilityTests.surface(self, "#bri-val")["contrast"], 4.5)
+                value, track = page.locator("#bri-val").bounding_box(), page.locator("#bri").bounding_box()
+                self.assertGreaterEqual(value["y"], track["y"] + track["height"])
+            fill = page.locator(".pill-fill").evaluate("e => getComputedStyle(e).backgroundColor")
+            well = page.locator("#bri").evaluate("e => getComputedStyle(e).backgroundColor")
+            self.assertGreaterEqual(page.evaluate(graphic_contrast, [fill, well]), 3)
+            switch = page.locator('.switch[aria-checked="true"] i')
+            thumb, track = switch.evaluate("e => [getComputedStyle(e,'::after').backgroundColor, getComputedStyle(e).backgroundColor]")
+            self.assertGreaterEqual(page.evaluate(graphic_contrast, [thumb, track]), 3)
+            self.open("lr-soundbar")
+            page.evaluate("""async () => {
+              const {store,upsertDevice} = await import('/js/store.js'), d = store.devices.get('lr-soundbar');
+              upsertDevice({...d,state:{...d.state,on:false,volume:12}});
+            }""")
+            self.assertGreaterEqual(ReadabilityTests.surface(self, ".dial-core output")["contrast"], 4.5)
+            self.assertGreaterEqual(ReadabilityTests.surface(self, ".dial-core span")["contrast"], 4.5)
+            self.open("lr-vacuum")
+            page.click('[data-tab="rooms"]')
+            if page.locator("[data-rooms-clear]").count():
+                page.click("[data-rooms-clear]")
+            page.locator('[data-room-pick]').first.click()  # selection only, not a cleaning command
+            chip = page.locator('.room-chip[aria-pressed="true"]').first
+            self.assertGreaterEqual(ReadabilityTests.surface(self, '.room-chip[aria-pressed="true"]')["contrast"], 4.5)
+            self.assertNotEqual(chip.evaluate("e => getComputedStyle(e).borderColor"),
+                                page.locator('.room-chip[aria-pressed="false"]').first.evaluate("e => getComputedStyle(e).borderColor"))
+            page.click('[data-tab="options"]')
+            tab = page.locator('[data-tab="options"]')
+            page.keyboard.press("Tab")
+            tab.focus()
+            self.assertEqual(tab.evaluate("e => getComputedStyle(e).outlineStyle"), "solid")
+            self.assertLess(float(tab.evaluate("e => getComputedStyle(e).outlineOffset").removesuffix("px")), 0)
+        self.assertEqual(self.commands, [])
+
+    def test_pending_command_is_visible_without_replacing_held_controls(self):
+        page = self.page
+        pending = []
+        page.route("**/devices/lr-soundbar/command", lambda route: pending.append(route))
+        self.open("lr-soundbar")
+        page.evaluate("""async () => {
+          const {store,upsertDevice} = await import('/js/store.js'), d = store.devices.get('lr-soundbar');
+          upsertDevice({...d,state:{...d.state,on:true,volume:12}});
+        }""")
+        slider = page.locator("[data-speaker-volume]")
+        slider.evaluate("e => {window.pendingVolume = e;}")
+        before = slider.bounding_box()
+        slider.focus()
+        slider.press("ArrowRight")
+        page.wait_for_selector(".panel-pending:not([hidden])")
+        self.assertEqual(page.locator("#sheet").get_attribute("aria-busy"), "true")
+        self.assertTrue(slider.evaluate("e => e === window.pendingVolume && e === document.activeElement"))
+        self.assertEqual(slider.bounding_box(), before)
+        self.assertEqual(len(pending), 1)
+        pending[0].fulfill(status=400, json={"error": "The speaker is busy. Try again."})
+        page.wait_for_selector("#sheet[aria-busy=false] .panel-pending", state="hidden")
+        page.wait_for_selector("text=The speaker is busy. Try again.")
+        self.assertEqual(slider.input_value(), "12")
+        self.assertEqual(len(self.commands), 1)
 
     def test_light_slider_taps_cancel_and_close_send_nothing_then_release_sends_once(self):
         page = self.page

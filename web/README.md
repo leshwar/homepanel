@@ -70,11 +70,11 @@ web/
   palette; pixel-level checks cover visible motion and text contrast across phases.
 - **Glass over a scene.** Or a static background (`.backdrop` in `index.html`:
   gradients plus soft SVG shapes; Ocean, Aurora or Night via `html[data-bg]`) sits
-  behind frosted-glass tiles, sheets and buttons. Settings → Display has the
+  behind theme-aware tiles and buttons. Settings → Display has the
   background, a **Glass transparency** slider (sets `--glass-alpha`, see `js/glass.js`)
   and a **Frosted blur** switch (`html.glass`) for slow screens. Readability takes
   priority over making tiles completely clear: light tiles keep at least 72% backing
-  (84% when on); dark wallpaper tiles keep at least 80% (86% when on). Offline tiles
+  (84% when on); dark tiles keep at least 80% (86% when on). Offline tiles
   keep their backing too, with a disconnected icon and readable warning text rather
   than fading the whole tile. Labels and nested buttons use the tile's text colors,
   independently of the background-aware page title. Wallpaper rails also keep a
@@ -238,7 +238,9 @@ Every panel has the same shape (`panel.js`), filled in from what the device can 
 
 Per kind:
 
-- *Lights* (`light.js`): the stage is a tall brightness bar filled in the lamp's colour.
+- *Lights* (`light.js`): the stage is a tall amber brightness bar. Its value sits below
+  the fill so every level stays readable, including saturated blue lights and unknown values.
+  The tile, color wheel and white strip still show the lamp's reported color.
   Tabs: Color (wheel and presets), White (warm-to-cool strip and presets), and, when the light
   lists them, Scenes (search, grouped Scenes / DIY / Snapshots, Update list), Music (modes and
   sensitivity), Segments (tap parts, then a colour) and Options (`effects.js`).
@@ -264,6 +266,20 @@ while dragging and send one command on release; a tap on a track, a cancelled dr
 the panel sends nothing; a control under a finger is never replaced by a live update; and
 keyboard focus and the chosen tab survive updates. Panels are opaque, theme-aware surfaces,
 independent of the dashboard's glass.
+
+The dark palette is warm matte charcoal with warm-white text, darker inset tracks,
+thin neutral outlines, teal power switches, amber brightness/attention and lavender
+volume. Selected chips use blue text and an outline, not only a change of fill.
+Light panels use their own contrast-safe equivalents. Narrow screens give the device
+name and status a full header row; pending commands show "Applying change..." without
+replacing a held control. The brightness readout and an idle speaker's volume remain
+legible instead of fading with the control. Tabs keep their focus outline inside the
+scrolling tab bar. Reduced motion removes control transitions.
+
+Background scenes, wallpaper, glass, typography and profile layouts remain user
+preferences. Dark dashboard surfaces retain at least 80% backing (86% when on) so
+secondary text remains readable; device panels and settings cards stay opaque. Weather
+animations and private photo tiles keep their own content surfaces.
 
 ## Adding a control for a new capability
 

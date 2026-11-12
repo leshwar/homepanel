@@ -42,6 +42,7 @@ web/
     ├── purifier.js purifier panel: reported air/filter readings; Mode and Fan speed tabs
     ├── device-controls.js safe release-to-apply range gestures shared by the panels
     ├── vacuum.js   vacuum panel: status, map, main button; Rooms, Options, Station, Care tabs
+    ├── vacuum-status.js shared read-only current-run/status and permission-filtered idle summary
     ├── effects.js  light effects in the light sheet: searchable scenes (Scenes / DIY / Snapshots),
     │               music mode + sensitivity, strip parts (tap parts, then a color), toggles
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
@@ -193,6 +194,17 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   shared panel setting for all profiles/screens, and leaving without saving restores
   the saved size. Shared `--text-scale` and bounded `--readout-scale` tokens scale
   existing typography without zooming the UI or reducing touch targets.
+- **Resting clock.** The selected face is preserved. Date and day keeps its calendar
+  identity but makes time primary, with smaller weekday/date and compact weather.
+  The 12-hour faces include AM/PM; the 24-hour preference still applies. Daytime is
+  readable warm text on charcoal. With the existing night-clock preference, 10 PM–7 AM
+  dims the face on black and hides secondary weather/location details; Dim night stays
+  dim at any hour. A single non-interactive vacuum line shows relevant activity or
+  attention, selected deterministically from the current profile's visible devices.
+  Battery and previous jobs never become progress. Weather uses the existing shared
+  cache, unchanged face markup retains its DOM nodes, and burn-in drift remains bounded.
+  Reduced motion removes transitions. The complete wake gesture, including its
+  generated click or key release, is swallowed before the underlying controls can act.
 - **Photos tile.** Add Photos from the Home editor after an admin configures
   Settings → Photo library. Only explicitly selected albums and profiles are used.
   One bounded stream supplies decoded images to the screen's tiles, without
@@ -257,6 +269,12 @@ Per kind:
   (start, pause, keep cleaning, or clean the picked rooms) with Stop / Dock / Find beside it.
   Tabs: Rooms, Options (suction, mode), Station, Care (parts wear; a dot on the tab when a
   part is worn). Unknown status asks for a refresh instead of guessing an action.
+  Battery is explicitly labeled. Cleaning, pause and return use an indeterminate
+  progressbar with no numerical value when completion is not reported; its static
+  treatment never animates while paused or needing attention. Current-run time/area
+  are shown only with identified, fresh telemetry, separately from historical cleans.
+  Completed and stopped outcomes require backend evidence, not docking or battery level.
+  Unidentified legacy stats are not relabeled as current progress or a completed run.
 - *Air purifiers* (`purifier.js`): the stage shows its readings; tabs: Mode and Fan speed.
 - *Plugs, switches and anything else*: one big power button, with energy use when the
   device reports watts.

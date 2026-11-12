@@ -10,12 +10,14 @@
 import { esc, icon, isMedia, statusText, needsAttention } from "./util.js";
 import { deviceIcon } from "./icons.js";
 import { devicePicture } from "./art.js";
+import { vacuumStatus } from "./vacuum-status.js";
 
 const has = (d, cap) => d.caps.includes(cap);
 
 // ---------- header ----------
 export function panelStatus(d) {
   const s = d.state || {};
+  if (d.kind === "vacuum" || has(d, "clean")) return vacuumStatus(s).label;
   if (s.online === true && !s.needs_pairing && has(d, "power") && typeof s.on !== "boolean") return "Connected; power not reported";
   const text = statusText(d);
   return isMedia(d) && s.on === true && s.muted === true ? `${text} · Muted` : text;
@@ -32,7 +34,8 @@ export function powerSwitch(d) {
 
 export function panelHead(d, { controls = true } = {}) {
   const picture = devicePicture(d, `panel-${d.id}`);
-  return `<header class="panel-head${needsAttention(d) ? " attn" : ""}">
+  const attention = needsAttention(d) || ((d.kind === "vacuum" || has(d, "clean")) && vacuumStatus(d.state).phase === "attention");
+  return `<header class="panel-head${attention ? " attn" : ""}">
     <div class="panel-pic ${picture ? picture.kind : "line"}" aria-hidden="true">${picture ? picture.html : deviceIcon(d)}</div>
     <div class="panel-title"><h2>${esc(d.name)}</h2><p role="status">${esc(panelStatus(d))}</p>
       <span class="panel-pending" role="status" hidden>Applying change...</span></div>

@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import math
 import os
 import time
 import uuid
@@ -71,6 +72,111 @@ NEEDS_CODE = ("Ecovacs wants to confirm this panel. Tap Email me a code, type th
 STATE_TO_ACTIVITY = {"IDLE": Activity.IDLE, "CLEANING": Activity.CLEANING, "RETURNING": Activity.RETURNING,
                      "DOCKED": Activity.DOCKED, "ERROR": Activity.ERROR, "PAUSED": Activity.PAUSED}
 RUNNING = (Activity.CLEANING, Activity.RETURNING)
+ACTIVE_JOB = (*RUNNING, Activity.PAUSED)
+
+
+class _CleaningRun:
+    """Only JSON reportStats has both a job id and an explicit stop reason.
+
+    getStats/onStats have neither. XML's STOP is translated to FINISHED by the
+    SDK, so it cannot establish successful completion and is not used here.
+    """
+
+    def __init__(self):
+        self.retired: set[str] = set()
+        self.run_id: str | None = None
+        self.metrics: dict = {}
+        self.outcome: str | None = None
+        self.tainted = False
+        self.updated = self.ended = self.finished = 0.0
+        self.last_clean: dict | None = None
+        self.last_id: str | None = None
+
+    def reset(self):
+        if self.run_id:
+            self.retired.add(self.run_id)
+        self.run_id, self.outcome = None, None
+        self.metrics = {}
+        self.tainted = False
+        self.updated = self.ended = self.finished = 0.0
+
+    def state(self, previous, activity):
+        if activity == Activity.CLEANING and previous not in ACTIVE_JOB:
+            self.reset()
+        if activity == Activity.ERROR:
+            self.tainted = True
+        if activity in ACTIVE_JOB:
+            self.ended = 0
+        elif self.run_id and not self.ended:
+            self.ended = time.monotonic()
+
+    def stop(self):
+        self.outcome = "stopped"
+        self.finished = time.monotonic()
+        if self.last_id == self.run_id:
+            self.last_clean = self.last_id = None
+
+    def report(self, event, activity, problem):
+        run_id = event.cleaning_id
+        status = getattr(event.status, "name", "")
+        if not isinstance(run_id, str) or not run_id or len(run_id) > 128 or run_id in self.retired:
+            return
+        if status == "CLEANING":
+            if activity not in ACTIVE_JOB:
+                return
+            if self.outcome and run_id != self.run_id:
+                self.reset()
+            if self.outcome:
+                return
+            if self.run_id and run_id != self.run_id:
+                # Opaque ids have no ordering. Conflicting active reports cannot
+                # establish which job is current, so expose neither job's stats.
+                self.reset()
+                self.retired.add(run_id)
+                return
+            self.run_id = run_id
+        elif status == "NO_STATUS":
+            if run_id != self.run_id or activity not in ACTIVE_JOB or self.outcome:
+                return
+        elif status in ("FINISHED", "MANUALLY_STOPPED", "FINISHED_WITH_WARNINGS"):
+            if run_id != self.run_id or (self.ended and time.monotonic() - self.ended > 120):
+                return
+            if status == "MANUALLY_STOPPED":
+                self.outcome = "stopped"
+            elif self.outcome not in ("stopped", "attention"):
+                self.outcome = "completed" if status == "FINISHED" and not (self.tainted or problem) else "attention"
+            self.finished = time.monotonic()
+        else:
+            return
+        self.tainted |= bool(problem)
+        metrics = {}
+        for key, value in (("area_m2", event.area), ("elapsed_seconds", event.time)):
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0:
+                metrics[key] = round(value, 2)
+        # Older same-job deliveries must not rewind the displayed metrics.
+        if not any(value < self.metrics.get(key, 0) for key, value in metrics.items()):
+            self.metrics.update(metrics)
+            if metrics:
+                self.updated = time.monotonic()
+        if self.outcome == "completed":
+            self.last_id = run_id
+            self.last_clean = {"result": "completed", **{
+                key: value for key, value in (
+                    ("area_m2", self.metrics.get("area_m2")),
+                    ("minutes", math.floor(self.metrics["elapsed_seconds"] / 60) if "elapsed_seconds" in self.metrics else None),
+                ) if value is not None
+            }}
+        elif self.outcome and self.last_id == run_id:
+            self.last_clean = self.last_id = None
+
+    def public(self, activity):
+        if self.outcome:
+            return {"run_id": self.run_id, "status": self.outcome} if time.monotonic() - self.finished <= 300 else None
+        if not self.run_id or activity not in ACTIVE_JOB:
+            return None
+        fresh = time.monotonic() - self.updated <= 120
+        return {"run_id": self.run_id, "status": activity, "stats_stale": not fresh,
+                **(self.metrics if fresh else {})}
 
 # Friendly names for the library's option enums (matched by enum member name).
 OPTION_NAMES = {
@@ -169,6 +275,7 @@ class EcovacsAdapter(DeviceAdapter):
         self._infos: dict[str, object] = {}     # did → DeviceInfo
         self._bots: dict[str, object] = {}      # did → deebot_client.device.Device
         self._state: dict[str, dict] = {}       # did → latest state from events
+        self._jobs: dict[str, _CleaningRun] = {}
         self._tasks: set[asyncio.Task] = set()
 
     # --- saved login (device id + token) -----------------------------------
@@ -256,6 +363,8 @@ class EcovacsAdapter(DeviceAdapter):
             await _quietly(self._session.close())
         self._session = self._auth = self._api = self._mqtt = None
         self._infos = {}
+        self._state.clear()
+        self._jobs.clear()
 
     def account_changed(self, account):
         super().account_changed(account)
@@ -345,10 +454,13 @@ class EcovacsAdapter(DeviceAdapter):
 
         bot = Bot(info, self._auth)
         st = self._state.setdefault(did, {})
+        job = self._jobs.setdefault(did, _CleaningRun())
         c = bot.capabilities
 
         async def on_state(e):
-            st["activity"] = STATE_TO_ACTIVITY.get(getattr(e.state, "name", str(e.state)), Activity.IDLE)
+            activity = STATE_TO_ACTIVITY.get(getattr(e.state, "name", str(e.state)))
+            job.state(st.get("activity"), activity)
+            st["activity"] = activity
             self.changed(did)
 
         async def on_battery(e):
@@ -357,9 +469,13 @@ class EcovacsAdapter(DeviceAdapter):
 
         async def on_error(e):
             st["problem"] = _problem(e.code, e.description)
+            if st["problem"]:
+                job.tainted = True
             self.changed(did)
 
         async def on_available(e):
+            if not e.available:
+                job.reset()
             st["available"] = bool(e.available)
             self.changed(did)
 
@@ -381,9 +497,9 @@ class EcovacsAdapter(DeviceAdapter):
             st["rooms"] = [{"id": r.id, "name": r.name or f"Room {r.id}"} for r in e.rooms]
             self.changed(did)
 
-        async def on_stats(e):
-            if e.area is not None or e.time is not None:
-                st["last_clean"] = {"area_m2": e.area, "minutes": round(e.time / 60) if e.time else None}
+        async def on_report(e):
+            if st.get("available") is not False:
+                job.report(e, st.get("activity"), st.get("problem"))
                 self.changed(did)
 
         async def on_map(e):
@@ -401,8 +517,9 @@ class EcovacsAdapter(DeviceAdapter):
             bot.events.subscribe(ev.WorkModeEvent, on_mode)
         if getattr(c, "life_span", None) is not None:
             bot.events.subscribe(ev.LifeSpanEvent, on_part)
-        if getattr(c, "stats", None) is not None:
-            bot.events.subscribe(ev.StatsEvent, on_stats)
+        if (getattr(getattr(c, "stats", None), "report", None) is not None
+                and getattr(info.static.data_type, "name", "") == "JSON"):
+            bot.events.subscribe(ev.ReportStatsEvent, on_report)
         if getattr(c, "map", None) is not None:
             bot.events.subscribe(ev.RoomsEvent, on_rooms)
             bot.events.subscribe(ev.MapChangedEvent, on_map)     # also switches the map on
@@ -425,13 +542,14 @@ class EcovacsAdapter(DeviceAdapter):
                     break
                 await asyncio.sleep(0.1)
         if st.get("available") is False:
-            raise ConnectionError("The vacuum isn't connected to Ecovacs. Check it's switched on and on Wi-Fi.")
+            return {**_public(st, self._jobs[device.config["did"]]), "online": False,
+                    "error": "The vacuum isn't connected to Ecovacs. Check it's switched on and on Wi-Fi."}
         # What it can do and its option lists (rooms arrive a little after connecting).
         device.caps = _caps_for(bot.capabilities)
         device.meta.update(_option_meta(bot.capabilities))
         if "rooms" in st:
             device.meta["rooms"] = st["rooms"]
-        return _public(st)
+        return _public(st, self._jobs[device.config["did"]])
 
     async def _send(self, device: Device, bot, command, v2=None) -> None:
         """Run one command and make sure the vacuum really accepted it.
@@ -457,9 +575,15 @@ class EcovacsAdapter(DeviceAdapter):
         from deebot_client.events import StateEvent
         from deebot_client.models import CleanAction, CleanMode
         st = self._state.setdefault(device.config["did"], {})
+        job = self._jobs[device.config["did"]]
+        previous_job, previous_activity = job.run_id, st.get("activity")
         if action == Action.CLEAN:
             act = CleanAction(value)
             await self._send(device, bot, caps.clean.action.command(act), v2=lambda: CleanV2(act))
+            if value == Clean.START and previous_activity != Activity.PAUSED and job.run_id == previous_job:
+                job.reset()
+            elif value == Clean.STOP:
+                job.stop()
             st["activity"] = {Clean.START: Activity.CLEANING, Clean.RESUME: Activity.CLEANING,
                               Clean.PAUSE: Activity.PAUSED, Clean.STOP: Activity.IDLE}[value]
         elif action == Action.DOCK:
@@ -471,6 +595,8 @@ class EcovacsAdapter(DeviceAdapter):
                              # V2 models take rooms as "freeClean" ("<times>,<room ids>"): the T90 Pro
                              # Omni accepts "spotArea" over V2 but then doesn't move (see deebot-client #1865)
                              v2=lambda: CleanAreaV2(CleanMode.FREE_CLEAN, rooms, 1))
+            if job.run_id == previous_job:
+                job.reset()
             st["activity"] = Activity.CLEANING
         elif action == Action.SET_SUCTION:
             await self._send(device, bot, caps.fan_speed.set(_pick(caps.fan_speed.types, value)))
@@ -486,7 +612,7 @@ class EcovacsAdapter(DeviceAdapter):
             raise AdapterError("Not supported")
         # Ask what it's really doing now; the answer replaces the guess above when it arrives.
         bot.events.request_refresh(StateEvent)
-        return _public(st)
+        return _public(st, job)
 
     async def map_image(self, device: Device):
         bot = await self._bot(device)
@@ -500,6 +626,8 @@ class EcovacsAdapter(DeviceAdapter):
 
     async def forget(self, device: Device):
         bot = self._bots.pop(device.config.get("did"), None)
+        self._state.pop(device.config.get("did"), None)
+        self._jobs.pop(device.config.get("did"), None)
         if bot is not None:
             await _quietly(bot.teardown())
 
@@ -540,19 +668,22 @@ def _problem(code, description) -> str:
     return (PROBLEM_TEXT.get(code) or description or f"Error {code}") if code else ""
 
 
-def _public(st: dict) -> dict:
+def _public(st: dict, job: _CleaningRun | None = None) -> dict:
     """The generic state keys the UI understands. No activity yet = still waiting for Ecovacs."""
     activity = st.get("activity")
     out = {"on": activity in RUNNING}
     if activity:
         out["activity"] = activity
-    for key in ("battery", "suction", "clean_mode", "last_clean", "map_rev"):
+    for key in ("battery", "suction", "clean_mode", "map_rev"):
         if st.get(key) is not None:
             out[key] = st[key]
     if st.get("parts"):
         out["parts"] = sorted(st["parts"].values(), key=lambda p: p["percent"])   # most worn first
-    if st.get("problem"):
-        out["problem"] = st["problem"]
+    if "problem" in st:
+        out["problem"] = st["problem"] or ""
+    if job is not None:
+        out["cleaning"] = job.public(activity)
+        out["last_clean"] = job.last_clean
     return out
 
 

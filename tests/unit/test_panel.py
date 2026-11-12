@@ -34,6 +34,9 @@ const effectTabs = d => (d.caps.includes('effects') ? [{id:'scenes', label:'Scen
 class PanelTests(unittest.TestCase):
     def run_js(self, filename, script, stubs=STUBS + PANEL_STUBS):
         source = "\n".join(line for line in (WEB / "js" / filename).read_text().splitlines() if not line.startswith("import "))
+        if filename in ("vacuum.js", "panel.js"):
+            helper = base64.b64encode((WEB / "js/vacuum-status.js").read_bytes()).decode()
+            source = f"import {{vacuumStatus}} from 'data:text/javascript;base64,{helper}';\n" + source
         module = "data:text/javascript;base64," + base64.b64encode((stubs + source).encode()).decode()
         result = subprocess.run([NODE, "--input-type=module", "-e",
                                  "import assert from 'node:assert/strict';\nconst count = (html, re) => (html.match(re) || []).length;\n" + script, module],
@@ -65,6 +68,10 @@ class PanelTests(unittest.TestCase):
           assert.match(panelHead({...lamp, state:{...lamp.state, problem:'Check water'}}), /class="panel-head attn"/);
           assert.doesNotMatch(head, /class="panel-head attn"/);
           assert.match(head, /class="panel-pending" role="status" hidden>Applying change/);
+          const bot={kind:'vacuum',caps:['clean'],state:{online:true,activity:'docked',battery:100}};
+          assert.equal(panelStatus(bot), 'Docked');
+          assert.equal(panelStatus({...bot,state:{...bot.state,cleaning:{run_id:'job',status:'completed'}}}), 'Clean complete');
+          assert.equal(panelStatus({...bot,state:{...bot.state,problem:'Tank full'}}), 'Needs attention');
         """, STUBS)
 
     def test_tabs_show_one_pane_and_remember_the_choice(self):

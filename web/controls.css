@@ -272,12 +272,19 @@ html[data-tiles="light"] .sheet {
 
 /* ---------- robot vacuum ---------- */
 .vac-stage { align-self: stretch; display: flex; flex-direction: column; gap: 12px; }
+.vac-status-card { display: flex; flex-direction: column; gap: 12px; }
+.vac-status-card > .note { margin: 0; }
+.vac-progress { color: var(--haze); font-size: calc(14px * var(--text-scale)); }
+.vac-progress p, .vac-run-stats { margin: 6px 0 0; }
+.vac-progress-track { height: 8px; border-radius: 4px; background: repeating-linear-gradient(120deg, var(--key-edge) 0 8px, var(--well) 8px 16px); }
+.vac-progress.paused .vac-progress-track, .vac-progress.returning .vac-progress-track { background: var(--key-edge); }
+.vac-run-stats { color: var(--paper); font-size: calc(15px * var(--text-scale)); }
 .vac-stage > .note { margin: 0; }
-.vac-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vac-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .vac-state { display: flex; align-items: center; gap: 10px; font-size: calc(20px * var(--text-scale)); min-width: 0; }
 .vac-state b { font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vac-state .i { color: rgb(var(--glow)); }
-.vac-state.error .i { color: var(--lamp); }
+.vac-state:is(.error, .attention) .i { color: var(--lamp); }
 .vac-batt { display: flex; align-items: center; gap: 8px; color: var(--haze); font-size: calc(15px * var(--text-scale)); font-variant-numeric: tabular-nums; flex: none; }
 .vac-batt i { position: relative; width: 26px; height: 13px; border-radius: 4px; border: 2px solid currentColor; }
 .vac-batt i::before { content: ""; position: absolute; right: -5px; top: 2px; width: 2px; height: 5px; border-radius: 1px; background: currentColor; }

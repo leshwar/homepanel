@@ -172,6 +172,25 @@ example after making a DIY scene in the brand's app). They are never polled.
 devices with the `map` capability. The state key `map_rev` changes when the map
 does, so add it to the URL to refresh the picture.
 
+Vacuum `state.cleaning` is optional (or `null`), not a new command capability.
+It can contain `run_id`, `status`, `elapsed_seconds`, `area_m2` and `stats_stale`.
+`status` distinguishes `cleaning`, `paused`, `returning`, `completed`, `stopped`
+and `attention`. Current-run metrics require an identified job; absent/stale values
+must not be extrapolated. `completed` requires explicit successful completion for
+that job. An acknowledged stop may have no provider run id, but cannot become success.
+Battery, docking, a return-to-dock state, map size and `last_clean` are not completion
+evidence. The currently supported telemetry does not provide cleaning percentage or
+a reliable total, so the UI deliberately leaves percentage and ETA out.
+
+The Ecovacs JSON adapter consumes identified `ReportStatsEvent` reports, not the
+unscoped `StatsEvent` snapshot. It expires current metrics after two minutes without
+a fresh report, clears them on disconnect/new jobs, rejects retired job ids, and
+requires a matching observed run for terminal reports (within two minutes after
+activity ends). A success notice lasts five minutes; verified historical totals remain
+separately in `last_clean` with `result: "completed"`. Stops, errors and warning outcomes
+cannot turn into success. XML STOP translations do not establish completion.
+These are in-memory observations, not a persisted cleaning history.
+
 Returns the updated device. `pointer` commands don't change the device's state, so they
 aren't broadcast as live events; the UI batches moves (one request in flight, every
 ~30 ms) so the TV's pointer follows a finger smoothly.

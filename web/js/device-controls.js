@@ -46,11 +46,14 @@ export function bindRelativeRange(range, { value, preview, commit, idle }) {
     pointerChange = true;
     setTimeout(() => { pointerChange = false; }, 0);
     if (e.type === "pointerup" && !done.canceled && done.moved && done.value !== done.base) commit(done.value);
-    else { show(value()); idle(); }
+    else { show(value()); idle(done.moved || done.canceled); }
   };
   range.addEventListener("pointerup", finish);
   range.addEventListener("pointercancel", finish);
   range.addEventListener("lostpointercapture", finish);
+  range.addEventListener("keydown", (e) => {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(e.key)) pointerChange = false;
+  });
   range.addEventListener("input", () => { if (!drag) preview(Number(range.value)); });
   range.addEventListener("change", () => {
     if (!drag && !pointerChange && range.isConnected && !range.closest(".closing")) commit(Number(range.value));

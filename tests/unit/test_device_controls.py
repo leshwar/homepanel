@@ -44,5 +44,11 @@ class DeviceControlTests(unittest.TestCase):
             assert.deepEqual(sent, []); assert.equal(controlGestureBusy(), false);
             event('pointerdown',50); event('pointermove',90); event('pointerup',90);
             assert.deepEqual(sent, [50]); assert.equal(controlGestureBusy(), false);
+            // A real keyboard change immediately after cancellation must not be
+            // mistaken for a pointer-generated change queued in the same turn.
+            event('pointerdown',50); event('pointermove',70); event('pointercancel',70);
+            events.keydown?.({key:'ArrowRight'});
+            range.value='55'; events.input(); events.change();
+            assert.deepEqual(sent, [50,55]);
         """, module], capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

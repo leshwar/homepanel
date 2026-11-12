@@ -786,7 +786,7 @@ class UITests(unittest.TestCase):
             "document.querySelector('.tile[data-id=\"lr-vacuum\"] .tile-status').textContent.startsWith('Cleaning')")
         self.page.click("#sheet [data-dock]")
         self.page.wait_for_function(
-            "document.querySelector('#sheet .panel-head p').textContent.startsWith('Going back to dock')")
+            "document.querySelector('#sheet .panel-head p').textContent.startsWith('Returning to dock')")
         box = self.page.locator("#sheet [data-clean]").bounding_box()
         self.assertGreaterEqual(box["height"], 48)               # touch target
         self.assertEqual(self.errors, [])
@@ -1089,6 +1089,8 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector("#ambient:not([hidden])")
 
     def test_clock_shows_weather_and_place_and_hides_weather_when_unavailable(self):
+        from datetime import datetime
+        self.page.clock.set_fixed_time(datetime(2026, 11, 11, 13))
         source = FakeWeatherSource(temperature=53.6, code=61)
         os.environ["HOMEPANEL_WEATHER_URL"] = source.url
         try:

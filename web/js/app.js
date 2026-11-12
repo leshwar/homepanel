@@ -542,10 +542,37 @@ function showAmbient() { closeSheet(); closeVoice(); $("#ambient").hidden = fals
 function setupIdle() {
   const wake = () => { lastActivity = Date.now(); };
   ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, wake, { capture: true }));
-  $("#ambient").addEventListener("pointerdown", (e) => {   // swallow the wake-up touch
+  const ambient = $("#ambient"), pointers = new Set();
+  let wakeTimer = null, wakeKey = null;
+  const finishWake = () => { clearTimeout(wakeTimer); ambient.hidden = true; };
+  // Keep the shield until the whole gesture finishes. Hiding on pointerdown
+  // lets a touch-generated click hit the device control underneath.
+  ambient.addEventListener("pointerdown", (e) => {
     e.preventDefault(); e.stopPropagation();
-    $("#ambient").hidden = true;
+    clearTimeout(wakeTimer);
+    pointers.add(e.pointerId);
+    ambient.setPointerCapture(e.pointerId);
   });
+  for (const type of ["pointerup", "pointercancel"]) ambient.addEventListener(type, e => {
+    e.preventDefault(); e.stopPropagation();
+    pointers.delete(e.pointerId);
+    if (!pointers.size) wakeTimer = setTimeout(finishWake, 350);
+  });
+  ambient.addEventListener("click", e => {
+    e.preventDefault(); e.stopPropagation();
+    if (!pointers.size) finishWake();
+  });
+  document.addEventListener("keydown", e => {
+    if (ambient.hidden && e.code !== wakeKey) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    wakeKey = e.code;
+    finishWake();
+  }, { capture: true });
+  document.addEventListener("keyup", e => {
+    if (e.code !== wakeKey) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    wakeKey = null;
+  }, { capture: true });
   setInterval(() => {
     const after = Number(store.settings.dim_after_seconds || 0);
     if (!(after > 0 && Date.now() - lastActivity > after * 1000) || isSettingsOpen() || editing() || isVoiceOpen()) return;
@@ -584,6 +611,7 @@ onChange((what, id) => {
     if (!shown && store.view === "rooms" && devicesIn(store.room).some((dev) => dev.id === id)) renderGrid();
     renderAmbience();
     refreshSheet(id);
+    renderAmbient();
     renderNav();
     renderTitle();
     updateHeads();
@@ -600,10 +628,11 @@ onChange((what, id) => {
     renderAll();
     refreshSheet();
     refreshSettings();
+    renderAmbient();
   }
 });
 
-onWeather(() => refreshHomeParts(["weather"]));
+onWeather(() => { refreshHomeParts(["weather"]); renderAmbient(); });
 
 setupGrid();
 setupRoomEditor($("#grid"), renderGrid);

@@ -342,6 +342,9 @@ html[data-tiles="light"] .sheet {
 .fx-range { display: flex; flex-direction: column; gap: 2px; margin-top: 14px; color: var(--haze); font-size: calc(15px * var(--text-scale)); }
 .fx-range b { color: var(--paper); font-weight: 500; font-variant-numeric: tabular-nums; }
 .fx-toggle { display: inline-flex; align-items: center; gap: 10px; }
+.fx-options { display: grid; gap: 16px; }
+.fx-options .pane-help { margin-top: 6px; }
+.fx-options + .pane-help { margin-top: 20px; }
 .fx-toggle i { width: 34px; height: 20px; border-radius: 10px; background: var(--track); position: relative; flex: none;
                box-shadow: inset 0 0 0 1px rgb(255 255 255 / .15); transition: background .15s; }
 .fx-toggle i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%;

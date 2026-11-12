@@ -403,7 +403,7 @@ html[data-bg="wallpaper"] .clock-time { text-shadow: 0 2px 24px rgb(0 0 0 / .45)
               display: grid; place-items: center; color: var(--paper); box-shadow: inset 0 0 0 1px rgb(255 255 255 / .15); }
 .wall-choice input:checked + .wall-thumb { box-shadow: 0 0 0 3px var(--paper); }
 .wall-choice input:focus-visible + .wall-thumb { outline: 3px solid var(--indigo); outline-offset: 3px; }
-.wall-del { position: absolute; top: 4px; right: 4px; width: 44px; height: 44px; border-radius: 50%; display: grid;
+.wall-del { position: absolute; top: 4px; right: 4px; width: 48px; height: 48px; border-radius: 50%; display: grid;
             place-items: center; background: rgb(10 14 24 / .6); color: var(--paper); }
 
 /* Device pictures on tiles (art.js): an illustration or the user's own photo, a bit

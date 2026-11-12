@@ -82,6 +82,12 @@ curl -b hp.txt http://homepanel.local:8080/api/v1/state
 
 ## Reading state
 
+Devices that support a startup destination expose `startup_screens` as `{id,name}`
+choices and a persisted `power_on_screen` (default `"previous"`). Admins can update
+`power_on_screen` through the existing device PATCH endpoint. Unsupported choices
+are rejected; adapter-private configuration and pairing keys remain hidden.
+`"home"` applies only to a HomePanel wake from off, not polling or already-on devices.
+
 | Method | Path | Returns |
 |---|---|---|
 | GET | `/state` | Everything the UI needs: `devices`, `rooms`, `scenes`, `settings`, `adapters`, `demo` |

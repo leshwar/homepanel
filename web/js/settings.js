@@ -33,7 +33,13 @@ export function openSettings(view = "home", arg = null) {
 
 function close() { $("#settings").hidden = true; stack = []; dropPreview(); }
 // Leaving Display settings without saving: back to the saved look.
-function dropPreview() { previewWallpaper(null); previewTiles(null); previewTypography(null); }
+function dropPreview() {
+  const root = document.documentElement, s = store.settings;
+  root.dataset.bg = s.background || "sky";
+  root.classList.toggle("glass", s.glass_effect !== false);
+  applyTransparency(s.glass_transparency ?? 45);
+  previewWallpaper(null); previewTiles(null); previewTypography(null);
+}
 export const closeSettings = close;
 export function go(view, arg = null) { stack.push({ view, arg }); if (view === "brand") brandState = {}; if (view === "add") searchAll = {}; render(); $("#settings").scrollTop = 0; }
 export function back() {
@@ -172,6 +178,11 @@ const VIEWS = {
           <input id="d-mac" value="${esc(d.mac || "")}" placeholder="AA:BB:CC:DD:EE:FF" autocomplete="off" spellcheck="false">
           <small>${d.mac ? "Found automatically." : "Usually found automatically after the panel has talked to the TV while it's on."}
             On the TV: Settings → General → Network → Advanced settings.</small></label>` : ""}
+        ${d.startup_screens?.length ? `<label class="field" id="tv-startup-preference"><span>After HomePanel turns this TV on</span>
+          <select id="d-startup">${d.startup_screens.map(option => `<option value="${esc(option.id)}"
+            ${(d.power_on_screen || "previous") === option.id ? "selected" : ""}>${esc(option.name)}</option>`).join("")}</select>
+          <small>TV Home is sent once, after the paired controls are ready. Already-on TVs keep their current input.
+          This does not change the TV remote's startup setting or stop another HDMI device from switching inputs.</small></label>` : ""}
         ${["plug", "switch"].includes(d.kind) ? `<label class="check"><input type="checkbox" id="d-keep" ${d.keep_on ? "checked" : ""}>
           <span>Keep on during "All off" (for a fridge, router or aquarium)</span></label>` : ""}
         <div class="btn-row"><button class="btn primary" data-save-device="${esc(id)}">Save</button></div>
@@ -587,7 +598,7 @@ const VIEWS = {
         <p id="font-size-help">Manrope is stored on the panel and works offline. Preview the size here, then Save to apply it to all profiles and screens.</p>
         <label class="field"><span>Show the resting clock after</span><select name="dim_after_seconds">
           ${opts.map(([v, l]) => `<option value="${v}" ${Number(s.dim_after_seconds) === v ? "selected" : ""}>${l}</option>`).join("")}
-        </select><small>The screen goes dark with a dim clock so it doesn't light up the room. Touch to wake.</small></label>
+        </select>        <small>A quiet clock appears when the panel is idle. The night-clock preference dims it at night. Touch to wake.</small></label>
         <span class="field"><span>Clock face</span></span>
         <div class="face-choices" role="radiogroup" aria-label="Clock face">
           ${FACES.map((f) => `
@@ -601,13 +612,15 @@ const VIEWS = {
             <label class="bg-choice"><input type="radio" name="background" value="${v}" ${(s.background || "sky") === v ? "checked" : ""}>
               <span class="bg-swatch swatch-${v}">${v === "wallpaper" ? icon("image") : ""}</span><span>${l}</span></label>`).join("")}
         </div>
+        <button type="button" class="btn small" data-browse-wallpapers>Browse wallpaper gallery</button>
         <div class="wall-panel" id="wall-panel" ${(s.background || "sky") === "wallpaper" ? "" : "hidden"}>
           <span class="field"><span>Wallpaper</span></span>
           <div class="wall-grid" id="wall-grid" role="radiogroup" aria-label="Wallpaper"><p class="sub">Loading…</p></div>
           <div class="btn-row" style="margin-top:8px">
             <label class="btn">${icon("plus")}Add wallpapers<input type="file" id="wall-input" accept="image/*,.tif,.tiff" multiple hidden></label>
           </div>
-          <small class="field"><small>Pictures from your phone or computer (JPEG, PNG, WebP or TIFF). They're resized for the
+          <p>Five original scenic artworks are included and work offline. Or add pictures from your phone or computer.</p>
+          <small class="field"><small>Uploads (JPEG, PNG, WebP or TIFF) are resized for the
             screen and their location data is removed. Portrait pictures are used on phones, landscape on the panel.</small></small>
           <label class="field"><span>When shuffling, change every</span><select name="wallpaper_every">
             ${[[15, "15 minutes"], [60, "hour"], [240, "4 hours"], [1440, "day"], [0, "time the screen opens"]].map(([v, l]) =>
@@ -740,11 +753,12 @@ async function loadWallGrid() {
     <label class="wall-choice shuffle"><input type="radio" name="wallpaper" value="shuffle" ${current === "shuffle" ? "checked" : ""}>
       <span class="wall-thumb">${icon("shuffle")}</span><span>Shuffle</span></label>
     ${walls.map((w) => `
-      <div class="wall-item">
+      <div class="wall-item" data-builtin="${!!w.builtin}">
         <label class="wall-choice"><input type="radio" name="wallpaper" value="${esc(w.id)}" ${current === w.id ? "checked" : ""}>
-          <span class="wall-thumb" style="background-image:url('${esc(w.url)}')"></span>
-          <span>${w.width && w.height ? (w.height > w.width ? "Portrait" : "Landscape") : ""}</span></label>
-        <button type="button" class="wall-del" data-del-wall="${esc(w.id)}" aria-label="Remove this wallpaper">${icon("trash")}</button>
+          <span class="wall-thumb" style="background-image:url('${esc(w.thumbnail_url || w.url)}')"></span>
+          <span>${w.builtin ? esc(w.name) : w.width && w.height ? (w.height > w.width ? "Portrait upload" : "Landscape upload") : "Uploaded picture"}</span>
+          ${w.builtin ? '<small>Built-in artwork</small>' : ""}</label>
+        ${w.builtin ? "" : `<button type="button" class="wall-del" data-del-wall="${esc(w.id)}" aria-label="Remove this wallpaper">${icon("trash")}</button>`}
       </div>`).join("")}
     ${walls.length ? "" : `<p class="sub">No wallpapers yet. Add some below.</p>`}`;
 }
@@ -831,11 +845,17 @@ root.addEventListener("click", async (e) => {
 
   const top = stack.at(-1);
   try {
+    if (t("[data-browse-wallpapers]")) {
+      $("#wall-panel").hidden = false;
+      $("#wall-panel").scrollIntoView({ block: "start" });
+      return;
+    }
     if (t("[data-save-device]")) {
       const id = t("[data-save-device]").dataset.saveDevice;
       const changes = { name: $("#d-name").value.trim() || "Device", room: $("#d-room").value,
                         keep_on: !!$("#d-keep")?.checked, icon: $("input[name=d-icon]:checked")?.value || "" };
       if ($("#d-mac")) changes.mac = $("#d-mac").value.trim();
+      if ($("#d-startup")) changes.power_on_screen = $("#d-startup").value;
       await api.updateDevice(id, changes);
       toast("Saved");
       await reload();

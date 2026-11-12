@@ -9,7 +9,7 @@ Govee devices.
 If a light shows up both ways, the local (LAN) version is preferred.
 
 Effects (scenes, DIY scenes, snapshots, music mode, strip segments and toggles such as
-gradient or TV sync) only exist in the cloud API, so they need the API key even for LAN
+gradient or grouped-light sync) only exist in the cloud API, so they need the API key even for LAN
 lights. Their lists are read once (when the light is added, or on its first refresh) and
 cached in the device's meta; "Update list" (Action.UPDATE_EFFECTS) reads them again.
 They're never polled. Fast on/off, brightness and color still go over LAN when possible.
@@ -49,7 +49,11 @@ RETRY_EFFECTS_AFTER = 600     # a failed scene-list read is retried after 10 min
 # Govee capability instance → brand-neutral toggle id (Effect.TOGGLES) and its name
 TOGGLES = {"nightlightToggle": (Effect.NIGHT_LIGHT, "Night light"),
            "gradientToggle": (Effect.GRADIENT, "Gradient"),
-           "dreamViewToggle": (Effect.SYNC, "Screen sync")}
+           "dreamViewToggle": (Effect.SYNC, "DreamView group sync")}
+GROUP_SYNC_HELP = "Shares effects with grouped lights. This does not select the camera's Video mode."
+CAMERA_SYNC_HELP = ("Camera Video mode is not exposed by this connection. To recall it from HomePanel, first save "
+                    "a Video snapshot in Govee Home, then use Scenes → Update list and select that snapshot. "
+                    "A snapshot may also restore brightness and colors; its name alone does not confirm its mode.")
 TOGGLE_INSTANCE = {tid: inst for inst, (tid, _n) in TOGGLES.items()}
 # Effect id prefix → (Govee instance, group)
 EFFECT_KINDS = {"scene": ("lightScene", Effect.SCENES), "diy": ("diyScene", Effect.DIY),
@@ -136,6 +140,8 @@ class GoveeAdapter(DeviceAdapter):
     def account_changed(self, account):
         super().account_changed(account)
         self._effects_tried.clear()                # a new key: try reading scene lists again
+        self._extras.clear()
+        self._last_cloud_poll.clear()
 
     async def start(self):
         loop = asyncio.get_running_loop()
@@ -255,6 +261,11 @@ class GoveeAdapter(DeviceAdapter):
 
     def _effects_hint(self, device: Device) -> None:
         """LAN lights without an API key: say how to get scenes (shown under the light's controls)."""
+        for toggle in device.meta.get("toggles", []):
+            if toggle["id"] == Effect.SYNC:
+                toggle.update(name=TOGGLES["dreamViewToggle"][1], help=GROUP_SYNC_HELP)
+        if device.config.get("sku") == "H605C":
+            device.meta["mode_help"] = CAMERA_SYNC_HELP
         if not self.account.get("api_key") and device.config.get("mode") == "lan":
             device.meta["hint"] = "Add your Govee API key in Settings → Govee to use scenes and music mode."
         else:
@@ -288,6 +299,7 @@ class GoveeAdapter(DeviceAdapter):
             device.meta.pop(key, None)
         device.meta.update({k: v for k, v in (("effects", effects), ("music_modes", extra["music_modes"]),
                                               ("segments", extra["segments"]), ("toggles", extra["toggles"])) if v})
+        self._effects_hint(device)
         device.config["_music_fields"] = extra["music_fields"]
         device.config["_effects_at"] = int(time.time())
         self._effects_tried.pop(device.id, None)
@@ -305,7 +317,7 @@ class GoveeAdapter(DeviceAdapter):
     def _with_extras(self, device: Device, state: dict) -> dict:
         """Add what the panel last set (effect, music, segments, toggles) to a refreshed state."""
         x = self._extras.get(device.id) or {}
-        for k in ("effect", "music", "segments", "toggles"):
+        for k in ("effect", "music", "segments", "toggles", "toggle_sources"):
             if k in x:
                 state[k] = x[k]
         if x.get("mode") in Effect.MODES:
@@ -365,7 +377,9 @@ class GoveeAdapter(DeviceAdapter):
         elif "color" in state:
             state["color_mode"] = "color"
         if toggles:      # Govee reported them: trust that over what the panel remembers
-            self._remember(device, toggles={**(self._extras.get(device.id, {}).get("toggles") or {}), **toggles})
+            previous = self._extras.get(device.id, {})
+            self._remember(device, toggles={**(previous.get("toggles") or {}), **toggles},
+                           toggle_sources={**(previous.get("toggle_sources") or {}), **{key: "reported" for key in toggles}})
         return state
 
     # --- commands -----------------------------------------------------------------
@@ -407,7 +421,8 @@ class GoveeAdapter(DeviceAdapter):
             cap = ("devices.capabilities.toggle", TOGGLE_INSTANCE[value["id"]], 1 if value["on"] else 0)
             toggles = {**((self._extras.get(device.id) or {}).get("toggles") or {}), value["id"]: value["on"]}
             await self._control(ids, cap)
-            return self._remember(device, toggles=toggles)
+            sources = {**((self._extras.get(device.id) or {}).get("toggle_sources") or {}), value["id"]: "requested"}
+            return self._remember(device, toggles=toggles, toggle_sources=sources)
         await self._control(ids, cap)
         return {**self._remember(device, **out), "on": True}
 
@@ -484,7 +499,7 @@ def parse_extras(caps_raw: list[dict]) -> dict:
                 out["segments"] = seg["size"]["max"]
         elif inst in TOGGLES:
             tid, name = TOGGLES[inst]
-            out["toggles"].append({"id": tid, "name": name})
+            out["toggles"].append({"id": tid, "name": name, **({"help": GROUP_SYNC_HELP} if tid == Effect.SYNC else {})})
     return out
 
 

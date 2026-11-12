@@ -200,6 +200,36 @@ class DevicePanelTests(unittest.TestCase):
         self.assertEqual(slider.input_value(), "12")
         self.assertEqual(len(self.commands), 1)
 
+    def test_group_sync_is_not_camera_video_and_keeps_source_and_errors_honest(self):
+        from app.adapters.govee import CAMERA_SYNC_HELP, GROUP_SYNC_HELP
+        page = self.page
+        page.evaluate("""async help => {
+          const {store,upsertDevice}=await import('/js/store.js'), d=store.devices.get('lr-strip');
+          upsertDevice({...d,meta:{...d.meta,toggles:[{id:'sync',name:'DreamView group sync',help:help.group}],
+            mode_help:help.camera},state:{online:true,on:true,brightness:50,toggles:{}}});
+        }""", {"group": GROUP_SYNC_HELP, "camera": CAMERA_SYNC_HELP})
+        self.open("lr-strip")
+        page.click('[data-tab="options"]')
+        self.assertIn("does not select the camera", page.locator(".panel-pane").inner_text())
+        self.assertIn("not exposed", page.locator(".panel-pane").inner_text())
+        self.assertEqual(page.locator('[data-toggle-status="sync"]').inner_text(), "Not reported")
+        self.assertEqual(page.locator('[data-toggle="sync"]').get_attribute("aria-label"), "Turn on DreamView group sync")
+        pending = []
+        page.route("**/devices/lr-strip/command", lambda route: pending.append(route))
+        page.click('[data-toggle="sync"]')
+        page.wait_for_selector("#sheet[aria-busy=true]")
+        self.assertEqual(self.commands, [{"action": "set_toggle", "value": {"id": "sync", "on": True}}])
+        pending[0].fulfill(status=400, json={"error": "Provider unavailable. Try again later."})
+        page.wait_for_selector("text=Provider unavailable. Try again later.")
+        page.wait_for_function("document.querySelector('[data-toggle-status=sync]').textContent==='Not reported'")
+        for source, expected in (("requested", "Last requested: on"), ("reported", "Reported: on")):
+            page.evaluate("""async source => {
+              const {store,upsertDevice}=await import('/js/store.js'),d=store.devices.get('lr-strip');
+              upsertDevice({...d,state:{...d.state,toggles:{sync:true},toggle_sources:{sync:source}}});
+            }""", source)
+            self.assertEqual(page.locator('[data-toggle-status="sync"]').inner_text(), expected)
+        self.assertEqual(page.locator('[data-video], [data-camera-sync]').count(), 0)
+
     def test_light_slider_taps_cancel_and_close_send_nothing_then_release_sends_once(self):
         page = self.page
         self.open("lr-ceiling")

@@ -223,6 +223,7 @@ class Device:
     config: dict = field(default_factory=dict)
     caps: list[str] = field(default_factory=list)
     keep_on: bool = False          # skip this device in "All off" (e.g. a fridge plug)
+    power_on_screen: str = "previous"  # optional adapter-supported startup destination, never an input override while on
     picture: str = ""              # the user's own photo of it (file in data/device-pictures/), or ""
     # Live state – owned by the service, filled from adapter.refresh()/command()
     state: dict = field(default_factory=dict)
@@ -294,6 +295,8 @@ class DeviceAdapter(abc.ABC):
     # Seconds between state refreshes. Cloud APIs should poll slowly.
     poll_interval: ClassVar[float] = 15.0
     failure_backoff: ClassVar[int] = 0  # optional service-managed cooldown after provider failures
+    wake_timeout: ClassVar[float | None] = None  # one bounded power-on attempt; service owns cancellation/timeout
+    startup_screens: ClassVar[list[dict]] = []  # public {id, name} choices; no adapter-private config in the UI
     # Hidden from the Add screen (used by the demo adapter).
     hidden: ClassVar[bool] = False
 

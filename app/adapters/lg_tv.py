@@ -3,8 +3,8 @@ LG webOS Smart TVs over the local network, via the aiowebostv library.
 
 First connection: the TV shows a prompt — press Accept with the TV remote. The
 key is saved so it's asked only once.
-To turn the TV on, enable on the TV: Settings → General → Devices → TV
-Management → Quick Start+ and "Turn on via Wi-Fi" (wording varies by year).
+To turn the TV on, enable Quick Start+ and "Turn on via Wi-Fi" (wording varies by year).
+Recent webOS versions put Quick Start+ under General → System → Additional Settings.
 """
 from __future__ import annotations
 
@@ -16,6 +16,8 @@ from ..core.net import (http, local_subnet_hosts, mac_from_arp, normalize_mac, p
                         ssdp_search, wake_on_lan)
 
 WEBOS_PORTS = (3001, 3000)   # webOS remote control: secure, then plain (older TVs)
+WAKE_READY_TIMEOUT = 28.0
+WAKE_POLL = .5
 
 BUTTONS = {Key.UP: "UP", Key.DOWN: "DOWN", Key.LEFT: "LEFT", Key.RIGHT: "RIGHT", Key.OK: "ENTER",
            Key.BACK: "BACK", Key.HOME: "HOME", Key.MENU: "MENU", Key.SOURCE: "INPUT_HUB",
@@ -43,6 +45,8 @@ class LGTVAdapter(DeviceAdapter):
     description = "Remote control over Wi-Fi. Accept the prompt on the TV the first time."
     requires = ("aiowebostv",)
     poll_interval = 6
+    wake_timeout = 35.0
+    startup_screens = [{"id": "previous", "name": "Previous input (TV default)"}, {"id": "home", "name": "TV Home"}]
     manual_fields = [
         Field("name", "Name", required=True, placeholder="Bedroom TV"),
         Field("ip", "IP address", required=True, help="TV → Settings → Network → Wi-Fi → Advanced Wi-Fi Settings."),
@@ -52,6 +56,8 @@ class LGTVAdapter(DeviceAdapter):
     def __init__(self, account, data_dir):
         super().__init__(account, data_dir)
         self._clients: dict[str, object] = {}
+        self._client_locks: dict[str, asyncio.Lock] = {}
+        self._waking: set[str] = set()
 
     async def discover(self, timeout=6.0):
         hits = await ssdp_search("urn:lge-com:service:webos-second-screen:1", timeout=3)
@@ -119,19 +125,28 @@ class LGTVAdapter(DeviceAdapter):
                      aliases=[values["ip"]] if mac else [])
 
     async def _client(self, device: Device, *, pairing=False):
-        c = self._clients.get(device.id)
-        if c is not None and _connected(c):
+        async with self._client_locks.setdefault(device.id, asyncio.Lock()):
+            c = self._clients.get(device.id)
+            if c is not None and _connected(c):
+                return c
+            from aiowebostv import WebOsClient
+            key = device.config.get("client_key")
+            if not key and not pairing:
+                raise PairingRequired("This TV isn't paired yet. Choose Pair and accept the prompt on the TV.")
+            c = WebOsClient(device.config["ip"], key)
+            connected = False
+            try:
+                await c.connect()
+                if not _connected(c):
+                    raise ConnectionError("The TV control connection isn't ready.")
+                connected = True
+            finally:
+                if not connected:
+                    await c.disconnect()
+            self._clients[device.id] = c
+            if c.client_key and c.client_key != key:
+                device.config["client_key"] = c.client_key
             return c
-        from aiowebostv import WebOsClient
-        key = device.config.get("client_key")
-        if not key and not pairing:
-            raise PairingRequired("This TV isn't paired yet. Choose Pair and accept the prompt on the TV.")
-        c = WebOsClient(device.config["ip"], key)
-        await c.connect()
-        self._clients[device.id] = c
-        if c.client_key and c.client_key != key:
-            device.config["client_key"] = c.client_key
-        return c
 
     async def _drop(self, device: Device):
         c = self._clients.pop(device.id, None)
@@ -171,6 +186,10 @@ class LGTVAdapter(DeviceAdapter):
     async def forget(self, device):
         await self._drop(device)
 
+    async def stop(self):
+        for did in list(self._clients):
+            await self._drop(Device(id=did, adapter=self.id, name="TV"))
+
     async def _learn_mac(self, device: Device, c) -> None:
         """Ask the TV for its own network address (needed later to switch it on)."""
         if device.config.get("mac"):
@@ -186,6 +205,8 @@ class LGTVAdapter(DeviceAdapter):
             device.config["mac"] = mac
 
     async def refresh(self, device: Device) -> dict:
+        if device.id in self._waking:
+            return dict(device.state)  # polling must not tear down the pending paired connection
         ip = device.config["ip"]
         if not (await port_open(ip, 3000, 1.5) or await port_open(ip, 3001, 1.5)):
             await self._drop(device)
@@ -205,21 +226,7 @@ class LGTVAdapter(DeviceAdapter):
 
     async def command(self, device: Device, action: str, value=None):
         if action == Action.POWER and value:
-            if device.state.get("on"):
-                return {"on": True}
-            ip = device.config["ip"]
-            mac = device.config.get("mac") or mac_from_arp(ip)
-            if not mac:
-                raise AdapterError(f"{device.name} can't be turned on yet because the panel doesn't know its MAC address. "
-                                   "Turn the TV on with its remote once and the panel learns it, or enter it in "
-                                   "Settings → Devices.")
-            device.config["mac"] = mac
-            await wake_on_lan(mac, ip)
-            for _ in range(10):                      # wait for the TV's network to wake up
-                if await port_open(ip, 3001, 1) or await port_open(ip, 3000, 1):
-                    break
-                await asyncio.sleep(1)
-            return {"on": True}
+            return await self._wake(device)
         try:
             c = await self._client(device)
         except (OSError, asyncio.TimeoutError):
@@ -264,6 +271,68 @@ class LGTVAdapter(DeviceAdapter):
             await self._drop(device)
             raise
         return {}
+
+    async def _ready(self, device: Device):
+        c = await self._client(device)
+        power = await c.get_power_state()
+        if power.get("state") != "Active":
+            return None
+        socket = getattr(c, "input_connection", None)
+        return c if socket is not None and not socket.closed else None
+
+    async def _wake(self, device: Device):
+        from aiohttp import ClientConnectionError
+        from aiowebostv.exceptions import WebOsTvCommandError, WebOsTvCommandTimeoutError, WebOsTvPairError
+
+        if device.state.get("on") is True:
+            return {"on": True}
+        if not device.config.get("client_key"):
+            raise PairingRequired("Pair the TV while it is on before waking it from HomePanel.")
+        transient = (OSError, asyncio.TimeoutError, ClientConnectionError, WebOsTvCommandTimeoutError)
+        self._waking.add(device.id)
+        try:
+            # A stale snapshot must not turn an already-on TV away from its input.
+            try:
+                if await asyncio.wait_for(self._ready(device), 2):
+                    return {"on": True}
+            except transient:
+                await self._drop(device)
+            ip = device.config["ip"]
+            mac = device.config.get("mac") or mac_from_arp(ip)
+            if not mac:
+                raise AdapterError("The panel doesn't know this TV's MAC address. Turn it on with its remote once, "
+                                   "or enter the address in Settings → Devices.")
+            device.config["mac"] = mac
+            await wake_on_lan(mac, ip)
+            try:
+                async with asyncio.timeout(WAKE_READY_TIMEOUT):
+                    while True:
+                        try:
+                            c = await asyncio.wait_for(self._ready(device), 4)
+                            if c is not None:
+                                break
+                        except transient:
+                            await self._drop(device)
+                        await asyncio.sleep(WAKE_POLL)
+            except asyncio.TimeoutError:
+                raise AdapterError("The TV did not become ready. Check Quick Start+ and Turn on via Wi-Fi on the TV, "
+                                   "then try again. Home was not sent.") from None
+            if device.power_on_screen == "home":
+                # Never retry this write: a lost response must not send Home twice.
+                try:
+                    await asyncio.wait_for(c.button("HOME"), 3)
+                except (*transient, WebOsTvCommandError):
+                    raise AdapterError("The TV woke, but Home could not be opened. Use the Home button or try the TV remote.") from None
+            return {"on": True}
+        except WebOsTvPairError:
+            raise PairingRequired("The TV no longer accepts this pairing. Pair again while the TV is on.") from None
+        except WebOsTvCommandError:
+            raise AdapterError("The TV did not confirm that its controls are ready. Check its connection and try again.") from None
+        except BaseException:
+            await self._drop(device)
+            raise
+        finally:
+            self._waking.discard(device.id)
 
 
 async def pointer(c, value: dict) -> None:

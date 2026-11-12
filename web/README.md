@@ -80,6 +80,14 @@ web/
   than fading the whole tile. Labels and nested buttons use the tile's text colors,
   independently of the background-aware page title. Wallpaper rails also keep a
   minimum backing, and headings over the picture get a soft shadow.
+  Five bundled scenic artworks (mountains, cedar forest, coast, dunes and stars)
+  are available in the Wallpaper picker, with small local thumbnails and no network
+  dependency. They are labeled as original artwork, not photography; source and
+  CC0 dedication are in `wallpapers/README.md`. Built-ins cannot be deleted; custom
+  uploads keep their IDs and removal controls. Selection, preview/cancel, shuffle,
+  orientation preference and dimming use the existing wallpaper flow. Failed loads
+  keep the last displayed image and show a readable error; late preview loads cannot
+  overwrite a newer selection.
   Settings cards/lists and all device controls use opaque surfaces so dashboard
   content cannot overlap their text; background previews remain visible around settings cards.
 - **Lit devices.** A device that is on gives off light: lamps glow in their real

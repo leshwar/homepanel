@@ -154,16 +154,20 @@ class _CleaningRun:
             if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) and value >= 0:
                 metrics[key] = round(value, 2)
         # Older same-job deliveries must not rewind the displayed metrics.
-        if not any(value < self.metrics.get(key, 0) for key, value in metrics.items()):
-            self.metrics.update(metrics)
-            if metrics:
-                self.updated = time.monotonic()
+        if any(value < self.metrics.get(key, 0) for key, value in metrics.items()):
+            metrics = {}
+        self.metrics.update(metrics)
+        if metrics:
+            self.updated = time.monotonic()
         if self.outcome == "completed":
+            # A final report may omit totals. Earlier mid-run readings are not
+            # the completed job's totals; keep only explicit terminal fields.
+            previous = self.last_clean if self.last_id == run_id and self.last_clean else {"result": "completed"}
             self.last_id = run_id
-            self.last_clean = {"result": "completed", **{
+            self.last_clean = {**previous, **{
                 key: value for key, value in (
-                    ("area_m2", self.metrics.get("area_m2")),
-                    ("minutes", math.floor(self.metrics["elapsed_seconds"] / 60) if "elapsed_seconds" in self.metrics else None),
+                    ("area_m2", metrics.get("area_m2")),
+                    ("minutes", math.floor(metrics["elapsed_seconds"] / 60) if "elapsed_seconds" in metrics else None),
                 ) if value is not None
             }}
         elif self.outcome and self.last_id == run_id:

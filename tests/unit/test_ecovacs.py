@@ -564,6 +564,19 @@ class EcovacsAdapterTests(unittest.IsolatedAsyncioTestCase):
         await bus.fire(ReportStatsEvent("one", CleanJobStatus.FINISHED, 20, 1200))
         self.assertIsNone((await self.a.refresh(d))["last_clean"])
 
+    async def test_completion_without_totals_does_not_promote_partial_readings_to_history(self):
+        d = self.device()
+        await self.a.refresh(d)
+        bus = self.a._bots["bot1"].events
+        await bus.fire(StateEvent(State.CLEANING))
+        await bus.fire(ReportStatsEvent("one", CleanJobStatus.CLEANING, 5, 400))
+        await bus.fire(ReportStatsEvent("one", CleanJobStatus.FINISHED))
+        state = await self.a.refresh(d)
+        self.assertEqual(state["cleaning"]["status"], "completed")
+        self.assertEqual(state["last_clean"], {"result": "completed"})
+        await bus.fire(ReportStatsEvent("one", CleanJobStatus.FINISHED, time=600))
+        self.assertEqual((await self.a.refresh(d))["last_clean"], {"result": "completed", "minutes": 10})
+
     async def test_start_ack_does_not_discard_a_run_report_received_during_the_command(self):
         d = self.device()
         await self.a.refresh(d)

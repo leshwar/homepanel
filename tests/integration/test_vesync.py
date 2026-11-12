@@ -68,10 +68,12 @@ class VeSyncApiTests(unittest.TestCase):
                     page.click('#signin button[type=submit]')
                     page.wait_for_selector("#app")
                     page.evaluate("async id => (await import('/js/sheet.js')).openDevice(id)", did)
-                    page.wait_for_selector(".purifier-controls")
-                    self.assertIn("12", page.locator(".purifier-readings").inner_text())
-                    page.click('[data-fan-mode="sleep"]')
+                    page.wait_for_selector('#sheet[data-kind="purifier"] .purifier-stage')
+                    self.assertIn("12", page.locator(".purifier-readings").inner_text())      # readings are the stage
+                    self.assertEqual(page.locator("#sheet [data-tab]").all_inner_texts(), ["Mode", "Fan speed"])
+                    page.click('[data-fan-mode="sleep"]')                                     # Mode is the first tab
                     page.wait_for_selector('[data-fan-mode="sleep"][aria-pressed="true"]')
+                    page.click('#sheet [data-tab="speed"]')
                     page.click('[data-fan-speed="1"]')
                     page.wait_for_selector('[data-fan-speed="1"][aria-pressed="true"]')
                     for size in ("small", "medium", "large"):

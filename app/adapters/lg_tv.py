@@ -61,7 +61,7 @@ def _new_client(device, *, pairing=False, mac_verified=False):
     """Check pre-registration identity before sending a saved key to a new socket."""
     from aiowebostv import WebOsClient
     if not hasattr(WebOsClient, "_get_pre_reg_system_info") or not hasattr(WebOsClient, "_check_registration"):
-        raise AdapterError("LG TV support needs aiowebostv 1.0 or newer. Update the panel's dependencies before reconnecting.")
+        raise AdapterError("LG TV support needs aiowebostv 0.10 or newer. Update the panel's dependencies before reconnecting.")
     expected_model = device.meta.get("model")
     key = device.config.get("client_key")
 

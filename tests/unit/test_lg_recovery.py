@@ -214,7 +214,7 @@ class LGRecoveryTests(unittest.IsolatedAsyncioTestCase):
 class LGRegistrationGuardTests(unittest.IsolatedAsyncioTestCase):
     async def test_older_library_cannot_bypass_identity_guard(self):
         with patch("aiowebostv.WebOsClient", type("OldClient", (), {})):
-            with self.assertRaisesRegex(AdapterError,"1.0 or newer"):
+            with self.assertRaisesRegex(AdapterError,"0.10 or newer"):
                 lg_tv._new_client(device())
 
     async def test_model_is_checked_before_key_and_pairing_is_never_recreated(self):

@@ -228,8 +228,9 @@ because it can affect soundbar ARC/eARC, audio and linked power behavior.
 Sources: [LG startup screen guidance](https://www.lg.com/us/support/help-library/how-to-set-the-startup-screen-on-your-lg-tv--20155412183664),
 [LG default input guidance](https://www.lg.com/us/support/help-library/lg-tv-how-to-set-the-default-input--20153711388714).
 Paired readiness and the single Home input command are implemented against the
-`aiowebostv` 1.0.0 client's active-state and input-socket API. Version 1.0 or newer
-is required for the pre-registration identity guard.
+`aiowebostv` active-state and input-socket API. Version 0.10 or newer is required
+for the pre-registration identity guard; 0.10 supports Python 3.11, while 1.x
+requires Python 3.12 or newer. The same guard is exercised on both versions.
 
 ### TV is on, but the panel cannot connect
 

@@ -17,6 +17,7 @@ const icon = name => `<svg data-i="${name}"></svg>`, svg = icon, deviceIcon = ()
 const devicePicture = d => d.picture ? {kind:'photo', html:'<img>'} : null;
 const isMedia = d => ['tv','speaker'].includes(d.kind);
 const statusText = d => d.state?.online === false ? 'Offline' : d.state?.on ? (d.state.app || 'On') : 'Off';
+const needsAttention = d => !!d.state?.problem;
 const kelvinToRgb = () => [255, 200, 150], WORN_PERCENT = 10, toast = () => {};
 const store = {devices: new Map()}, command = () => {}, bindRelativeRange = () => {};
 const api = {mapUrl: (id, rev) => `/map/${id}?v=${rev}`}, storage = {get: (k, d) => d, set() {}};
@@ -33,6 +34,9 @@ const effectTabs = d => (d.caps.includes('effects') ? [{id:'scenes', label:'Scen
 class PanelTests(unittest.TestCase):
     def run_js(self, filename, script, stubs=STUBS + PANEL_STUBS):
         source = "\n".join(line for line in (WEB / "js" / filename).read_text().splitlines() if not line.startswith("import "))
+        if filename in ("vacuum.js", "panel.js"):
+            helper = base64.b64encode((WEB / "js/vacuum-status.js").read_bytes()).decode()
+            source = f"import {{vacuumStatus}} from 'data:text/javascript;base64,{helper}';\n" + source
         module = "data:text/javascript;base64," + base64.b64encode((stubs + source).encode()).decode()
         result = subprocess.run([NODE, "--input-type=module", "-e",
                                  "import assert from 'node:assert/strict';\nconst count = (html, re) => (html.match(re) || []).length;\n" + script, module],
@@ -61,6 +65,13 @@ class PanelTests(unittest.TestCase):
           assert.equal(panelStatus({kind:'tv', caps:['power'], state:{online:true, on:false, muted:true}}), 'Off');
           assert.match(panelHead({...lamp, picture:true}), /class="panel-pic photo"/);
           assert.match(panelHead(lamp), /class="panel-pic line"/);
+          assert.match(panelHead({...lamp, state:{...lamp.state, problem:'Check water'}}), /class="panel-head attn"/);
+          assert.doesNotMatch(head, /class="panel-head attn"/);
+          assert.match(head, /class="panel-pending" role="status" hidden>Applying change/);
+          const bot={kind:'vacuum',caps:['clean'],state:{online:true,activity:'docked',battery:100}};
+          assert.equal(panelStatus(bot), 'Docked');
+          assert.equal(panelStatus({...bot,state:{...bot.state,cleaning:{run_id:'job',status:'completed'}}}), 'Clean complete');
+          assert.equal(panelStatus({...bot,state:{...bot.state,problem:'Tank full'}}), 'Needs attention');
         """, STUBS)
 
     def test_tabs_show_one_pane_and_remember_the_choice(self):
@@ -123,6 +134,9 @@ class PanelTests(unittest.TestCase):
           let p = lightPanel(lamp(['power','brightness','color','color_temp','effects'], {brightness:60, color_mode:'effect'}));
           assert.match(p.stage, /id="bri" role="slider"[\\s\\S]*aria-valuemin="0"[\\s\\S]*aria-valuenow="60"/);
           assert.match(p.stage, /id="bri-val">60%</);
+          assert.match(p.stage, /aria-orientation="vertical"/);
+          // A separate readout cannot disappear into the moving fill or a saturated lamp color.
+          assert.match(p.stage, /<\\/span>\\s*<\\/div>\\s*<output class="pill-val" id="bri-val">60%/);
           assert.doesNotMatch(p.stage, /Drag|Release/);                            // no instructions printed on the control
           assert.deepEqual(p.tabs.map(t => t.id), ['color', 'white', 'scenes']);
           assert.equal(p.prefer, 'scenes');                                        // open on what the light is doing

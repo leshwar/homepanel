@@ -64,7 +64,7 @@ class ParsingRecordedCloudAnswers(unittest.TestCase):
         self.assertIn("autoColor", x["music_fields"])
         self.assertEqual(x["segments"], 15)                       # elementRange 0..14
         self.assertEqual(x["toggles"], [{"id": Effect.GRADIENT, "name": "Gradient"},
-                                        {"id": Effect.SYNC, "name": "Screen sync"}])
+                                        {"id": Effect.SYNC, "name": "DreamView group sync", "help": govee.GROUP_SYNC_HELP}])
         self.assertEqual(x["snapshots"], [])                      # none saved in the app yet
 
     def test_scene_lists(self):
@@ -198,6 +198,7 @@ class GoveeAdapterEffects(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.cloud.controls()[-1], {"type": "devices.capabilities.toggle",
                                                      "instance": "dreamViewToggle", "value": 1})
         self.assertEqual(out["toggles"], {Effect.SYNC: True})
+        self.assertEqual(out["toggle_sources"], {Effect.SYNC: "requested"})
 
         # A plain color ends the effect
         out = await self.a.command(d, Action.COLOR, {"r": 0, "g": 255, "b": 0})
@@ -205,6 +206,31 @@ class GoveeAdapterEffects(unittest.IsolatedAsyncioTestCase):
         self.a._last_cloud_poll.clear()
         st = await self.a.refresh(d)
         self.assertEqual(st["color_mode"], "color")
+
+    async def test_h605c_has_no_video_command_and_reports_toggle_provenance(self):
+        d = backlight()
+        await self.a.refresh(d)
+        self.assertEqual([e for e in d.meta["effects"] if e["group"] == "Snapshots"], [])
+        self.assertIn("not exposed", d.meta["mode_help"])
+        self.assertNotIn("video", d.caps)
+        sync = next(t for t in d.meta["toggles"] if t["id"] == "sync")
+        self.assertEqual(sync["name"], "DreamView group sync")
+        self.assertIn("does not select", sync["help"])
+        await self.a.command(d, Action.SET_TOGGLE, {"id": "sync", "on": True})
+        self.assertEqual(self.a._with_extras(d, {})["toggle_sources"]["sync"], "requested")
+        self.a._last_cloud_poll.clear()
+        with mock.patch.object(self.a, "_cloud", return_value={"payload": {"capabilities": [
+                {"instance": "dreamViewToggle", "state": {"value": 0}}]}}):
+            state = await self.a.refresh(d)
+        self.assertEqual(state["toggles"]["sync"], False)
+        self.assertEqual(state["toggle_sources"]["sync"], "reported")
+        self.assertNotEqual(state.get("color_mode"), "video")
+        with mock.patch.object(self.a, "_control", side_effect=AdapterError("Unavailable")):
+            with self.assertRaises(AdapterError):
+                await self.a.command(d, Action.SET_TOGGLE, {"id": "sync", "on": True})
+        self.assertEqual(self.a._with_extras(d, {})["toggles"]["sync"], False)
+        self.a.account_changed({"api_key": "different-test-key"})
+        self.assertEqual(self.a._extras, {})
 
 
 class CloudBudget(unittest.IsolatedAsyncioTestCase):

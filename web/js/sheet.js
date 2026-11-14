@@ -66,11 +66,19 @@ export function closeSheet() {
 new MutationObserver(() => { if ($("#sheet").hidden) { sheetState.shownId = null; stopTilt(); } })
   .observe($("#sheet"), { attributes: true, attributeFilter: ["hidden"] });
 
+function showBusy() {
+  const sheet = $("#sheet"), busy = store.busy.has(currentId);
+  sheet.setAttribute("aria-busy", String(busy));
+  const pending = sheet.querySelector(".panel-pending");
+  if (pending) pending.hidden = !busy;
+}
+
 // A live update arrived. Redraw unless a finger is down or a gesture is running; then
 // remember that we missed one and catch up as soon as the person lets go.
 export function refreshSheet(id, force = false) {
   if (!currentId) return;
   if (id && id !== currentId) return;
+  showBusy();
   if (pendingClick || pressedPointers.size || lightBusy() || controlGestureBusy() || remoteBusy.active || effectsBusy() || speakerBusy()) {
     sheetState.missed = true; sheetState.force ||= force; return;
   }
@@ -112,7 +120,10 @@ function blockedNote(d, s) {
   }
   return `<div class="note warn">${esc(s.error || "This device isn't responding.")}
     Check its power and connection. For account-connected devices, check the device's app and account sign-in.</div>
-    <button class="btn" data-refresh>${icon("search")}Try again</button>`;
+    ${s.stale && typeof s.last_known?.on === "boolean" ? `<p class="stage-hint">Last reported ${s.last_known.on ? "on" : "off"}; current power is unknown.</p>` : ""}
+    <button class="btn" data-refresh>${icon("search")}Try again</button>
+    ${has(d, "power") && s.wake_available === true ? `<button class="btn" data-wake ${store.busy.has(d.id) ? "disabled" : ""}>
+      ${icon("power")}Send power-on request</button>` : ""}`;
 }
 
 function render(force = false) {
@@ -140,7 +151,9 @@ function render(force = false) {
   keepEffects(sheet, same);
   const markup = `<div class="grab" aria-hidden="true"></div>${panelHead(d, { controls: !blocked })}${body}`;
   if (!same || force) invalidateMarkup(sheet);
-  if (!setMarkup(sheet, markup)) return;
+  const changed = setMarkup(sheet, markup);
+  showBusy();
+  if (!changed) return;
   sheet.scrollTop = top;
   // On a phone the tab row scrolls sideways: keep the chosen tab in view.
   const bar = sheet.querySelector(".panel-tabs"), chosen = bar?.querySelector('[aria-selected="true"]');
@@ -272,6 +285,10 @@ $("#sheet").addEventListener("click", async (e) => {
   if (t("[data-close]")) return closeSheet();
   if (t("[data-tab]")) { setTab(d.id, t("[data-tab]").dataset.tab); return render(); }
   if (t("[data-edit]")) { const id = d.id; closeSheet(); return openSettings("device", id); }
+  if (t("[data-wake]")) {
+    if (has(d,"power") && d.state?.wake_available === true && !store.busy.has(d.id)) return command(d.id,"power",true);
+    return;
+  }
   if (t("[data-energy-refresh]")) { energy.at = 0; return loadEnergy(d.id); }
   if (t("[data-power]")) { const on = !d.state?.on; return command(d.id, "power", on, { on }); }
   if (t("[data-mute]")) { const m = !d.state?.muted; return command(d.id, "mute", m, { muted: m }); }

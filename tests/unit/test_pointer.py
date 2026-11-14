@@ -75,7 +75,13 @@ class PointerThroughTheService(unittest.IsolatedAsyncioTestCase):
 class FakeWebOs:
     """Stands in for aiowebostv.WebOsClient."""
     def __init__(self):
+        from types import SimpleNamespace
         self.calls = []
+        self.connection = SimpleNamespace(closed=False)
+        self.input_connection = SimpleNamespace(closed=False)
+
+    async def get_power_state(self):
+        return {"state": "Active"}
 
     def is_connected(self):
         return True

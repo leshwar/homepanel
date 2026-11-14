@@ -62,7 +62,8 @@ class AttentionTests(unittest.TestCase):
         page.evaluate(SHOW_ROOM, "all")
         tile = page.locator('#grid .tile[data-id="lr-vacuum"]')
         tile.wait_for()
-        self.assertEqual(tile.locator(".tile-status").inner_text(), "Docked, 100%")
+        self.assertEqual(tile.locator(".tile-status").inner_text(), "Docked")
+        self.assertIn("Battery 100%",tile.locator(".card-detail").inner_text())
         self.assertNotIn("attn", tile.get_attribute("class"))
         resting = tile.locator(".tile-status").evaluate("e => getComputedStyle(e).color")
 
@@ -79,7 +80,8 @@ class AttentionTests(unittest.TestCase):
 
         page.evaluate(SET_STATE, ["lr-vacuum", {"parts": []}, []])
         page.wait_for_selector('#grid .tile[data-id="lr-vacuum"]:not(.attn)')
-        self.assertEqual(tile.locator(".tile-status").inner_text(), "Docked, 100%")
+        self.assertEqual(tile.locator(".tile-status").inner_text(), "Docked")
+        self.assertIn("Battery 100%",tile.locator(".card-detail").inner_text())
         self.assertNotIn("attention", page.inner_text("#subtitle"))
 
     def test_phone_room_heading_keeps_its_status_and_touch_targets(self):

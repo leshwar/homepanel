@@ -1,4 +1,4 @@
-// The "Wallpaper" background: the user's own pictures behind the glass.
+// The "Wallpaper" background: bundled artwork and the user's own pictures.
 //
 // Settings (Settings → Display and clock): background = "wallpaper", wallpaper =
 // an id or "shuffle", wallpaper_every = minutes per picture when shuffling (0 = a
@@ -11,6 +11,7 @@
 import { api } from "./api.js";
 import { store } from "./store.js";
 import { applyTiles, measureLuma, setWallpaperLuma } from "./tone.js";
+import { toast } from "./util.js";
 
 let list = null;          // [{id, url, width, height}], null = not loaded yet
 let loadedAt = 0;
@@ -18,6 +19,8 @@ let loading = null;
 let shown = "";           // url on screen
 let front = 0;            // which of the two layers is on top
 let timer = null;
+let revision = 0, lumaTimer = null, failed = "";
+let shownLuma = null;
 const pageSeed = Math.random();
 
 export function invalidateWallpapers() { list = null; }
@@ -26,13 +29,13 @@ async function wallpapers() {
   if (list && Date.now() - loadedAt < 10 * 60e3) return list;
   loading ||= api.wallpapers()
     .then((r) => { list = r.wallpapers || []; loadedAt = Date.now(); return list; })
-    .catch(() => list || [])
+    .catch((error) => { toast(`Couldn't load wallpapers: ${error.message}`, true); return list || []; })
     .finally(() => { loading = null; });
   return loading;
 }
 
 const portrait = () => innerHeight > innerWidth;
-const fits = (w) => !w.width || !w.height || (w.height > w.width) === portrait();
+const fits = (w) => w.crop_safe || !w.width || !w.height || (w.height > w.width) === portrait();
 
 // Small, stable number for a slot, so the same slot picks the same picture everywhere.
 function slotIndex(slot, n) {
@@ -58,35 +61,51 @@ let preview = null;       // Settings → Display: unsaved choices shown live
 export function previewWallpaper(p) { preview = p; return applyWallpaper(); }
 
 export async function applyWallpaper() {
+  const ticket = ++revision;
   const root = document.documentElement;
   const layers = document.querySelectorAll(".wall-layer .wp");
   const s = preview ? { ...store.settings, ...preview } : store.settings;
   const on = (s.background || "sky") === "wallpaper";
   clearTimeout(timer);
   if (!on || !layers.length) {
+    clearTimeout(lumaTimer); lumaTimer = null;
     root.classList.remove("has-wallpaper");
     return;
   }
   root.style.setProperty("--wall-dim", String((Number(s.wallpaper_dim ?? 25) || 0) / 100));
   applyTiles();                               // the darken setting changes how bright it looks
   const all = await wallpapers();
+  if (ticket !== revision) return;
   const w = pickWallpaper(all, s);
   root.classList.toggle("has-wallpaper", !!w);   // none added yet: the plain night backdrop shows
   if (w && w.url !== shown) {
     const img = new Image();
     img.onload = () => {
-      if (document.documentElement.dataset.bg !== "wallpaper") return;
+      if (ticket !== revision || document.documentElement.dataset.bg !== "wallpaper") return;
       front = 1 - front;
       layers[front].style.backgroundImage = `url("${w.url}")`;
       layers[front].classList.add("show");
       layers[1 - front].classList.remove("show");
       shown = w.url;
+      failed = "";
       // Light or dark tiles to stand out from it: switch halfway through the cross-fade,
       // so text never flips to dark while the old dark picture is still showing.
-      const luma = measureLuma(img);
-      setTimeout(() => setWallpaperLuma(luma), 800);
+      shownLuma = measureLuma(img);
+      clearTimeout(lumaTimer);
+      lumaTimer = setTimeout(() => {
+        lumaTimer = null;
+        if (shown === w.url && root.dataset.bg === "wallpaper") setWallpaperLuma(shownLuma);
+      }, 800);
+    };
+    img.onerror = () => {
+      if (ticket !== revision) return;
+      root.classList.toggle("has-wallpaper", !!shown);
+      if (failed !== w.url) toast("Couldn't load that wallpaper. Choose another picture or try again.", true);
+      failed = w.url;
     };
     img.src = w.url;
+  } else if (w && lumaTimer == null) {
+    setWallpaperLuma(shownLuma);
   }
   timer = setTimeout(applyWallpaper, 60e3);      // checks for the next slot once a minute
 }

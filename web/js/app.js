@@ -14,6 +14,8 @@ import { roomGroups, OTHER } from "./store.js";   // room tabs
 import { renderAmbient } from "./clockfaces.js";
 import { svg, roomIcon } from "./icons.js";
 import { updateTiles, bindTiles } from "./tiles.js";
+import { attachCardRanges, cancelCardGestures } from "./room-cards.js";
+import { viewChoices } from "./home-overview.js";
 import { applySky, refreshWeather, onWeather } from "./sky.js";
 import { applyWallpaper } from "./wallpaper.js";
 import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEditing, stopEditing, favouritesStale } from "./home.js";
@@ -198,7 +200,7 @@ function renderTitle() {
   // Still tappable (the panel's picture can be stale), but it stops looking like something is on.
   $("#all-off").classList.toggle("idle", !all.some(canTurnOff));
   $("#edit-home").hidden = !home;
-  $("#clock").hidden = home && store.settings.home_layout?.widgets?.some((w) => w.type === "clock" && !w.hidden);
+  $("#clock").hidden = home && (store.settings.home_view !== "free" || store.settings.home_layout?.widgets?.some((w) => w.type === "clock" && !w.hidden));
 }
 
 // Keep the chosen tab visible in the scrolling bar.
@@ -250,8 +252,9 @@ function roomHead(r, linked) {
   // In "All" an empty room is one line with its own Add button, not a full empty page.
   const add = linked && !list.length
     ? `<button class="btn small" data-add-device aria-label="Add a device to ${name}">${icon("plus")}<span>Add a device</span></button>` : "";
-  return `<div class="room-head${linked ? "" : " single"}" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>${
-    offable ? `<button class="room-off" data-room-off="${esc(r)}">${icon("power")}Turn off</button>` : ""}
+  return `<div class="room-head${linked ? "" : " single"}${list.length ? "" : " empty-room"}" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>
+    ${!linked && !isRoomEditing() ? viewChoices("room_view", store.settings.room_view || "compact", [["compact","Compact"],["free","Free layout"]]) : ""}${
+    offable ? `<button class="room-off" data-room-off="${esc(r)}" aria-label="Turn off ${name}">${icon("power")}<span>Turn off</span></button>` : ""}
     ${list.length ? `<button class="btn small" data-edit-room="${esc(r)}" aria-label="Edit ${name} tiles">${svg("pencil")}<span>Edit tiles</span></button>` : add}</div>`;
 }
 
@@ -320,8 +323,11 @@ function renderGrid() {
     r === OTHER ? sortNudge() : ""}${devicesIn(r).length ? roomTiles(r) : linked ? "" : `<div class="empty room-empty">
       <h2>No devices in this room yet</h2><p>Add a device or choose this room in a device's settings.</p>
       <button class="btn primary" data-add-device>${icon("plus")}Add a device</button></div>`}</section>`;
-  const html = room === "all" ? roomGroups().map((r) => section(r, true)).join("") : section(room, false);
+  cancelCardGestures();
+  const choice = room === "all" && !isRoomEditing() ? viewChoices("room_view", store.settings.room_view || "compact", [["compact","Compact"],["free","Free layout"]]) : "";
+  const html = choice + (room === "all" ? roomGroups().map((r) => section(r, true)).join("") : section(room, false));
   setMarkup(grid, html);
+  attachCardRanges(grid, updateTiles);
   renderedRooms = key;
   if (focusedItem) {
     const item = grid.querySelector(`[data-wid="${CSS.escape(focusedItem.dataset.wid)}"]`);
@@ -354,7 +360,10 @@ function renderAmbience() {
 }
 
 // Show Home or Rooms. `enter` plays the short entrance animation.
+let cardContext = "";
 function renderView(enter = false) {
+  const context = `${store.me?.id}:${store.view}:${store.room}`;
+  if (context !== cardContext) { cancelCardGestures(); cardContext = context; }
   const home = store.view === "home";
   if (home) roomTransition?.cancel();
   document.documentElement.dataset.view = store.view;
@@ -387,7 +396,7 @@ function setupGrid() {
   // Swipe sideways anywhere on the grid to change room tab.
   let start = null, swiped = false;
   grid.addEventListener("pointerdown", (e) => {
-    if (isRoomEditing()) return;
+    if (isRoomEditing() || e.target.closest("input, label, [data-quick-action], [data-act], [data-layout-view], [data-edit-room], [data-room-off]")) return;
     start = { x: e.clientX, y: e.clientY };
     swiped = false;
   });
@@ -433,6 +442,39 @@ async function turnOff(room = null) {
 }
 
 function setupChrome() {
+  let savingView = false;
+  document.addEventListener("click", async e => {
+    const button = e.target.closest("[data-layout-view]");
+    if (!button || savingView || !canNavigate()) return;
+    const profile = store.me?.id, key = button.dataset.layoutView, value = button.dataset.layoutValue;
+    savingView = true;
+    document.querySelectorAll("[data-layout-view]").forEach(b=>{b.disabled=true;});
+    cancelCardGestures();
+    try {
+      await api.updateMe({[key]:value});
+      if (profile !== store.me?.id) return;
+      await reload();
+      document.querySelector(`[data-layout-view="${key}"][data-layout-value="${value}"]`)?.focus({preventScroll:true});
+    } catch (error) { toast(error.message, true); }
+    finally { savingView=false; document.querySelectorAll("[data-layout-view]").forEach(b=>{b.disabled=false;}); }
+  });
+  const dock = $("#dock");
+  const clearance = () => {
+    const box = dock.getBoundingClientRect();
+    const pixels = box.height > 0 ? Math.max(0, innerHeight - box.top) + 24 : 24;
+    document.documentElement.style.setProperty("--dock-clearance", `${Math.ceil(pixels)}px`);
+  };
+  new ResizeObserver(clearance).observe(dock);
+  addEventListener("resize", () => { cancelCardGestures(); clearance(); });
+  addEventListener("blur", cancelCardGestures);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) cancelCardGestures(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") cancelCardGestures(); });
+  window.visualViewport?.addEventListener("resize", clearance);
+  const overlays = new MutationObserver(() => {
+    if (["#sheet","#settings","#ambient","#frame"].some(sel=>!$(sel).hidden)) cancelCardGestures();
+  });
+  for (const selector of ["#sheet","#settings","#ambient","#frame"]) overlays.observe($(selector), {attributes:true,attributeFilter:["hidden"]});
+  clearance();
   const bar = $("#rooms");
   // The tab bar sticks to the top while scrolling; give it a glass backing only then.
   if ("IntersectionObserver" in window) {
@@ -542,10 +584,37 @@ function showAmbient() { closeSheet(); closeVoice(); $("#ambient").hidden = fals
 function setupIdle() {
   const wake = () => { lastActivity = Date.now(); };
   ["pointerdown", "keydown"].forEach((ev) => document.addEventListener(ev, wake, { capture: true }));
-  $("#ambient").addEventListener("pointerdown", (e) => {   // swallow the wake-up touch
+  const ambient = $("#ambient"), pointers = new Set();
+  let wakeTimer = null, wakeKey = null;
+  const finishWake = () => { clearTimeout(wakeTimer); ambient.hidden = true; };
+  // Keep the shield until the whole gesture finishes. Hiding on pointerdown
+  // lets a touch-generated click hit the device control underneath.
+  ambient.addEventListener("pointerdown", (e) => {
     e.preventDefault(); e.stopPropagation();
-    $("#ambient").hidden = true;
+    clearTimeout(wakeTimer);
+    pointers.add(e.pointerId);
+    ambient.setPointerCapture(e.pointerId);
   });
+  for (const type of ["pointerup", "pointercancel"]) ambient.addEventListener(type, e => {
+    e.preventDefault(); e.stopPropagation();
+    pointers.delete(e.pointerId);
+    if (!pointers.size) wakeTimer = setTimeout(finishWake, 350);
+  });
+  ambient.addEventListener("click", e => {
+    e.preventDefault(); e.stopPropagation();
+    if (!pointers.size) finishWake();
+  });
+  document.addEventListener("keydown", e => {
+    if (ambient.hidden && e.code !== wakeKey) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    wakeKey = e.code;
+    finishWake();
+  }, { capture: true });
+  document.addEventListener("keyup", e => {
+    if (e.code !== wakeKey) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    wakeKey = null;
+  }, { capture: true });
   setInterval(() => {
     const after = Number(store.settings.dim_after_seconds || 0);
     if (!(after > 0 && Date.now() - lastActivity > after * 1000) || isSettingsOpen() || editing() || isVoiceOpen()) return;
@@ -584,6 +653,7 @@ onChange((what, id) => {
     if (!shown && store.view === "rooms" && devicesIn(store.room).some((dev) => dev.id === id)) renderGrid();
     renderAmbience();
     refreshSheet(id);
+    renderAmbient();
     renderNav();
     renderTitle();
     updateHeads();
@@ -600,10 +670,11 @@ onChange((what, id) => {
     renderAll();
     refreshSheet();
     refreshSettings();
+    renderAmbient();
   }
 });
 
-onWeather(() => refreshHomeParts(["weather"]));
+onWeather(() => { refreshHomeParts(["weather"]); renderAmbient(); });
 
 setupGrid();
 setupRoomEditor($("#grid"), renderGrid);
@@ -618,6 +689,7 @@ setInterval(() => { applySky(); refreshWeather(); }, 60_000);
 // Sign-in first (js/auth.js). Signed out, the panel keeps only its look (background,
 // clock face) without keeping the previous profile's devices on screen.
 function closeAll() {
+  cancelCardGestures();
   closeSheet();
   closeSettings();
   if (isEditing()) stopEditing();

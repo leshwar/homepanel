@@ -119,11 +119,13 @@ With the API key saved, a Govee light's controls also show what the light can do
 beyond plain color (only the sections your light supports appear):
 
 - **Scenes**: Govee's built-in scenes, your **DIY** scenes and saved **Snapshots**,
-  with a search box. The highlighted one is playing.
+  with a search box. The highlight is the last selection requested through HomePanel,
+  not confirmation of the light's current mode.
 - **Music**: Energic, Rhythm, Spectrum, Rolling (names come from the light), and a
   sensitivity slider. The light listens with its own microphone.
 - **Strip parts** (RGBIC strips and TV backlights): tap parts, then a color.
-- **Options**: Gradient, Screen sync (Govee's DreamView) and Night light, where listed.
+- **Options**: Gradient, DreamView group sync and Night light, where listed. Status
+  distinguishes a device-reported value from the last requested value.
 
 These only exist in Govee's cloud API, so they need the API key even for lights with
 LAN Control (on/off, brightness and color still go over your Wi-Fi). The list of scenes
@@ -136,6 +138,25 @@ requests a day per key. The panel never polls scenes and slows down a burst of
 changes; if it's still too much it says so instead of failing quietly. Govee doesn't
 report which scene is playing, so after a scene started from the Govee app the
 panel keeps showing the last one it set.
+
+### Camera-based TV Video mode (H605C)
+
+The H605C camera backlight's advertised API capabilities do not include a direct
+Video-mode command. `dreamViewToggle` is documented as DreamView on/off; it is
+grouped-light synchronization, **not verified camera Video-mode selection**.
+HomePanel does not relabel that toggle as camera sync or send guessed scene IDs.
+
+The supported workaround is a saved snapshot: select/calibrate Video in Govee Home
+once, save a snapshot there, then in HomePanel use **Scenes → Update list →
+Snapshots** to recall the actual saved action. The user must identify which snapshot
+contains Video; a name alone is not proof of its behavior. A snapshot can restore
+brightness and other settings as well. If the API exposes no saved snapshots,
+HomePanel cannot create or select camera Video mode through the current connection.
+No new MQTT service, account-password capture or raw undocumented opcode is used.
+
+Sources: [Govee control API](https://developer.govee.com/reference/control-you-devices)
+documents DreamView separately from modes; [govee2mqtt's pinned Video-effects FAQ](https://github.com/wez/govee2mqtt/blob/6f5a8449ca63da8bdc7cc696288a993681ff2a69/docs/FAQ.md#how-do-i-enable-video-effects-for-a-light)
+describes the snapshot/Tap-to-Run workaround. The latter is not direct Video-mode support.
 
 Newer Govee devices with **Matter** support are a future option (see the roadmap).
 
@@ -174,13 +195,73 @@ Volume shows as +/− buttons (Samsung doesn't report the exact level).
 
 1. Turn the TV on. Search finds it.
 2. Tap **Add** and press **Accept** on the TV's prompt.
-3. To turn the TV **on** from the panel, enable on the TV:
-   Settings → General → Devices → TV Management → **Quick Start+**, and
-   Settings → General → Network → **Turn on via Wi-Fi** (menu names vary by year).
+3. To turn the TV **on** from the panel, enable **Quick Start+** and **Turn on via Wi-Fi**.
+   On webOS 23–25, Quick Start+ is under Settings → All Settings → General → System →
+   Additional Settings. Older versions can use General → Devices → TV Management;
+   the network-wake menu also varies by model/year.
 4. The remote has a **touchpad** like the Magic Remote: open the TV, tap the hand icon
    under the D-pad, then drag to move the TV's pointer, tap to click and use two fingers
    to scroll. On a phone, **Aim** moves the pointer by tilting the phone. TVs added before
    this get the touchpad automatically the next time the panel talks to them.
+
+**Open Home instead of the previous HDMI input:** in HomePanel, open the TV's
+settings and choose **After HomePanel turns this TV on → TV Home**, then **Save**.
+The default remains **Previous input (TV default)** until you select Home.
+This setting only affects a HomePanel-initiated wake from off: the panel waits
+for an authenticated, active TV and its input socket, then sends Home once.
+An already-on TV, polling, reconnecting or repeated On commands never send Home.
+Newer input/app/remote-key/off actions cancel an unfinished wake. Startup has a
+bounded wait and reports an error instead of claiming the TV woke after a timeout.
+No background task repeatedly sends Home or fights later HDMI input changes.
+
+**For the physical TV remote:** LG's webOS 23–25 guidance (including a G4 on
+webOS 24) is Settings → All Settings → General → System → Additional Settings →
+Home Settings → **Power On Screen → Home**. LG notes that physical TV-button
+startup and some models behave differently; do not assume Wake-on-LAN honors this
+setting. webOS 26+ can omit the General step.
+
+If PS5 later takes over the input, HDMI-CEC/device-link behavior is a possible
+contributor, not something HomePanel has confirmed. Review the TV and console
+settings with their remotes; do not disable global SIMPLINK/CEC indiscriminately,
+because it can affect soundbar ARC/eARC, audio and linked power behavior.
+
+Sources: [LG startup screen guidance](https://www.lg.com/us/support/help-library/how-to-set-the-startup-screen-on-your-lg-tv--20155412183664),
+[LG default input guidance](https://www.lg.com/us/support/help-library/lg-tv-how-to-set-the-default-input--20153711388714).
+Paired readiness and the single Home input command are implemented against the
+`aiowebostv` active-state and input-socket API. Version 0.10 or newer is required
+for the pre-registration identity guard; 0.10 supports Python 3.11, while 1.x
+requires Python 3.12 or newer. The same guard is exercised on both versions.
+
+### TV is on, but the panel cannot connect
+
+A router can assign a different IP address when its DHCP lease changes, the TV
+reconnects, or its network interface changes. An address change alone does not prove
+which router event caused it. HomePanel now treats an unreachable address as
+**Unavailable**, with current power unknown, rather than reporting **Off**.
+The last reported power is labeled as stale. A verified standby/power-off report
+still appears as Off.
+
+For an already paired TV with a saved SSDP UUID, the adapter checks that exact
+identity at most once per minute after connection failure. It accepts only one
+matching candidate in the panel's local IPv4 /24, validates its non-redirected local
+description, checks the saved model before sending the existing key (or an already
+verified MAC when no model is saved), and corroborates the TV's reported MAC and
+authenticated control/input sockets before saving the new address. Device identity,
+pairing and Home startup preferences stay intact. No polling or rediscovery sends
+wake, Home, input or media commands.
+
+Unknown/ambiguous identities, a different model or MAC, blocked multicast, and
+rejected pairing leave the saved address unchanged and show a connection problem.
+Use **Try again** to recheck the connection; **Send power-on request** remains
+available when a known MAC supports waking the TV, even while its status is unknown.
+Closed input sockets reconnect before the next deliberate command. A command with
+an uncertain delivery result is not automatically replayed.
+
+For network-level prevention, configure a **DHCP reservation** in your router for
+the TV's actual active-interface MAC (Wi-Fi and Ethernet can differ). This is not
+changed automatically. Reservation setup is router-specific; do not choose an
+arbitrary static address that could collide with another device. Automatic recovery
+is not a static-IP guarantee and cannot bypass guest-network/multicast isolation.
 
 ## LG sound bars
 

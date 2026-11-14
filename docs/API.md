@@ -82,6 +82,24 @@ curl -b hp.txt http://homepanel.local:8080/api/v1/state
 
 ## Reading state
 
+An unreachable device may expose `online: false`, `on: null`, `stale: true`,
+`remote_ready: false` and optional `last_known` readings. Those readings are not
+current power evidence. A brand-supported `wake_available: true` allows an explicit
+`power: true` request through the usual permission-checked command endpoint, not
+an unsafe toggle. Successful verified reads replace stale/error state normally.
+
+`settings.room_view` (`compact` or `free`) and `settings.home_view` (`overview` or
+`free`) are the signed-in profile's presentation preferences. They default to
+`compact`/`overview` without migrating or replacing any saved Home or room geometry.
+Use `PATCH /profiles/me` to change either preference. Members can change their own
+view, not another profile's access or layout.
+
+Devices that support a startup destination expose `startup_screens` as `{id,name}`
+choices and a persisted `power_on_screen` (default `"previous"`). Admins can update
+`power_on_screen` through the existing device PATCH endpoint. Unsupported choices
+are rejected; adapter-private configuration and pairing keys remain hidden.
+`"home"` applies only to a HomePanel wake from off, not polling or already-on devices.
+
 | Method | Path | Returns |
 |---|---|---|
 | GET | `/state` | Everything the UI needs: `devices`, `rooms`, `scenes`, `settings`, `adapters`, `demo` |
@@ -171,6 +189,25 @@ example after making a DIY scene in the brand's app). They are never polled.
 `GET /devices/{id}/map` returns the floor plan as an image (SVG for Ecovacs) for
 devices with the `map` capability. The state key `map_rev` changes when the map
 does, so add it to the URL to refresh the picture.
+
+Vacuum `state.cleaning` is optional (or `null`), not a new command capability.
+It can contain `run_id`, `status`, `elapsed_seconds`, `area_m2` and `stats_stale`.
+`status` distinguishes `cleaning`, `paused`, `returning`, `completed`, `stopped`
+and `attention`. Current-run metrics require an identified job; absent/stale values
+must not be extrapolated. `completed` requires explicit successful completion for
+that job. An acknowledged stop may have no provider run id, but cannot become success.
+Battery, docking, a return-to-dock state, map size and `last_clean` are not completion
+evidence. The currently supported telemetry does not provide cleaning percentage or
+a reliable total, so the UI deliberately leaves percentage and ETA out.
+
+The Ecovacs JSON adapter consumes identified `ReportStatsEvent` reports, not the
+unscoped `StatsEvent` snapshot. It expires current metrics after two minutes without
+a fresh report, clears them on disconnect/new jobs, rejects retired job ids, and
+requires a matching observed run for terminal reports (within two minutes after
+activity ends). A success notice lasts five minutes; verified historical totals remain
+separately in `last_clean` with `result: "completed"`. Stops, errors and warning outcomes
+cannot turn into success. XML STOP translations do not establish completion.
+These are in-memory observations, not a persisted cleaning history.
 
 Returns the updated device. `pointer` commands don't change the device's state, so they
 aren't broadcast as live events; the UI batches moves (one request in flight, every

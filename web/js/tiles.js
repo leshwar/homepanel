@@ -6,6 +6,7 @@ import { openDevice } from "./sheet.js";
 import { deviceIcon } from "./icons.js";
 import { devicePicture } from "./art.js";
 import { syncAttributes } from "./render.js";
+import { compactBody, syncCompact, cardHeld, attachCardRanges } from "./room-cards.js";
 
 const heldTiles = new Set(), pending = new Set();
 
@@ -36,13 +37,16 @@ const volumeLevel = (s) => (Number.isFinite(s.volume) ? Math.max(0, Math.min(100
 
 // size: the widget size on Home ("1x1", "2x1", "2x2"); ctx: "rooms" or "home".
 // sub: optional text before the status, e.g. the room name on Home.
-export function tileHtml(d, { size = "", ctx = "rooms", sub = "", editing = false } = {}) {
+export function tileHtml(d, { size = "", ctx = "rooms", sub = "", editing = false, compact = false } = {}) {
   const s = d.state || {};
   const on = isOn(d);
   const offline = s.online === false || s.needs_pairing;
   const level = d.kind === "light" && s.brightness ? Math.max(0.15, s.brightness / 100) : 1;
   const wide = size ? size !== "1x1" : ctx === "rooms" && isMedia(d);
   const busy = store.busy.has(d.id) || pending.has(d.id), quick = primaryAction(d);
+  if (compact) return `<div class="tile compact-card${on ? " on" : ""}${offline ? " offline" : ""}${needsAttention(d) ? " attn" : ""}${busy ? " busy" : ""}"
+    data-id="${esc(d.id)}" data-ctx="${ctx}" data-compact="true" data-on="${on}" data-editing="false"
+    role="group" style="--glow:${glowVar(d)}" aria-busy="${busy}" aria-label="${esc(d.name)}">${compactBody(d, quick, tilePicture(d, offline, ctx), busy)}</div>`;
   const cls = ["tile", on && "on", offline && "offline", busy && "busy", wide && "wide", needsAttention(d) && "attn"]
     .filter(Boolean).join(" ");
   const status = statusText(d);
@@ -84,10 +88,11 @@ export function updateTiles(id, subFor = (d, el) => el.dataset.sub || "") {
   const els = document.querySelectorAll(`.tile[data-id="${CSS.escape(id)}"]`);
   if (!d || !els.length) return false;
   for (const old of els) {
-    if (heldTiles.has(old) || pending.has(id)) continue;
+    if (heldTiles.has(old) || pending.has(id) || cardHeld(old)) continue;
     const tmp = document.createElement("div");
-    tmp.innerHTML = tileHtml(d, { size: old.dataset.size, ctx: old.dataset.ctx, sub: subFor(d, old), editing: old.dataset.editing === "true" });
+    tmp.innerHTML = tileHtml(d, { size: old.dataset.size, ctx: old.dataset.ctx, sub: subFor(d, old), editing: old.dataset.editing === "true", compact: old.dataset.compact === "true" });
     const el = tmp.firstElementChild;
+    if (old.dataset.compact === "true") { syncCompact(old, el); attachCardRanges(old, updateTiles); continue; }
     const turnedOn = old.dataset.on !== el.dataset.on && el.dataset.on === "true";
     syncAttributes(old, el);
     for (const selector of [".tile-name", ".tile-status"]) {
@@ -187,16 +192,17 @@ export function bindTiles(root, { enabled = () => true, onLongPress = null } = {
     const d = store.devices.get(tile.dataset.id);
     if (!d) { release(); return; }
     e.stopPropagation();
+    if (e.target.closest("input, label")) { release(); return; }
     const action = e.target.closest("[data-quick-action], [data-act]");
     if (!action) { openDevice(d.id); release(); return; }
     if (action.disabled) { release(); return; }
     if (pending.has(d.id) || store.busy.has(d.id)) { toast("Waiting for the device to finish the previous action."); release(); return; }
     const name = action.dataset.quickAction || action.dataset.act;
-    const value = name === "power" ? action.dataset.value === "true" : action.dataset.value;
+    const value = ["power", "mute"].includes(name) ? action.dataset.value === "true" : action.dataset.value;
     const profile = store.me?.id, focused = document.activeElement === action;
-    const cap = name === "power" ? "power" : name === "clean" ? "clean" : "volume";
+    const cap = name === "power" ? "power" : name === "clean" ? "clean" : name === "mute" ? "mute" : "volume";
     if (!d.caps.includes(cap) || d.state?.online !== true || d.state?.needs_pairing
-      || (cap === "volume" && d.state.on !== true)) {
+      || (["volume", "mute"].includes(cap) && d.caps.includes("power") && d.state.on !== true)) {
       toast("Open the controls to check this device's connection.", true); release(); return;
     }
     pending.add(d.id);

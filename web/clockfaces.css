@@ -1,65 +1,77 @@
 /* Resting clock faces (js/clockfaces.js). Everything is sized in container units, so
    the same face fills the screen in .ambient and fits the small Settings previews.
-   Colors stay dim and warm on black: the panel often sits in a dark bedroom. */
+   Daytime stays readable on charcoal; the supported night window is deliberately dim. */
 
-.ambient { container-type: size; --min-text: 15px; }
+.ambient, .face-preview { --clock-bg: #191919; --clock-ink: #f0efec; --clock-muted: #c3c2b8; --clock-detail: #aaa79f; }
+.ambient { container-type: size; --min-text: 15px; background: var(--clock-bg); }
+.ambient[data-night="true"] { --clock-bg: #000; --clock-ink: #756e65; --clock-muted: #625c54; --clock-detail: #514b43; }
 #ambient-face { transition: transform 2s ease; will-change: transform; }
 
-.cf { display: flex; flex-direction: column; align-items: center; text-align: center; color: #8b8780;
+.cf { display: flex; flex-direction: column; align-items: center; text-align: center; color: var(--clock-ink);
       font-weight: 200; line-height: 1; font-variant-numeric: tabular-nums; }
-.cf-sub { color: #5d5a55; font-weight: 400; font-size: calc(max(var(--min-text), 3.1cqmin) * var(--readout-scale)); line-height: 1.3;
+.cf-sub { color: var(--clock-muted); font-weight: 400; font-size: calc(max(var(--min-text), 2.8cqmin) * var(--text-scale)); line-height: 1.3;
           margin-top: 2.5cqmin; max-width: 86cqw; text-wrap: balance; }
+.cf-time { display: flex; align-items: baseline; justify-content: center; white-space: nowrap; gap: .07em; }
+.cf-meridiem { font-size: .16em; font-weight: 500; letter-spacing: 0; color: var(--clock-muted); }
+.ambient-activity { color: var(--clock-muted); font-size: calc(max(15px, 2.3cqmin) * var(--text-scale)); line-height: 1.4;
+                    text-align: center; text-wrap: balance; overflow-wrap: anywhere; max-width: 84cqw; margin: 4cqmin auto 0; pointer-events: none; }
 
 /* Big digital: the original resting clock */
-.cf-digital .cf-time { font-size: calc(min(28cqw, 30cqh) * var(--readout-scale)); letter-spacing: -0.03em; }
+.cf-digital .cf-time { font-size: calc(min(25cqw, 28cqh) * var(--readout-scale)); letter-spacing: -0.03em; }
 
 /* Analog with hands (no second hand: nothing moves faster than the 10 s redraw) */
-.cf-dial { width: 62cqmin; height: 62cqmin; overflow: visible; }
-.cf-ticks line { stroke: #45423e; stroke-width: 2; stroke-linecap: round; }
-.cf-ticks line.major { stroke: #6b6761; stroke-width: 4; }
+.cf-dial { width: 54cqmin; height: 54cqmin; overflow: visible; }
+.cf-ticks line { stroke: var(--clock-detail); stroke-width: 2; stroke-linecap: round; }
+.cf-ticks line.major { stroke: var(--clock-muted); stroke-width: 4; }
 .cf-hour, .cf-min { stroke-linecap: round; }
-.cf-hour { stroke: #8b8780; stroke-width: 7; }
-.cf-min { stroke: #a29d95; stroke-width: 4; }
-.cf-pin { fill: #9a7442; }
+.cf-hour { stroke: var(--clock-ink); stroke-width: 7; }
+.cf-min { stroke: var(--clock-muted); stroke-width: 4; }
+.cf-pin { fill: var(--clock-muted); }
 .cf-analog .cf-sub { margin-top: 4cqmin; }
 
 /* Word clock: "It's quarter past ten" */
 .cf-phrase { font-size: calc(12cqmin * var(--readout-scale)); font-weight: 300; line-height: 1.12; max-width: 86cqw; text-wrap: balance;
              letter-spacing: -0.01em; }
-.cf-lead { color: #5d5a55; }
+.cf-lead { color: var(--clock-muted); }
 .cf-words .cf-sub { margin-top: 4cqmin; }
 
 /* Date and day */
-.cf-weekday { font-size: calc(15cqmin * var(--readout-scale)); letter-spacing: -0.02em; }
-.cf-day { font-size: calc(6.5cqmin * var(--readout-scale)); color: #6f6b65; font-weight: 300; margin-top: 1.5cqmin; }
-.cf-date .cf-time { font-size: calc(8cqmin * var(--readout-scale)); font-weight: 300; margin-top: 4cqmin; color: #a29d95; }
+.cf-calendar { margin-top: 4cqmin; }
+.cf-weekday { font-size: calc(7cqmin * var(--readout-scale)); color: var(--clock-muted); font-weight: 400; letter-spacing: -0.02em; }
+.cf-day { font-size: calc(4.5cqmin * var(--text-scale)); color: var(--clock-muted); font-weight: 400; margin-top: 1.5cqmin; }
+.cf-date .cf-time { font-size: calc(min(25cqw, 28cqh) * var(--readout-scale)); font-weight: 250; letter-spacing: -0.03em; }
 
 /* Dim night: small, dark red, nearly nothing lit */
 .ambient[data-face="night"] { cursor: none; }
 .cf-night .cf-time { font-size: calc(13cqmin * var(--readout-scale)); font-weight: 300; color: #5a2f22; letter-spacing: -0.02em; }
+.cf-night .cf-meridiem { color: #5a2f22; }
+.ambient[data-night="true"] :is(.cf-wx, .cf-kicker, .cf-sub) { display: none; }
+.ambient[data-night="true"] .ambient-activity { color: var(--clock-detail); font-size: calc(max(14px, 2cqmin) * var(--text-scale)); }
+.ambient[data-face="night"] { --clock-bg: #000; }
 
 /* ---------- Settings → Display and clock: face picker with previews ---------- */
 .face-choices { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
 .face-choice { display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer;
                min-width: 112px; text-align: center; }
 .face-choice input { position: absolute; opacity: 0; pointer-events: none; }
-.face-preview { width: 112px; height: 84px; border-radius: 14px; background: #000; container-type: size;
+.face-preview { width: 112px; height: 84px; border-radius: 14px; background: var(--clock-bg); container-type: size;
                 --min-text: 0px; display: flex; align-items: center; justify-content: center; overflow: hidden;
                 box-shadow: inset 0 0 0 1px rgb(255 255 255 / .15); pointer-events: none; }
+.face-preview:has(.cf-night) { --clock-bg: #000; }
 .face-choice input:checked + .face-preview { box-shadow: 0 0 0 3px var(--paper); }
 .face-choice input:focus-visible + .face-preview { outline: 3px solid var(--indigo); outline-offset: 3px; }
 
 /* ---------- place and weather (shown when set; hidden when there's no weather) ---------- */
 .cf-wx { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0 1.4cqmin;
-         color: #6f6b65; font-weight: 400; font-size: calc(max(var(--min-text), 3.1cqmin) * var(--readout-scale)); line-height: 1.3;
+         color: var(--clock-muted); font-weight: 400; font-size: calc(max(var(--min-text), 2.6cqmin) * var(--text-scale)); line-height: 1.3;
          margin-top: 2cqmin; max-width: 86cqw; }
 .cf-wx-icon { width: 1.5em; height: 1.5em; fill: none; stroke: currentColor; stroke-width: 1.6;
-              stroke-linecap: round; stroke-linejoin: round; color: #8b8780; flex: none; overflow: visible; }
-.cf-wx-icon .front { fill: #000; }   /* the cloud hides the sun or moon behind it */
-.cf-temp { color: #a29d95; font-weight: 300; }
-.cf-hl, .cf-dot, .cf-place { color: #5d5a55; }
+              stroke-linecap: round; stroke-linejoin: round; color: var(--clock-muted); flex: none; overflow: visible; }
+.cf-wx-icon .front { fill: var(--clock-bg); }   /* the cloud hides the sun or moon behind it */
+.cf-temp { color: var(--clock-ink); font-weight: 400; }
+.cf-hl, .cf-dot, .cf-place { color: var(--clock-detail); }
 .cf-hl { flex-basis: 100%; }
 .cf-kicker { font-size: calc(max(var(--min-text), 2.6cqmin) * var(--readout-scale)); letter-spacing: .14em; text-transform: uppercase;
-             color: #5d5a55; font-weight: 500; margin-bottom: 2cqmin; }
-.cf-date .cf-wx { font-size: calc(max(var(--min-text), 3.6cqmin) * var(--readout-scale)); margin-top: 3cqmin; }
+             color: var(--clock-detail); font-weight: 500; margin-bottom: 2cqmin; max-width: 86cqw; overflow-wrap: anywhere; line-height: 1.3; }
+.cf-date .cf-wx { margin-top: 3cqmin; }
 .cf-night .cf-temp { font-size: calc(4cqmin * var(--readout-scale)); color: #3a1f17; margin-top: 2cqmin; font-weight: 400; }

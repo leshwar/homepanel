@@ -1,4 +1,4 @@
-// The light panel. Stage: one tall brightness bar, filled in the lamp's own colour.
+// The light panel. Stage: one tall amber brightness bar with a separate readable value.
 // Tabs: Color (wheel + presets), White (warm-to-cool strip + presets), then whatever
 // effects the light lists (effects.js). Everything comes from the device's caps.
 //
@@ -52,14 +52,14 @@ function brightnessBar(d, s) {
   const known = Number.isFinite(s.brightness);
   const level = on ? s.brightness ?? 0 : 0;
   const value = !known ? "Not reported" : on ? `${level}%` : "Off";
-  const tone = `${on ? "on" : ""} ${level >= 86 ? "high" : ""} ${level >= 16 ? "lit" : ""}`;
+  const tone = `${on ? "on" : ""} ${level >= 24 ? "lit" : ""}`;
   return `<div class="light-stage">
     <div class="pill ${tone}" id="bri" role="slider" tabindex="${known ? 0 : -1}" aria-label="Brightness" aria-disabled="${!known}"
-      aria-valuemin="${has(d, "power") ? 0 : 1}" aria-valuemax="100" aria-valuenow="${level}" aria-valuetext="${value}">
+      aria-orientation="vertical" aria-valuemin="${has(d, "power") ? 0 : 1}" aria-valuemax="100" aria-valuenow="${level}" aria-valuetext="${value}">
       <div class="pill-fill" style="height:${level}%"></div>
-      <output class="pill-val" id="bri-val">${value}</output>
       <span class="pill-icon">${icon(on ? "bulb" : "power")}</span>
     </div>
+    <output class="pill-val" id="bri-val">${value}</output>
     ${known ? "" : `<button class="btn small" data-refresh>Refresh status</button>`}
   </div>`;
 }
@@ -154,13 +154,12 @@ export function attachLight(sheet, dev, onIdle) {
 
   const bri = sheet.querySelector("#bri");
   if (bri) {
-    const fill = bri.querySelector(".pill-fill"), val = bri.querySelector("#bri-val");
+    const fill = bri.querySelector(".pill-fill"), val = sheet.querySelector("#bri-val");
     const shown = (v) => {
       fill.style.height = `${v}%`;
       val.textContent = v ? `${v}%` : "Off";
       bri.classList.toggle("on", v > 0);
-      bri.classList.toggle("high", v >= 86);
-      bri.classList.toggle("lit", v >= 16);
+      bri.classList.toggle("lit", v >= 24);
       bri.setAttribute("aria-valuenow", v);
       bri.setAttribute("aria-valuetext", v ? `${v}%` : "Off");
     };

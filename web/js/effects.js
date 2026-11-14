@@ -1,6 +1,6 @@
 // Light effects, as tabs of the light panel: scenes (grouped Scenes / DIY / Snapshots,
 // searchable), music mode (mode chips + sensitivity), strip parts (tap parts, then a color)
-// and feature toggles such as gradient or screen sync. Each tab shows only when the device
+// and feature toggles such as gradient or grouped-light sync. Each tab shows only when the device
 // lists it (caps "effects", "music", "segments", "toggles"; the lists are in device.meta).
 
 import { command } from "./store.js";
@@ -88,8 +88,16 @@ export function effectTabs(d) {
   if (has(d, "toggles") && (d.meta?.toggles || []).length) {
     const t = s.toggles || {};
     tabs.push({ id: "options", label: "Options", html: `<div class="fx">
-      <div class="chips" role="group" aria-label="Light options">${d.meta.toggles.map((x) => `<button class="chip fx-toggle" data-toggle="${esc(x.id)}"
-        aria-pressed="${!!t[x.id]}"><i aria-hidden="true"></i>${esc(x.name)}</button>`).join("")}</div>
+      <div class="fx-options" role="group" aria-label="Light options">${d.meta.toggles.map((x) => {
+        const known = typeof t[x.id] === "boolean";
+        const source = s.toggle_sources?.[x.id] === "requested" ? "Last requested" : "Reported";
+        return `<div><button class="chip fx-toggle" data-toggle="${esc(x.id)}"
+          ${known ? `aria-pressed="${t[x.id]}"` : ""} aria-label="Turn ${t[x.id] ? "off" : "on"} ${esc(x.name)}">
+          <i aria-hidden="true"></i>${esc(x.name)}</button>
+          <p class="pane-help" data-toggle-status="${esc(x.id)}">${known ? `${source}: ${t[x.id] ? "on" : "off"}` : "Not reported"}</p>
+          ${x.help ? `<p class="pane-help">${esc(x.help)}</p>` : ""}</div>`;
+      }).join("")}</div>
+      ${d.meta.mode_help ? `<p class="pane-help">${esc(d.meta.mode_help)}</p>` : ""}
     </div>` });
   }
   return tabs;
@@ -194,7 +202,8 @@ export function effectsClick(e, d) {
   if (t("[data-toggle]")) {
     const id = t("[data-toggle]").dataset.toggle;
     const cur = (d.state?.toggles || {})[id];
-    command(d.id, "set_toggle", { id, on: !cur }, { toggles: { ...(d.state?.toggles || {}), [id]: !cur } });
+    command(d.id, "set_toggle", { id, on: !cur }, { toggles: { ...(d.state?.toggles || {}), [id]: !cur },
+      toggle_sources: { ...(d.state?.toggle_sources || {}), [id]: "requested" } });
     return true;
   }
   return false;

@@ -544,3 +544,30 @@ class EcovacsRefusalThroughTheService(unittest.IsolatedAsyncioTestCase):
         await self.svc.refresh("v")                                   # learns its rooms from the fake
         await self.svc.command("v", "clean_rooms", [1, 2])
         self.assertEqual(cloud.commands[-1], ("clean_area_v2", (self.fake.CleanMode.FREE_CLEAN, [1, 2], 1)))
+
+    async def test_job_reports_reach_generic_state_and_disconnect_clears_live_metrics(self):
+        f = self.fake
+        bus = self.svc.adapters["ecovacs"]._bots["bot1"].events
+        await bus.fire(f.StateEvent(f.State.CLEANING))
+        await bus.fire(f.ReportStatsEvent("job1", f.CleanJobStatus.CLEANING, 6, 480))
+        await self.svc.refresh("v")
+        state = self.svc.public_device(self.svc.get("v"))["state"]
+        self.assertEqual(state["cleaning"]["elapsed_seconds"], 480)
+        self.assertIsNone(state["last_clean"])
+        await bus.fire(f.AvailabilityEvent(False))
+        await self.svc.refresh("v")
+        state = self.svc.public_device(self.svc.get("v"))["state"]
+        self.assertFalse(state["online"])
+        self.assertIsNone(state["cleaning"])
+        await bus.fire(f.AvailabilityEvent(True))
+        await bus.fire(f.ReportStatsEvent("job1", f.CleanJobStatus.FINISHED, 34, 6240))
+        await self.svc.refresh("v")
+        self.assertIsNone(self.svc.get("v").state["last_clean"])
+        await bus.fire(f.StateEvent(f.State.DOCKED))
+        await bus.fire(f.StateEvent(f.State.CLEANING))
+        await bus.fire(f.ReportStatsEvent("job2", f.CleanJobStatus.CLEANING, 1, 60))
+        await bus.fire(f.ReportStatsEvent("job2", f.CleanJobStatus.FINISHED, 8, 600))
+        await self.svc.refresh("v")
+        self.assertEqual(self.svc.get("v").state["last_clean"], {"result": "completed", "area_m2": 8, "minutes": 10})
+        await self.svc.command("v", "clean", "start")
+        self.assertIsNone(self.svc.get("v").state["cleaning"])  # command merge cannot retain the previous success

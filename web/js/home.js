@@ -12,6 +12,8 @@
 
 import { api } from "./api.js";
 import { setMarkup, updateRoomCounts } from "./render.js";
+import { homeOverview, overviewEnabled, overviewWidgets, refreshAttention, viewChoices } from "./home-overview.js";
+import { openDevice } from "./sheet.js";
 import { store, devicesIn, roomGroups, OTHER } from "./store.js";
 import { $, esc, icon, roomIfAmbiguous, toast } from "./util.js";
 import { openSettings } from "./settings.js";
@@ -218,7 +220,8 @@ function widgetHtml(w, i, now) {
 export function renderHome({ enter = false } = {}) {
   const el = $("#home");
   if (!el) return;
-  const key = JSON.stringify([store.me?.id, layout(), columns(), isEditing()]);
+  const overview = overviewEnabled() && !isEditing();
+  const key = JSON.stringify([store.me?.id, layout(), columns(), isEditing(), overview]);
   if (renderedLayout === key && el.querySelector(".home-grid")) {
     tickHome();
     refreshHomeParts();
@@ -227,10 +230,13 @@ export function renderHome({ enter = false } = {}) {
   }
   renderedLayout = key;
   const now = new Date();
-  const positions = arrange(layout().widgets, columns());
-  const visible = layout().widgets.filter((w) => !w.hidden).map((w) => ({ ...w, ...positions.get(w.id) }));
+  const items = overview ? overviewWidgets(layout().widgets) : layout().widgets;
+  const positions = arrange(items, columns());
+  const visible = items.filter((w) => !w.hidden).map((w) => ({ ...w, ...positions.get(w.id) }));
   el.classList.toggle("editing", isEditing());
-  el.innerHTML = `<div class="home-grid layout-grid" style="${gridStyle(layout().widgets, columns(), isEditing())}">${visible.map((w, i) => widgetHtml(w, i, now)).join("")}</div>${
+  el.innerHTML = `${!isEditing() ? viewChoices("home_view", store.settings.home_view || "overview", [["overview","Overview"],["free","Free layout"]]) : ""}
+    ${overview ? homeOverview(clockWidget(null, now)) : ""}
+    <div class="home-grid layout-grid" style="${gridStyle(items, columns(), isEditing())}">${visible.map((w, i) => widgetHtml(w, i, now)).join("")}</div>${
     !visible.length ? `<div class="empty"><h2>Your Home page is empty</h2><p>Add the clock, weather, scenes or your rooms.</p>
       <button class="btn primary" data-edit-home>${svg("pencil")}Edit Home page</button></div>` : ""}${
     isEditing() ? editBar() : ""}`;
@@ -240,6 +246,7 @@ export function renderHome({ enter = false } = {}) {
     if (box) setMarkup(box, widgetBody(w, now) + (isEditing() ? chrome(w) : ""));
   }
   updateCounts(el);
+  refreshAttention(el);
   syncWeatherEffects();
   syncPhotoTiles();
   if (enter && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -272,6 +279,7 @@ export function tickHome(now = new Date()) {
 export function refreshHomeParts(types = ["rooms", "weather", "scenes", "photos", "favourites"]) {
   const el = $("#home");
   if (!el || el.hidden || isEditing()) return;
+  refreshAttention(el);
   const now = new Date();
   for (const w of layout().widgets) {
     if (w.hidden || !types.includes(w.type)) continue;
@@ -437,6 +445,8 @@ export function setupHome({ goRoom, showAmbient }) {
     }
     if (t.closest("[data-edit-home]")) return startEditing();
     if (t.closest("[data-ambient]")) return showAmbient();
+    const attention = t.closest("[data-attention]");
+    if (attention) return openDevice(attention.dataset.attention);
     if (t.closest("[data-setup-weather]")) return openSettings("location", "weather");
     if (t.closest("[data-photo-settings]")) return openSettings("photo-library");
     if (t.closest("[data-retry-weather]")) return refreshWeather(true);

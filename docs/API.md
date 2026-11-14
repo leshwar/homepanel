@@ -82,6 +82,12 @@ curl -b hp.txt http://homepanel.local:8080/api/v1/state
 
 ## Reading state
 
+An unreachable device may expose `online: false`, `on: null`, `stale: true`,
+`remote_ready: false` and optional `last_known` readings. Those readings are not
+current power evidence. A brand-supported `wake_available: true` allows an explicit
+`power: true` request through the usual permission-checked command endpoint, not
+an unsafe toggle. Successful verified reads replace stale/error state normally.
+
 `settings.room_view` (`compact` or `free`) and `settings.home_view` (`overview` or
 `free`) are the signed-in profile's presentation preferences. They default to
 `compact`/`overview` without migrating or replacing any saved Home or room geometry.

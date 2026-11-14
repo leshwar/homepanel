@@ -9,6 +9,13 @@ Recent webOS versions put Quick Start+ under General → System → Additional S
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
+import ipaddress
+import logging
+import time
+from urllib.parse import urlsplit
+import uuid
+import xml.etree.ElementTree as ET
 
 from ..core.adapter import (Action, AdapterError, Cap, Device, DeviceAdapter, Field, Found, Key,
                             Kind, PairingRequired, register)
@@ -18,6 +25,62 @@ from ..core.net import (http, local_subnet_hosts, mac_from_arp, normalize_mac, p
 WEBOS_PORTS = (3001, 3000)   # webOS remote control: secure, then plain (older TVs)
 WAKE_READY_TIMEOUT = 28.0
 WAKE_POLL = .5
+RECOVERY_INTERVAL = 60.0
+log = logging.getLogger("homepanel")
+
+
+def _saved_uuid(config):
+    raw = config.get("uuid") or config.get("_uid", "")
+    if not isinstance(raw, str) or not raw.lower().startswith("uuid:"):
+        return None
+    try:
+        return "uuid:" + str(uuid.UUID(raw[5:]))
+    except ValueError:
+        return None
+
+
+def _socket_open(socket) -> bool:
+    return socket is not None and not socket.closed
+
+
+def _reported_power(power):
+    value = power.get("state") if isinstance(power, dict) else None
+    if value in ("Power Off", "Suspend", "Active Standby"):
+        return False
+    if value in ("Active", "Screen Saver", "Screen Off"):
+        return True
+    return None
+
+
+def _control_connected(client) -> bool:
+    return _connected(client) and _socket_open(getattr(client, "connection", None)) \
+        and _socket_open(getattr(client, "input_connection", None))
+
+
+def _new_client(device, *, pairing=False, mac_verified=False):
+    """Check pre-registration identity before sending a saved key to a new socket."""
+    from aiowebostv import WebOsClient
+    if not hasattr(WebOsClient, "_get_pre_reg_system_info") or not hasattr(WebOsClient, "_check_registration"):
+        raise AdapterError("LG TV support needs aiowebostv 1.0 or newer. Update the panel's dependencies before reconnecting.")
+    expected_model = device.meta.get("model")
+    key = device.config.get("client_key")
+
+    class PairedClient(WebOsClient):
+        async def _check_registration(self, ws):
+            if pairing:
+                return await super()._check_registration(ws)
+            model = (self.tv_info.system or {}).get("modelName")
+            if expected_model and model != expected_model:
+                raise AdapterError("This address did not confirm the saved TV model. Its pairing key was not sent.")
+            if not expected_model and not mac_verified:
+                raise AdapterError("The TV identity cannot be verified automatically. Check its address and pairing.")
+            await ws.send_json(self.registration_msg())
+            async with asyncio.timeout(4):
+                response = await ws.receive_json()
+            if response.get("type") != "registered" or (response.get("payload") or {}).get("client-key") != key:
+                raise PairingRequired("The TV did not accept its saved pairing. Pair again while the TV is on.")
+
+    return PairedClient(device.config["ip"], key)
 
 BUTTONS = {Key.UP: "UP", Key.DOWN: "DOWN", Key.LEFT: "LEFT", Key.RIGHT: "RIGHT", Key.OK: "ENTER",
            Key.BACK: "BACK", Key.HOME: "HOME", Key.MENU: "MENU", Key.SOURCE: "INPUT_HUB",
@@ -45,7 +108,9 @@ class LGTVAdapter(DeviceAdapter):
     description = "Remote control over Wi-Fi. Accept the prompt on the TV the first time."
     requires = ("aiowebostv",)
     poll_interval = 6
-    wake_timeout = 35.0
+    refresh_timeout = 20.0
+    retry_commands = False  # a timed-out input write may already have reached the TV
+    wake_timeout = 50.0
     startup_screens = [{"id": "previous", "name": "Previous input (TV default)"}, {"id": "home", "name": "TV Home"}]
     manual_fields = [
         Field("name", "Name", required=True, placeholder="Bedroom TV"),
@@ -58,6 +123,24 @@ class LGTVAdapter(DeviceAdapter):
         self._clients: dict[str, object] = {}
         self._client_locks: dict[str, asyncio.Lock] = {}
         self._waking: set[str] = set()
+        self._device_locks: dict[str, asyncio.Lock] = {}
+        self._operations: dict[str, set[asyncio.Task]] = {}
+        self._recover_after: dict[str, float] = {}
+        self._forgotten: set[str] = set()
+        self._stopped = False
+
+    @asynccontextmanager
+    async def _operation(self, device):
+        task = asyncio.current_task()
+        tasks = self._operations.setdefault(device.id, set())
+        tasks.add(task)
+        try:
+            async with self._device_locks.setdefault(device.id, asyncio.Lock()):
+                if self._stopped or device.id in self._forgotten:
+                    raise AdapterError("This TV connection is closing.")
+                yield
+        finally:
+            tasks.discard(task)
 
     async def discover(self, timeout=6.0):
         hits = await ssdp_search("urn:lge-com:service:webos-second-screen:1", timeout=3)
@@ -127,17 +210,18 @@ class LGTVAdapter(DeviceAdapter):
     async def _client(self, device: Device, *, pairing=False):
         async with self._client_locks.setdefault(device.id, asyncio.Lock()):
             c = self._clients.get(device.id)
-            if c is not None and _connected(c):
+            if c is not None and _control_connected(c):
                 return c
-            from aiowebostv import WebOsClient
+            await self._drop(device)
             key = device.config.get("client_key")
             if not key and not pairing:
                 raise PairingRequired("This TV isn't paired yet. Choose Pair and accept the prompt on the TV.")
-            c = WebOsClient(device.config["ip"], key)
+            mac = await asyncio.to_thread(mac_from_arp, device.config["ip"]) if not device.meta.get("model") else None
+            c = _new_client(device, pairing=pairing, mac_verified=bool(mac) and normalize_mac(mac) == normalize_mac(device.config.get("mac")))
             connected = False
             try:
                 await c.connect()
-                if not _connected(c):
+                if not _control_connected(c):
                     raise ConnectionError("The TV control connection isn't ready.")
                 connected = True
             finally:
@@ -157,6 +241,10 @@ class LGTVAdapter(DeviceAdapter):
                 pass
 
     async def setup(self, device: Device):
+        async with self._operation(device):
+            await self._setup(device)
+
+    async def _setup(self, device):
         ip = device.config["ip"]
         if not (await port_open(ip, 3000, 2) or await port_open(ip, 3001, 2)):
             raise AdapterError("Can't reach the TV. Turn it on and make sure it's on the same Wi-Fi.")
@@ -184,9 +272,19 @@ class LGTVAdapter(DeviceAdapter):
                                      for k, v in inputs.items()]
 
     async def forget(self, device):
+        self._forgotten.add(device.id)
+        tasks = [task for task in self._operations.get(device.id, ()) if task is not asyncio.current_task()]
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         await self._drop(device)
 
     async def stop(self):
+        self._stopped = True
+        tasks = {task for tasks in self._operations.values() for task in tasks if task is not asyncio.current_task()}
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
         for did in list(self._clients):
             await self._drop(Device(id=did, adapter=self.id, name="TV"))
 
@@ -205,14 +303,21 @@ class LGTVAdapter(DeviceAdapter):
             device.config["mac"] = mac
 
     async def refresh(self, device: Device) -> dict:
-        if device.id in self._waking:
-            return dict(device.state)  # polling must not tear down the pending paired connection
-        ip = device.config["ip"]
-        if not (await port_open(ip, 3000, 1.5) or await port_open(ip, 3001, 1.5)):
-            await self._drop(device)
-            return {"on": False}
-        c = await self._client(device)
-        await self._learn_mac(device, c)
+        async with self._operation(device):
+            try:
+                c, power = await self._connection(device)
+                await self._learn_mac(device, c)
+            except PairingRequired:
+                raise
+            except AdapterError as error:
+                last = device.state.get("last_known") if device.state.get("stale") else {
+                    k: device.state[k] for k in ("on", "volume", "muted", "app", "input") if device.state.get(k) is not None}
+                return {"online": False, "on": None, "stale": True, "last_known": last or None,
+                        "remote_ready": False, "wake_available": bool(device.config.get("mac")),
+                        "error": str(error)}
+            return self._state(device, c, power)
+
+    def _state(self, device, c, power):
         for cap in CAPS:                    # TVs added before a feature existed get it too (e.g. the pointer)
             if cap not in device.caps:
                 device.caps.append(cap)
@@ -221,16 +326,122 @@ class LGTVAdapter(DeviceAdapter):
         app = _tv(c, "current_app_id")
         # an input (HDMI 1 …) shows up as the "current app" with the input's appId
         current_input = next((i["id"] for i in device.meta.get("inputs", []) if i.get("app_id") and i["app_id"] == app), None)
-        return {"on": bool(_tv(c, "is_on", True)), "volume": _tv(c, "volume"),
+        return {"online": True, "on": _reported_power(power), "stale": False, "last_known": None, "remote_ready": _control_connected(c),
+                "wake_available": bool(device.config.get("mac")), "volume": _tv(c, "volume"),
                 "muted": bool(_tv(c, "muted", False)), "app": None if current_input else app, "input": current_input}
 
+    async def _connection(self, device):
+        from aiohttp import ClientError
+        from aiowebostv.exceptions import WebOsTvError
+        pairing_error = None
+        try:
+            async with asyncio.timeout(4):
+                c = await self._client(device)
+                power = await c.get_power_state()
+                if not isinstance(power, dict) or not power.get("state"):
+                    raise ConnectionError("Power status not reported")
+                return c, power
+        except PairingRequired as error:
+            pairing_error = error
+        except (OSError, asyncio.TimeoutError, ClientError, WebOsTvError, AdapterError):
+            pass
+        await self._drop(device)
+        recovered = await self._rediscover(device)
+        if recovered:
+            return recovered
+        if pairing_error is not None:
+            raise pairing_error
+        raise AdapterError("TV connection unavailable; its power is unknown. Automatic address recovery could not verify it. "
+                           "Check the TV's network connection.")
+
+    async def _rediscover(self, device):
+        from dataclasses import replace
+        from aiohttp import ClientError
+        from aiowebostv.exceptions import WebOsTvError
+        identity = _saved_uuid(device.config)
+        if not identity or not device.config.get("client_key") or time.monotonic() < self._recover_after.get(device.id, 0):
+            return None
+        self._recover_after[device.id] = time.monotonic() + RECOVERY_INTERVAL
+        original = dict(device.config)
+        client = None
+        try:
+            hits = await ssdp_search(identity, timeout=2)
+            local = set(local_subnet_hosts())
+            matches = {}
+            for hit in hits:
+                if hit.get("usn", "").split("::", 1)[0].lower() != identity:
+                    continue
+                address = hit.get("ip", "")
+                try:
+                    ip = ipaddress.ip_address(address)
+                    location = urlsplit(hit.get("location", ""))
+                    if (ip.version != 4 or not ip.is_private or ip.is_loopback or ip.is_link_local
+                            or address not in local or location.scheme != "http" or location.hostname != address
+                            or location.username or location.password or location.fragment):
+                        continue
+                    if location.port is not None and not 1 <= location.port <= 65535:
+                        continue
+                except ValueError:
+                    continue
+                matches.setdefault(address, hit["location"])
+            if len(matches) != 1:
+                return None
+            address, url = next(iter(matches.items()))
+            document = await http("GET", url, timeout=2)
+            if not isinstance(document, str) or len(document) > 65536 or "<!DOCTYPE" in document.upper():
+                return None
+            root = ET.fromstring(document)
+            ns = {"u": "urn:schemas-upnp-org:device-1-0"}
+            udn = root.findtext(".//u:device/u:UDN", namespaces=ns) or ""
+            if udn.lower() != identity:
+                return None
+            mac = await asyncio.to_thread(mac_from_arp, address)
+            saved_mac = normalize_mac(original.get("mac"))
+            if mac and saved_mac and normalize_mac(mac) != saved_mac:
+                return None
+            mac_verified = bool(mac and saved_mac and normalize_mac(mac) == saved_mac)
+            if not device.meta.get("model") and not mac_verified:
+                return None
+            candidate = replace(device, config={**original, "ip": address})
+            client = _new_client(candidate, mac_verified=mac_verified)
+            async with asyncio.timeout(7):
+                await client.connect()
+                if not _control_connected(client) or client.client_key != original["client_key"]:
+                    return None
+                reported_mac = mac_from_connection_info(getattr(client.tv_info, "connection", None), address)
+                if saved_mac and normalize_mac(reported_mac) != saved_mac:
+                    return None
+                power = await client.get_power_state()
+                if not isinstance(power, dict) or not power.get("state"):
+                    return None
+            if device.config != original or self._stopped or device.id in self._forgotten:
+                return None
+            device.config["ip"] = address
+            self._clients[device.id] = client
+            client = None
+            log.info("%s: verified paired TV connection recovered", device.name)
+            return self._clients[device.id], power
+        except PairingRequired:
+            raise
+        except (OSError, asyncio.TimeoutError, ClientError, WebOsTvError, AdapterError, ET.ParseError):
+            log.warning("%s: automatic address verification failed; saved identity unchanged", device.name)
+            return None
+        finally:
+            if client is not None:
+                await client.disconnect()
+
     async def command(self, device: Device, action: str, value=None):
+        async with self._operation(device):
+            result = await self._command(device, action, value)
+            return {"online": True, "stale": False, "last_known": None, "error": None,
+                    "remote_ready": not (action == Action.POWER and value is False), **result}
+
+    async def _command(self, device: Device, action: str, value=None):
         if action == Action.POWER and value:
             return await self._wake(device)
-        try:
-            c = await self._client(device)
-        except (OSError, asyncio.TimeoutError):
-            raise AdapterError("The TV is off or not reachable.")
+        from aiohttp import ClientError
+        from aiowebostv.exceptions import WebOsTvError
+        c, _ = await self._connection(device)
         try:
             if action == Action.POWER:
                 await c.power_off()
@@ -267,15 +478,16 @@ class LGTVAdapter(DeviceAdapter):
                 await pointer(c, value)
             else:
                 raise AdapterError("Not supported")
-        except (ConnectionError, OSError):
+        except (ConnectionError, OSError, asyncio.TimeoutError, ClientError, WebOsTvError):
             await self._drop(device)
-            raise
+            raise AdapterError("The TV connection was interrupted. Delivery is uncertain, so the action was not repeated. "
+                               "Reconnect, then try the action again.") from None
         return {}
 
     async def _ready(self, device: Device):
         c = await self._client(device)
         power = await c.get_power_state()
-        if power.get("state") != "Active":
+        if _reported_power(power) is not True:
             return None
         socket = getattr(c, "input_connection", None)
         return c if socket is not None and not socket.closed else None
@@ -284,7 +496,7 @@ class LGTVAdapter(DeviceAdapter):
         from aiohttp import ClientConnectionError
         from aiowebostv.exceptions import WebOsTvCommandError, WebOsTvCommandTimeoutError, WebOsTvPairError
 
-        if device.state.get("on") is True:
+        if device.state.get("on") is True and not device.state.get("stale"):
             return {"on": True}
         if not device.config.get("client_key"):
             raise PairingRequired("Pair the TV while it is on before waking it from HomePanel.")
@@ -297,6 +509,11 @@ class LGTVAdapter(DeviceAdapter):
                     return {"on": True}
             except transient:
                 await self._drop(device)
+            # Recovery is read-only. If the same TV is already on at a new address,
+            # neither a wake packet nor Home should be sent.
+            recovered = await self._rediscover(device)
+            if recovered and self._state(device, *recovered)["on"] is True:
+                return {"on": True}
             ip = device.config["ip"]
             mac = device.config.get("mac") or mac_from_arp(ip)
             if not mac:

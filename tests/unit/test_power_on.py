@@ -51,7 +51,7 @@ class LGWakeTests(unittest.IsolatedAsyncioTestCase):
                              state={"on": False}, power_on_screen="home")
         self.client = SimpleNamespace(get_power_state=AsyncMock(side_effect=[
             {"state": "Suspend"}, {"state": "Active"}]), input_connection=SimpleNamespace(closed=False),
-            button=AsyncMock(), disconnect=AsyncMock(), is_connected=lambda: True)
+            connection=SimpleNamespace(closed=False), button=AsyncMock(), disconnect=AsyncMock(), is_connected=lambda: True)
         self.adapter._client = AsyncMock(return_value=self.client)
         self.wol = patch.object(lg_tv, "wake_on_lan", AsyncMock())
         self.wake = self.wol.start()
@@ -64,7 +64,8 @@ class LGWakeTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_home_is_sent_once_only_after_authenticated_active_input_ready(self):
         result = await self.adapter.command(self.device, Action.POWER, True)
-        self.assertEqual(result, {"on": True})
+        self.assertTrue(result["on"])
+        self.assertFalse(result["stale"])
         self.wake.assert_awaited_once()
         self.client.button.assert_awaited_once_with("HOME")
         self.assertEqual(self.client.get_power_state.await_count, 2)
@@ -135,7 +136,7 @@ class LGWakeTests(unittest.IsolatedAsyncioTestCase):
             entered.set()
             await asyncio.Event().wait()
         client = SimpleNamespace(connect=connect, disconnect=AsyncMock())
-        with patch("aiowebostv.WebOsClient", return_value=client):
+        with patch.object(lg_tv, "_new_client", return_value=client):
             task = asyncio.create_task(self.adapter._client(self.device))
             await entered.wait()
             task.cancel()

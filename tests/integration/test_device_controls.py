@@ -351,6 +351,39 @@ class DevicePanelTests(unittest.TestCase):
         page.wait_for_selector('#sheet [data-power][aria-checked="true"]:not([disabled])')
         self.assertEqual(self.commands, [])
 
+    def test_stale_power_is_unavailable_but_an_explicit_wake_remains_possible(self):
+        page=self.page
+        page.evaluate("""async()=>{
+          const {store,upsertDevice,setView}=await import('/js/store.js'),d=store.devices.get('lr-tv');
+          setView('rooms');
+          upsertDevice({...d,state:{online:false,on:null,stale:true,last_known:{on:true,volume:22},
+            wake_available:true,remote_ready:false,error:'TV connection unavailable; its power is unknown.'}});
+        }""")
+        self.assertEqual(page.locator('.tile[data-id="lr-tv"] .tile-status').first.inner_text(),"Unavailable")
+        self.open("lr-tv")
+        self.assertIn("Last reported on; current power is unknown",page.locator("#sheet").inner_text())
+        self.assertEqual(page.locator("#sheet [data-key],#sheet [data-power]").count(),0)
+        wake=page.locator("#sheet [data-wake]")
+        self.assertTrue(wake.is_enabled())
+        self.assertGreaterEqual(wake.bounding_box()["height"],48)
+        pending=[]
+        page.route("**/devices/lr-tv/command",lambda route:pending.append(route))
+        wake.click()
+        page.wait_for_selector("#sheet[aria-busy=true]")
+        self.assertEqual(self.commands,[{"action":"power","value":True}])
+        wake.evaluate("e=>e.click()")
+        self.assertEqual(len(self.commands),1)
+        pending.pop().fulfill(status=400,json={"error":"The TV did not become ready."})
+        page.wait_for_selector("text=The TV did not become ready.")
+        self.assertIn("Unavailable",page.locator("#sheet .panel-title").inner_text())
+        page.evaluate("""async()=>{
+          const {store,upsertDevice}=await import('/js/store.js'),d=store.devices.get('lr-tv');
+          upsertDevice({...d,state:{online:true,on:true,remote_ready:true,stale:false}});
+        }""")
+        page.wait_for_selector("#sheet [data-key]")
+        self.assertEqual(page.locator("#sheet [data-wake]").count(),0)
+        self.assertEqual(page.locator(".tile[data-id='lr-tv'] .tile-status").first.inner_text(),"On")
+
     def test_music_sensitivity_and_remote_holds_cancel_without_commands(self):
         page = self.page
         self.open("lr-strip")

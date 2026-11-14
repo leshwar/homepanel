@@ -224,6 +224,8 @@ async def mw_timeout_retry(ctx: CommandContext, call_next):
     last: Exception | None = None
     # A late pointer move is worse than a lost one, so those get one quick try.
     attempts, limit = (1, 3.0) if ctx.action in Action.QUIET else (2, COMMAND_TIMEOUT)
+    if not ctx.adapter.retry_commands:
+        attempts = 1
     if ctx.action == Action.POWER and ctx.value is True and ctx.adapter.wake_timeout is not None:
         attempts, limit = 1, min(60.0, ctx.adapter.wake_timeout)
     for _attempt in range(attempts):
@@ -651,9 +653,11 @@ class HomeService:
             raise AdapterError(f"{d.name} needs pairing first. Open it in Settings and choose Pair.")
         ctx = CommandContext(d, adapter, action, value)
         config_before, shape_before = dict(d.config), (list(d.caps), dict(d.meta))
-        changed = await self._run_pipeline(ctx) or {}
-        if d.config != config_before or (list(d.caps), dict(d.meta)) != shape_before:
-            self.store.save()              # e.g. a light's list of scenes was read again
+        try:
+            changed = await self._run_pipeline(ctx) or {}
+        finally:
+            if self.store.devices.get(d.id) is d and (d.config != config_before or (list(d.caps), dict(d.meta)) != shape_before):
+                self.store.save()          # verified address/metadata may be learned before a later action fails
         self._failures[d.id] = 0
         if action in Action.QUIET:          # nothing changed; don't flood the live events
             return self.public_device(d)
@@ -722,7 +726,7 @@ class HomeService:
         # for its own fresh read), so its result stays.
         overtaken = lambda: self._commands_done.get(d.id, 0) != done   # noqa: E731
         try:
-            state = await self._with_adapter_backoff(d.adapter, lambda: adapter.refresh(d), REFRESH_TIMEOUT)
+            state = await self._with_adapter_backoff(d.adapter, lambda: adapter.refresh(d), min(30.0, adapter.refresh_timeout))
             self._failures[d.id] = 0
             if not overtaken():
                 d.state = {"online": True, **(state or {})}

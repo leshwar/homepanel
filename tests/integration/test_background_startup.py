@@ -41,7 +41,8 @@ class LGWakeThroughService(unittest.IsolatedAsyncioTestCase):
         async def launch_app(value): self.calls.append(("app", value))
         async def power_off(): self.calls.append("off")
         self.client = SimpleNamespace(button=home, set_input=set_input, launch_app=launch_app, power_off=power_off,
-                                      disconnect=AsyncMock(), is_connected=lambda: True)
+                                      disconnect=AsyncMock(), is_connected=lambda: True,
+                                      get_power_state=AsyncMock(return_value={"state":"Active"}))
         self.adapter._client = AsyncMock(return_value=self.client)
         async def ready(_):
             if not self.booting.is_set():

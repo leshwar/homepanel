@@ -228,7 +228,39 @@ because it can affect soundbar ARC/eARC, audio and linked power behavior.
 Sources: [LG startup screen guidance](https://www.lg.com/us/support/help-library/how-to-set-the-startup-screen-on-your-lg-tv--20155412183664),
 [LG default input guidance](https://www.lg.com/us/support/help-library/lg-tv-how-to-set-the-default-input--20153711388714).
 Paired readiness and the single Home input command are implemented against the
-installed `aiowebostv` 1.0.0 client's active-state and input-socket API.
+`aiowebostv` 1.0.0 client's active-state and input-socket API. Version 1.0 or newer
+is required for the pre-registration identity guard.
+
+### TV is on, but the panel cannot connect
+
+A router can assign a different IP address when its DHCP lease changes, the TV
+reconnects, or its network interface changes. An address change alone does not prove
+which router event caused it. HomePanel now treats an unreachable address as
+**Unavailable**, with current power unknown, rather than reporting **Off**.
+The last reported power is labeled as stale. A verified standby/power-off report
+still appears as Off.
+
+For an already paired TV with a saved SSDP UUID, the adapter checks that exact
+identity at most once per minute after connection failure. It accepts only one
+matching candidate in the panel's local IPv4 /24, validates its non-redirected local
+description, checks the saved model before sending the existing key (or an already
+verified MAC when no model is saved), and corroborates the TV's reported MAC and
+authenticated control/input sockets before saving the new address. Device identity,
+pairing and Home startup preferences stay intact. No polling or rediscovery sends
+wake, Home, input or media commands.
+
+Unknown/ambiguous identities, a different model or MAC, blocked multicast, and
+rejected pairing leave the saved address unchanged and show a connection problem.
+Use **Try again** to recheck the connection; **Send power-on request** remains
+available when a known MAC supports waking the TV, even while its status is unknown.
+Closed input sockets reconnect before the next deliberate command. A command with
+an uncertain delivery result is not automatically replayed.
+
+For network-level prevention, configure a **DHCP reservation** in your router for
+the TV's actual active-interface MAC (Wi-Fi and Ethernet can differ). This is not
+changed automatically. Reservation setup is router-specific; do not choose an
+arbitrary static address that could collide with another device. Automatic recovery
+is not a static-IP guarantee and cannot bypass guest-network/multicast isolation.
 
 ## LG sound bars
 

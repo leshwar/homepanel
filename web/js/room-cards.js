@@ -18,7 +18,7 @@ export function cancelCardGestures() {
 export function cardStatus(d) {
   const s = d.state || {};
   if (s.needs_pairing) return "Needs pairing";
-  if (s.online !== true) return s.online === false ? "Offline" : "Connecting...";
+  if (s.online !== true) return s.online === false ? s.stale ? "Unavailable" : "Offline" : "Connecting...";
   if (has(d, "clean")) {
     const status = vacuumStatus(s);
     return needsAttention(d) && status.phase !== "attention" ? "Maintenance due" : status.label;

@@ -92,7 +92,7 @@ export function vacuumText(s) {
 export function statusText(d, apps = []) {
   const s = d.state || {};
   if (s.needs_pairing) return "Needs pairing";
-  if (s.online === false) return s.error ? "Offline" : "Offline";
+  if (s.online === false) return s.stale ? "Unavailable" : "Offline";
   if (s.online == null && s.on == null && s.activity == null) return "Connecting…";
   if (d.kind === "vacuum") return vacuumText(s);
   if (!s.on) return "Off";

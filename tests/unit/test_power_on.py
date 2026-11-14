@@ -111,13 +111,30 @@ class LGWakeTests(unittest.IsolatedAsyncioTestCase):
             await self.adapter.command(self.device, Action.POWER, True)
         self.device.config["client_key"] = "test-key"
         self.adapter._clients[self.device.id] = self.client
+        ready_started = asyncio.Event()
+        async def wait_for_ready(_):
+            ready_started.set()
+            await asyncio.Event().wait()
+        self.adapter._ready = wait_for_ready
         pending = asyncio.create_task(self.adapter.command(self.device, Action.POWER, True))
-        await asyncio.sleep(.005)
+        await ready_started.wait()
         pending.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await pending
         self.client.button.assert_not_awaited()
         self.client.disconnect.assert_awaited()
+        self.assertNotIn(self.device.id, self.adapter._waking)
+
+    async def test_cancel_at_a_completed_readiness_check_does_not_continue_waking(self):
+        async def completed_ready(_):
+            pending.cancel()
+            return None
+        self.adapter._ready = completed_ready
+        pending = asyncio.create_task(self.adapter.command(self.device, Action.POWER, True))
+        with self.assertRaises(asyncio.CancelledError):
+            await pending
+        self.wake.assert_not_awaited()
+        self.client.button.assert_not_awaited()
         self.assertNotIn(self.device.id, self.adapter._waking)
 
     async def test_input_socket_must_be_ready_even_when_network_and_power_are_active(self):

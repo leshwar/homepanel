@@ -504,9 +504,15 @@ class LGTVAdapter(DeviceAdapter):
         self._waking.add(device.id)
         try:
             # A stale snapshot must not turn an already-on TV away from its input.
+            # Keep deadlines in this task: Python 3.11 wait_for can lose a
+            # cancellation racing with an already-completed readiness check.
             try:
-                if await asyncio.wait_for(self._ready(device), 2):
-                    return {"on": True}
+                async with asyncio.timeout(2):
+                    ready = await self._ready(device)
+                    if asyncio.current_task().cancelling():
+                        raise asyncio.CancelledError
+                    if ready:
+                        return {"on": True}
             except transient:
                 await self._drop(device)
             # Recovery is read-only. If the same TV is already on at a new address,
@@ -525,7 +531,10 @@ class LGTVAdapter(DeviceAdapter):
                 async with asyncio.timeout(WAKE_READY_TIMEOUT):
                     while True:
                         try:
-                            c = await asyncio.wait_for(self._ready(device), 4)
+                            async with asyncio.timeout(4):
+                                c = await self._ready(device)
+                            if asyncio.current_task().cancelling():
+                                raise asyncio.CancelledError
                             if c is not None:
                                 break
                         except transient:
@@ -537,7 +546,8 @@ class LGTVAdapter(DeviceAdapter):
             if device.power_on_screen == "home":
                 # Never retry this write: a lost response must not send Home twice.
                 try:
-                    await asyncio.wait_for(c.button("HOME"), 3)
+                    async with asyncio.timeout(3):
+                        await c.button("HOME")
                 except (*transient, WebOsTvCommandError):
                     raise AdapterError("The TV woke, but Home could not be opened. Use the Home button or try the TV remote.") from None
             return {"on": True}

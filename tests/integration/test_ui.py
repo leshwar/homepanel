@@ -958,7 +958,9 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector('#sheet [data-clean-mode="mop"][aria-pressed="true"]')
         self.page.click('#sheet [data-clean-mode="vacuum"]')
         self.page.wait_for_selector('#sheet [data-clean-mode="vacuum"][aria-pressed="true"]')
-        heights = [self.page.locator(f"#sheet {sel}").bounding_box()["height"] for sel in ('[data-suction="max"]', '[data-clean-mode="mop"]')]
+        heights = self.page.locator("#sheet").evaluate(
+            "(sheet, selectors) => selectors.map(s => sheet.querySelector(s).getBoundingClientRect().height)",
+            ['[data-suction="max"]', '[data-clean-mode="mop"]'])
         self.page.click('#sheet [data-tab="station"]')
         self.page.click('#sheet [data-station="empty_dustbin"]')
         self.page.wait_for_selector("text=Empty dustbin: sent to the station")
@@ -972,7 +974,9 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector("#sheet .vac-main >> text=Clean 1 room")
         self.page.click("#sheet [data-rooms-clear]")
         self.page.wait_for_selector("#sheet .vac-main >> text=Start cleaning")
-        heights += [self.page.locator(f"#sheet {sel}").bounding_box()["height"] for sel in (".vac-main", "[data-locate]", '[data-room-pick="2"]')]
+        heights += self.page.locator("#sheet").evaluate(
+            "(sheet, selectors) => selectors.map(s => sheet.querySelector(s).getBoundingClientRect().height)",
+            [".vac-main", "[data-locate]", '[data-room-pick="2"]'])
         self.assertTrue(all(h >= 48 for h in heights), heights)
         no_overflow = self.page.evaluate("document.querySelector('#sheet').scrollWidth <= 393")
         self.assertTrue(no_overflow)

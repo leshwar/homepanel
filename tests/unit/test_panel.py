@@ -147,7 +147,7 @@ class PanelTests(unittest.TestCase):
 
     def test_tv_stage_and_tabs_follow_capabilities(self):
         self.run_js("remote.js", """
-          const {remotePanel} = await import(process.argv[1]);
+          const {remotePanel, glideDirection} = await import(process.argv[1]);
           const tv = (caps, state = {}, meta = {}) => ({id:'t', name:'TV', kind:'tv', caps, meta, state:{online:true, on:true, ...state}});
           const full = ['power','volume','mute','channel','remote','media','apps','inputs','sound_mode'];
           const meta = {apps:[{id:'z', name:'Zebra'}, {id:'n', name:'Netflix'}, {id:'y', name:'YouTube'}], inputs:[{id:'hdmi1', name:'HDMI 1'}],
@@ -155,8 +155,13 @@ class PanelTests(unittest.TestCase):
           let p = remotePanel(tv(full, {volume:18, muted:false, app:'n'}, meta));
           assert.match(p.stage, /data-layout="dpad"/);
           for (const hook of ['data-act="volume_up"', 'data-act="volume_down"', 'data-act="channel_up"', 'data-key="OK"', 'data-key="BACK"',
-            'data-key="HOME"', 'data-playpause', 'data-mute']) assert.ok(p.stage.includes(hook), hook);
+            'data-key="HOME"', 'data-key="REWIND"', 'data-key="FORWARD"', 'data-playpause', 'data-mute',
+            'data-glide="pad"', 'data-glide="volume"', 'data-glide="channel"']) assert.ok(p.stage.includes(hook), hook);
           assert.match(p.stage, /<b>18<\\/b>Vol/);
+          assert.match(p.stage, /data-glide="volume"[^>]*style="--level:18%"/);              // the rail fills to the level
+          assert.doesNotMatch(remotePanel(tv(full, {}, meta)).stage, /--level/);                // level not reported: no fill
+          assert.match(remotePanel(tv(full, {volume:140}, meta)).stage, /--level:100%/);
+          assert.match(p.stage, />Arrows</); assert.match(p.stage, />Numbers</);
           assert.match(p.stage, /data-mute aria-label="Mute"\\s+aria-pressed="false"/);
           assert.deepEqual(p.tabs.map(t => t.id), ['apps', 'inputs', 'sound', 'keys']);
           assert.equal(p.prefer, 'apps');
@@ -164,6 +169,7 @@ class PanelTests(unittest.TestCase):
           assert.ok(apps.indexOf('YouTube') < apps.indexOf('Netflix') && apps.indexOf('Netflix') < apps.indexOf('Zebra'));
           assert.match(apps, /data-app="n" aria-pressed="true"/);
           assert.match(p.tabs[3].html, /data-key="MENU"/); assert.match(p.tabs[3].html, /data-key="EXIT"/);
+          assert.doesNotMatch(p.tabs[3].html, /REWIND|FORWARD/);                               // those sit under the pad now
           assert.equal(remotePanel(tv(full, {input:'hdmi1'}, meta)).prefer, 'inputs');
           // Off: one big power button, no remote to press by mistake, no tabs.
           p = remotePanel(tv(full, {on:false}, meta));
@@ -175,6 +181,15 @@ class PanelTests(unittest.TestCase):
           assert.doesNotMatch(remotePanel(tv(['power','volume','mute'], {})).stage, /data-mute/);     // mute not reported: no blind toggle
           assert.match(remotePanel(tv(['power','volume','mute'], {muted:true})).stage, /aria-label="Unmute"\\s+aria-pressed="true"/);
           assert.equal(count(remotePanel(tv(['power','remote','pointer'])).stage, /data-mode="/g), 3);
+          assert.match(remotePanel(tv(['power','remote','pointer'])).stage, />Pointer</);
+          // Sliding: a stretch of travel is one step, in the direction the finger mostly went.
+          const pad = {up:1, down:1, left:1, right:1}, rail = {up:1, down:1};
+          assert.equal(glideDirection(30, 5, pad, 24), 'right'); assert.equal(glideDirection(-30, 5, pad, 24), 'left');
+          assert.equal(glideDirection(4, -40, pad, 24), 'up');   assert.equal(glideDirection(4, 40, pad, 24), 'down');
+          assert.equal(glideDirection(20, 5, pad, 24), null);                                    // not far enough yet
+          assert.equal(glideDirection(80, -30, rail, 24), 'up');                                 // a rail only listens along its length
+          assert.equal(glideDirection(80, -10, rail, 24), null);
+          assert.equal(glideDirection(0, 30, {up:1}, 24), null);                                 // a way this surface doesn't step
         """)
 
     def test_vacuum_stage_and_tabs(self):

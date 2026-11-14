@@ -1,9 +1,16 @@
-// TV (and richer speaker) remote for the device panel: a pad in the middle that switches
-// between a D-pad, a touchpad for TVs with an on-screen pointer, and a number pad, with
-// volume and channel rockers either side and round keys below. Apps, inputs, sound modes
-// and the rarer keys are tabs beside it.
+// TV (and richer speaker) remote for the device panel, built for eyes on the TV: the
+// surfaces you slide on are recessed, the keys you press are raised.
 //
-// Everything is drawn from the device's capabilities, so it works for any brand.
+//   pad     swipe to move (keep sliding to keep moving), tap to select; the arrows at its
+//           edges and OK in the middle are real buttons too. It can switch to a pointer
+//           pad for TVs with an on-screen pointer, or a number pad.
+//   rails   volume on the left and channels on the right: tap + / − or slide a thumb
+//           along them, one step per stretch of travel, so a slip can't jump the volume.
+//           A press that starts on + / − stays a button press: dragging off it cancels.
+//   keys    Back, Home, Rewind, Play/pause, Forward, Mute.
+//
+// Apps, inputs, sound modes and the rarer keys are tabs beside it. Everything is drawn
+// from the device's capabilities, so it works for any brand.
 
 import { api } from "./api.js";
 import { esc, icon, storage, toast } from "./util.js";
@@ -16,8 +23,8 @@ const has = (d, c) => d.caps.includes(c);
 
 // ---------- centre modes ----------
 const MODES = [
-  { id: "dpad", label: "Buttons", ic: "dpad", ok: (d) => has(d, "remote") },
-  { id: "touchpad", label: "Touchpad", ic: "touchpad", ok: (d) => has(d, "pointer") },
+  { id: "dpad", label: "Arrows", ic: "dpad", ok: (d) => has(d, "remote") },
+  { id: "touchpad", label: "Pointer", ic: "touchpad", ok: (d) => has(d, "pointer") },
   { id: "numbers", label: "Numbers", text: "123", ok: (d) => has(d, "remote") },
 ];
 const modesFor = (d) => MODES.filter((m) => m.ok(d));
@@ -33,8 +40,8 @@ export function setMode(d, mode) {
 }
 
 // ---------- markup ----------
-// The TV (or richer speaker) panel. Stage: volume on the left, the pad in the middle,
-// channels on the right, then Back / Home / Play / Mute. Tabs: Apps, Inputs, Sound, Keys.
+// The TV (or richer speaker) panel. Stage: volume rail, the pad, channel rail, then
+// Back / Home / Rewind / Play / Forward / Mute. Tabs: Apps, Inputs, Sound, Keys.
 export function remotePanel(d) {
   const s = d.state || {};
   if (has(d, "power") && s.on !== true) {
@@ -64,7 +71,7 @@ export function remotePanel(d) {
 }
 
 const EXTRA_KEYS = [["MENU", "Menu", "menu"], ["SOURCE", "Input menu", "input"], ["INFO", "Info", "info"],
-  ["CHANNEL_LIST", "Channel list", "list"], ["REWIND", "Rewind", "rew"], ["FORWARD", "Forward", "ff"], ["EXIT", "Exit", "exit"]];
+  ["CHANNEL_LIST", "Channel list", "list"], ["EXIT", "Exit", "exit"]];
 
 function padFor(d, mode) {
   if (mode === "touchpad") {
@@ -81,34 +88,41 @@ function padFor(d, mode) {
         <button class="num small" data-key="INFO">Info</button>${n("0")}<button class="num small" data-key="OK">OK</button>
       </div>`;
   }
-  return `<div class="dpad" role="group" aria-label="Navigation">
+  // OK fills the pad (a tap anywhere that isn't an arrow selects); the arrows sit on top.
+  return `<div class="dpad glide" data-glide="pad" role="group" aria-label="Navigation: swipe to move, tap to select">
+      <button class="ok" data-key="OK" aria-label="OK"><b>OK</b></button>
+      <span class="pad-hint" aria-hidden="true">Swipe or tap</span>
       <button class="up" data-key="UP" data-repeat aria-label="Up">${icon("up")}</button>
       <button class="left" data-key="LEFT" data-repeat aria-label="Left">${icon("left")}</button>
-      <button class="ok" data-key="OK">OK</button>
       <button class="right" data-key="RIGHT" data-repeat aria-label="Right">${icon("right")}</button>
       <button class="down" data-key="DOWN" data-repeat aria-label="Down">${icon("down")}</button>
+      <i class="touch-spot" aria-hidden="true"></i>
     </div>`;
 }
 
-const volume = (d, s) => (has(d, "volume") ? `<div class="rocker" role="group" aria-label="Volume">
-    <button data-act="volume_up" data-repeat aria-label="Volume up">${icon("plus")}</button>
-    <span>${Number.isFinite(s.volume) ? `<b>${s.volume}</b>` : ""}Vol</span>
-    <button data-act="volume_down" data-repeat aria-label="Volume down">${icon("minus")}</button></div>` : "");
+// A rail: + / − (or up / down) at its ends, and a finger sliding along it steps the same way.
+// The volume rail fills to the level the TV reports.
+const rail = (kind, label, short, upGlyph, downGlyph, level = null) => `<div class="rocker glide" data-glide="${kind}" role="group" aria-label="${label}"
+    ${level == null ? "" : `style="--level:${Math.max(0, Math.min(100, level))}%"`}>
+    <button data-act="${kind}_up" data-repeat aria-label="${label} up">${icon(upGlyph)}</button>
+    <span>${level == null ? "" : `<b>${level}</b>`}${short}</span>
+    <button data-act="${kind}_down" data-repeat aria-label="${label} down">${icon(downGlyph)}</button>
+    <i class="touch-spot" aria-hidden="true"></i></div>`;
 
-const channel = (d) => (has(d, "channel") ? `<div class="rocker" role="group" aria-label="Channel">
-    <button data-act="channel_up" data-repeat aria-label="Channel up">${icon("up")}</button>
-    <span>Ch</span>
-    <button data-act="channel_down" data-repeat aria-label="Channel down">${icon("down")}</button></div>` : "");
+const volume = (d, s) => (has(d, "volume") ? rail("volume", "Volume", "Vol", "plus", "minus", Number.isFinite(s.volume) ? s.volume : null) : "");
+const channel = (d) => (has(d, "channel") ? rail("channel", "Channel", "Ch", "up", "down") : "");
 
-// Round keys under the pad. Mute lives here, next to the volume it silences.
+// Keys under the pad, in three groups: getting around, what's playing, and Mute.
 function keyRow(d, s) {
   const nav = has(d, "remote"), media = nav || has(d, "media");
-  const key = (attrs, glyph, label, pressed = null) => `<button class="rkey" ${attrs} aria-label="${label}"
-    ${pressed == null ? "" : `aria-pressed="${pressed}"`}>${icon(glyph)}<span>${label}</span></button>`;
+  const key = (attrs, glyph, label, pressed = null, text = label) => `<button class="rkey" ${attrs} aria-label="${label}"
+    ${pressed == null ? "" : `aria-pressed="${pressed}"`}>${icon(glyph)}<span>${text}</span></button>`;
   const keys = [
     nav && key('data-key="BACK"', "back", "Back"),
     nav && key('data-key="HOME"', "home", "Home"),
-    media && key("data-playpause", "playpause", "Play / pause"),
+    media && key('data-key="REWIND"', "rew", "Rewind"),
+    media && key("data-playpause", "playpause", "Play / pause", null, "Play"),
+    media && key('data-key="FORWARD"', "ff", "Forward"),
     has(d, "mute") && typeof s.muted === "boolean" && key("data-mute", s.muted ? "mute" : "vol", s.muted ? "Unmute" : "Mute", s.muted),
   ].filter(Boolean);
   return keys.length ? `<div class="remote-keys">${keys.join("")}</div>` : "";
@@ -129,11 +143,13 @@ const lastPlay = new Map();   // per TV: we can't read play state, so Play/Pause
 export function attachRemote(root, d) {
   const pad = root.querySelector("#touchpad");
   if (pad) attachTouchpad(pad, d);
+  for (const el of root.querySelectorAll("[data-glide]")) attachGlide(el, d, GLIDES[el.dataset.glide]);
 }
 
 // Clicks inside the remote. Returns true when handled.
 export function remoteClick(e, d, send) {
   const t = (sel) => e.target.closest(sel);
+  if (t("[data-glide]") && glide.handled) { glide.handled = false; return true; }  // the slide or tap already sent it
   if (t("[data-repeat]") && repeat.fired) { repeat.fired = false; return true; }   // the hold already sent it
   if (t("[data-mode]")) { setMode(d, t("[data-mode]").dataset.mode); return "render"; }
   if (t("[data-tilt]")) { toggleTilt(d); return true; }
@@ -180,6 +196,88 @@ addEventListener("pointermove", e => {
     stopRepeat();
   }
 });
+
+// ---------- glide: slide a finger to step ----------
+// The pad and the rails work without looking: every stretch of travel sends one step
+// (an arrow, a volume step, a channel), so sliding further moves further and lifting
+// the finger stops. The first step comes sooner than the rest so a short flick counts.
+// Steps are spaced at least GLIDE_GAP ms apart: a fast finger can't flood the TV.
+const GLIDE_GAP = 80;
+const GLIDES = {
+  pad: { first: 24, next: 46, tap: ["key", "OK"], fromKeys: true,      // a swipe may start on an arrow
+    steps: { up: ["key", "UP"], down: ["key", "DOWN"], left: ["key", "LEFT"], right: ["key", "RIGHT"] } },
+  volume: { first: 24, next: 30, steps: { up: ["volume_up"], down: ["volume_down"] } },
+  channel: { first: 30, next: 60, steps: { up: ["channel_up"], down: ["channel_down"] } },
+};
+const glide = { handled: false, timer: 0 };
+
+// Which way a slide of (dx, dy) has gone at least `need` px, among the ways this surface
+// steps ("up", "down", "left", "right"), or null. A rail only listens along its length.
+export function glideDirection(dx, dy, steps, need) {
+  const across = !!(steps.left || steps.right), along = !!(steps.up || steps.down);
+  const horizontal = across && (!along || Math.abs(dx) > Math.abs(dy));
+  const dist = horizontal ? dx : dy;
+  if (Math.abs(dist) < need) return null;
+  const dir = horizontal ? (dist > 0 ? "right" : "left") : (dist > 0 ? "down" : "up");
+  return steps[dir] ? dir : null;
+}
+
+function attachGlide(el, d, spec) {
+  if (!spec) return;
+  const send = (action, value) => api.command(d.id, action, value).catch((err) => toast(err.message, true));
+  const spot = el.querySelector(".touch-spot");
+  let g = null;      // the finger on this surface
+  const show = (e) => {
+    const r = el.getBoundingClientRect();
+    if (spot) spot.style.transform = `translate(${e.clientX - r.left}px, ${e.clientY - r.top}px)`;
+  };
+  const flash = (dir) => {                                     // light the arrow (or OK) that just fired
+    el.dataset.hit = dir;
+    el.classList.remove("hit"); void el.offsetWidth; el.classList.add("hit");
+  };
+  el.addEventListener("pointerdown", (e) => {
+    if (e.button > 0 || g) return;
+    clearTimeout(glide.timer);
+    glide.handled = false;
+    const onKey = !!e.target.closest("[data-repeat]");         // an arrow or + / −: a tap or hold is theirs
+    if (onKey && !spec.fromKeys) return;                       // and on a rail, so is dragging off it (cancels)
+    if (!onKey) { try { el.setPointerCapture(e.pointerId); } catch { /* not a real pointer (tests) */ } }
+    g = { id: e.pointerId, x0: e.clientX, y0: e.clientY, ax: e.clientX, ay: e.clientY, steps: 0, last: 0, onKey };
+    remoteBusy.active = true;
+    el.classList.add("touching");
+    show(e);
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!g || e.pointerId !== g.id) return;
+    show(e);
+    const dir = glideDirection(e.clientX - g.ax, e.clientY - g.ay, spec.steps, g.steps ? spec.next : spec.first);
+    const now = performance.now();
+    if (!dir || now - g.last < GLIDE_GAP) return;              // too soon: keep the travel for the next move
+    Object.assign(g, { ax: e.clientX, ay: e.clientY, last: now, steps: g.steps + 1 });
+    glide.handled = true;
+    tick();
+    send(...spec.steps[dir]);
+    flash(dir);
+  });
+  const end = (e) => {
+    if (!g || e.pointerId !== g.id) return;
+    const still = Math.hypot(e.clientX - g.x0, e.clientY - g.y0) < 12;
+    if (e.type === "pointerup" && spec.tap && !g.steps && !g.onKey && still) {
+      tick();
+      send(...spec.tap);
+      flash("ok");
+    }
+    if (!g.onKey) glide.handled = true;                        // the surface owns its own taps and slides
+    g = null;
+    el.classList.remove("touching");
+    remoteBusy.active = false;
+    glide.timer = setTimeout(() => { glide.handled = false; }, 600);   // no click came: don't swallow a later one
+    setTimeout(() => idle(), 0);                               // catch up on anything that changed meanwhile
+  };
+  el.addEventListener("pointerup", end);
+  el.addEventListener("pointercancel", end);
+  el.addEventListener("lostpointercapture", end);
+}
 
 // ---------- pointer: batched moves ----------
 // One request in flight at a time; moves that arrive meanwhile are added up and sent

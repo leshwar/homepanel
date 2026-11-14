@@ -318,7 +318,7 @@ html[data-bg="ocean"], html[data-bg="aurora"] { --haze: #c3cbe8; }
 html[data-bg="ocean"] .clock-time, html[data-bg="aurora"] .clock-time { text-shadow: 0 2px 24px rgb(0 0 30 / .35); }
 
 /* --- glass surfaces --- */
-.tile, .scene, .btn-alloff, .icon-btn, .rocker, .dpad, .round, .chip, .list, .card, .btn:not(.primary) {
+.tile, .scene, .btn-alloff, .icon-btn, .round, .chip, .list, .card, .btn:not(.primary) {
   background-color: rgb(12 18 40 / var(--glass-alpha));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(150%);
   backdrop-filter: blur(var(--glass-blur)) saturate(150%);
@@ -332,7 +332,6 @@ html[data-bg="ocean"] .clock-time, html[data-bg="aurora"] .clock-time { text-sha
 .tile-icon { background: rgb(255 255 255 / .08); }
 .tile-more:active, .tile-tv-ctl button:active { background: rgb(255 255 255 / .14); }
 .tile-tv-ctl button { background: rgb(255 255 255 / .09); }
-.dpad .ok { background: rgb(255 255 255 / .08); }
 .room:not([aria-selected="true"]) { background: rgb(12 18 40 / var(--glass-alpha));
   -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
 

@@ -37,7 +37,7 @@ web/
     ├── panel.js    the shape every panel shares: header with a switch, stage, tabs
     ├── light.js    light panel: brightness bar, color wheel, white strip
     ├── voice.js    the mic: speech to text in the browser (or a typed box), reply, choices, confirm
-    ├── remote.js   TV panel: D-pad / touchpad / number pad, rockers, keys; Apps, Inputs, Sound, Keys tabs
+    ├── remote.js   TV panel: swipe pad / pointer pad / number pad, slide rails, keys; Apps, Inputs, Sound, Keys tabs
     ├── speaker.js  speaker panel: volume dial, release-to-apply slider, mute; Input and Sound mode tabs
     ├── purifier.js purifier panel: reported air/filter readings; Mode and Fan speed tabs
     ├── device-controls.js safe release-to-apply range gestures shared by the panels
@@ -242,12 +242,18 @@ Per kind:
   Tabs: Color (wheel and presets), White (warm-to-cool strip and presets), and, when the light
   lists them, Scenes (search, grouped Scenes / DIY / Snapshots, Update list), Music (modes and
   sensitivity), Segments (tap parts, then a colour) and Options (`effects.js`).
-- *TVs and richer speakers* (`remote.js`): volume rocker, the pad (buttons, a touchpad for TVs
-  with `pointer`, or numbers), channel rocker, then Back / Home / Play-pause / Mute. Tabs: Apps
-  (well-known ones first), Inputs, Sound, Keys (Menu, Exit and the rarer ones). While the TV
-  is off the stage is one big power button, so no key can be pressed by mistake. The touchpad
-  sends pointer moves batched (one request in flight, ~30 ms apart): drag to move, tap to
-  click, two fingers to scroll. On phones, **Aim** moves the pointer by tilting the phone.
+- *TVs and richer speakers* (`remote.js`): built for eyes on the TV. Recessed surfaces are
+  for sliding, raised keys for pressing. The pad: swipe to move (keep sliding to keep moving),
+  tap to select; the arrows at its edges and OK are real buttons too. It can switch to a
+  pointer pad (TVs with `pointer`) or numbers. Either side, the volume and channel rails:
+  tap + / − or slide a thumb along the middle, one step per stretch of travel; the volume
+  rail fills to the reported level. A press that starts on + / − stays a button press
+  (dragging off it cancels). Below: Back / Home / Rewind / Play-pause / Forward / Mute.
+  Tabs: Apps (well-known ones first), Inputs, Sound, Keys (Menu, Exit and the rarer ones).
+  While the TV is off the stage is one big power button, so no key can be pressed by
+  mistake. Slides are stepped by `glideDirection` and spaced at least 80 ms apart. The
+  pointer pad sends moves batched (one request in flight, ~30 ms apart): drag to move, tap
+  to click, two fingers to scroll. On phones, **Aim** moves the pointer by tilting the phone.
 - *Simple speakers and sound bars* (`speaker.js`): a volume dial with the level in the middle,
   a slider with − and + under it, and Mute. Tabs: Input and Sound mode, as chips; modes the
   speaker lists only by number are shown apart, with their ids.

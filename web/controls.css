@@ -92,10 +92,9 @@ html[data-tiles="light"] .sheet {
 }
 
 /* ---------- keys, chips and segmented controls ---------- */
-.rkey, .rocker, .dpad, .num, .app-btn, .seg, .tilt-btn { background-color: var(--key); border: 1px solid var(--key-edge); box-shadow: var(--raise); }
-.rkey, .num, .app-btn, .tilt-btn, .rocker button, .dpad button, .seg button { transition: transform .12s var(--ease), background-color .15s, box-shadow .15s; }
+.rkey, .num, .app-btn, .seg, .tilt-btn { background-color: var(--key); border: 1px solid var(--key-edge); box-shadow: var(--raise); }
+.rkey, .num, .app-btn, .tilt-btn, .seg button { transition: transform .12s var(--ease), background-color .15s, box-shadow .15s; }
 :is(.rkey, .num, .app-btn, .tilt-btn):active { transform: scale(.94); background-color: var(--key-down); box-shadow: var(--press); }
-.rocker button:active, .dpad button:active { background: var(--key-down); }
 /* A round key with its name under it. */
 .rkey { width: 64px; height: 64px; border-radius: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center;
         gap: 3px; color: var(--paper); flex: none; }
@@ -179,26 +178,55 @@ html[data-tiles="light"] .sheet {
 .swatch-chip[aria-pressed="true"] { background: var(--paper); color: var(--night); border-color: var(--paper); }
 
 /* ---------- TV remote ---------- */
-.remote { --pad: clamp(190px, min(52vw, 32vh), 250px); display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
-.remote-row { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%; }
-.remote-pad { position: relative; flex: 0 1 var(--pad); min-width: 0; height: var(--pad); display: grid; place-items: center; }
-.remote[data-layout="touchpad"] .remote-pad { flex: 1 1 auto; max-width: 420px; }
-.dpad { position: relative; width: 100%; max-width: var(--pad); aspect-ratio: 1; border-radius: 50%;
-        background-image: radial-gradient(circle at 50% 35%, rgb(255 255 255 / .06), transparent 70%); }
-.dpad button { position: absolute; width: 32%; height: 32%; border-radius: 50%; display: grid; place-items: center; }
-.dpad .up { top: 2%; left: 34%; } .dpad .down { bottom: 2%; left: 34%; }
-.dpad .left { left: 2%; top: 34%; } .dpad .right { right: 2%; top: 34%; }
-.dpad .ok { top: 30%; left: 30%; width: 40%; height: 40%; font-size: calc(20px * var(--text-scale)); font-weight: 650;
-            background: var(--control-surface); border: 1px solid var(--key-edge); box-shadow: var(--raise); }
-.dpad .ok:active { transform: scale(.95); box-shadow: var(--press); }
+/* Built for eyes on the TV. Recessed surfaces are for sliding: the pad (swipe to move,
+   tap to select) and the rails (slide for volume or channels). Raised keys are for pressing. */
+.remote { --pad: clamp(200px, min(56vw, 36vh), 280px); display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; }
+.remote-row { display: flex; align-items: stretch; justify-content: center; gap: 10px; width: 100%; }
+.remote-pad { position: relative; flex: 1 1 auto; max-width: 420px; min-width: 0; height: var(--pad); display: grid; place-items: center; }
+.glide { position: relative; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; background: var(--track);
+         box-shadow: inset 0 1px 4px rgb(0 0 0 / .35), inset 0 0 0 1px rgb(255 255 255 / .08); }
+.glide button { position: relative; z-index: 1; display: grid; place-items: center; color: var(--paper);
+                transition: color .15s, background-color .15s, transform .12s var(--ease); }
+.glide .touch-spot { z-index: 0; }
+.glide.touching .touch-spot { opacity: 1; }
+
+.dpad { width: 100%; height: 100%; border-radius: 30px; }
+.dpad > button:not(.ok) { position: absolute; width: 64px; height: 56px; border-radius: 20px; color: var(--haze); }
+.dpad .up { top: 4px; left: calc(50% - 32px); } .dpad .down { bottom: 4px; left: calc(50% - 32px); }
+.dpad .left, .dpad .right { width: 56px; height: 64px; top: calc(50% - 32px); }
+.dpad .left { left: 4px; } .dpad .right { right: 4px; }
+.dpad > button:not(.ok) .i { width: 26px; height: 26px; }
+.dpad > button:not(.ok):active { color: var(--paper); background: var(--key-down); }
+/* OK is the whole surface; the disc in the middle is what it looks like. */
+.dpad .ok { position: absolute; inset: 0; z-index: 0; border-radius: inherit; background: none; }
+.dpad .ok b { width: clamp(76px, 34%, 104px); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
+              font-size: calc(20px * var(--text-scale)); font-weight: 650; background: var(--key); border: 1px solid var(--key-edge);
+              box-shadow: var(--raise); transition: transform .12s var(--ease), box-shadow .15s, background-color .15s; }
+.dpad .ok:active b, .dpad.hit[data-hit="ok"] .ok b { transform: scale(.94); box-shadow: var(--press); background-color: var(--key-down); }
+.pad-hint { position: absolute; left: 16px; top: 13px; z-index: 1; pointer-events: none; color: var(--haze);
+            font-size: max(12px, calc(12px * var(--text-scale))); line-height: 1.2; transition: opacity .2s; }
+.dpad.touching .pad-hint { opacity: .3; }
+/* The arrow (or rail end) a slide just stepped lights up for a moment. */
+.glide.hit[data-hit="up"] :is(.up, [data-act$="_up"]), .glide.hit[data-hit="down"] :is(.down, [data-act$="_down"]),
+.glide.hit[data-hit="left"] .left, .glide.hit[data-hit="right"] .right { animation: glide-hit .32s ease-out; }
+@keyframes glide-hit { 0%, 35% { color: var(--paper); background-color: var(--key-down); transform: scale(1.12); } }
+@media (prefers-reduced-motion: reduce) { .glide.hit button { animation-duration: .01s; } }
+
+/* A rail: + / − at the ends, the reading in the middle, a fill up to the reported level. */
 .rocker { flex: none; width: 60px; height: var(--pad); border-radius: 30px; padding: 4px; display: flex; flex-direction: column; align-items: center;
           justify-content: space-between; gap: 2px; }
-.rocker button { width: 50px; height: 64px; border-radius: 25px; display: grid; place-items: center; }
-.rocker span { display: flex; flex-direction: column; align-items: center; color: var(--haze); font-size: max(11px, calc(12px * var(--text-scale))); line-height: 1.1; }
+.rocker::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: var(--level, 0%); pointer-events: none;
+                  background: linear-gradient(to top, rgb(var(--glow) / .34), rgb(var(--glow) / .16)); transition: height .25s var(--ease); }
+.rocker button { width: 52px; height: 64px; border-radius: 26px; }
+.rocker button:active { background: var(--key-down); }
+.rocker span { position: relative; z-index: 1; pointer-events: none; display: flex; flex-direction: column; align-items: center; color: var(--haze);
+               font-size: max(11px, calc(12px * var(--text-scale))); line-height: 1.1; }
 .rocker span b { color: var(--paper); font-size: calc(18px * var(--readout-scale, 1)); font-weight: 650; font-variant-numeric: tabular-nums; }
-.remote-keys { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; }
-.remote-modes { width: 100%; max-width: 380px; }
+.remote-keys { display: flex; justify-content: center; gap: 6px; width: 100%; max-width: 420px; }
+.remote-keys .rkey { flex: 1 1 0; width: auto; min-width: 48px; max-width: 64px; height: 60px; border-radius: 20px; }
+.remote-modes { width: 100%; max-width: 420px; }
 .remote-modes b { font-weight: 650; }
+.sheet .remote-modes button { padding: 0 6px; gap: 6px; }
 
 .touchpad { position: relative; width: 100%; height: 100%; border-radius: 30px; overflow: hidden; touch-action: none;
             display: grid; place-items: center; cursor: crosshair; background: var(--track);
@@ -209,7 +237,6 @@ html[data-tiles="light"] .sheet {
 .touchpad.touching .touchpad-hint { opacity: .25; }
 .touch-spot { position: absolute; left: -32px; top: -32px; width: 64px; height: 64px; border-radius: 50%; pointer-events: none;
               background: radial-gradient(circle, rgb(var(--glow) / .55), transparent 70%); opacity: 0; transition: opacity .2s; }
-.touchpad.touching .touch-spot { opacity: 1; }
 .touchpad.clicked { animation: pad-click .28s ease-out; }
 @keyframes pad-click { 40% { background-color: rgb(255 255 255 / .16); } }
 .tilt-btn { position: absolute; right: 12px; bottom: 12px; height: 48px; padding: 0 16px 0 12px; border-radius: 24px;

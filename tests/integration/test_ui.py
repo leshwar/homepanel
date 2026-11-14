@@ -861,8 +861,9 @@ class UITests(unittest.TestCase):
         self.assertEqual(self.page.locator('#sheet .panel-head [data-power][role="switch"][aria-checked="true"]').count(), 1)
         self.assertIn("Samsung TV", self.page.locator("#sheet .panel-head h2").inner_text())
         self.assertEqual(self.page.locator("#sheet .remote-keys [data-mute]").count(), 1)   # mute sits with the remote's keys
-        for key in ("UP", "OK", "HOME", "BACK"):
+        for key in ("UP", "OK", "HOME", "BACK", "REWIND", "FORWARD"):
             self.assertEqual(self.page.locator(f'#sheet .remote [data-key="{key}"]').count(), 1, key)
+        self.assertEqual(self.page.locator("#sheet [data-mode]").all_inner_texts(), ["Arrows", "123\nNumbers"])
         self.assertEqual(self.page.locator("#sheet [data-tab]").all_inner_texts(), ["Apps", "Inputs", "Keys"])
         self.assertEqual(self.page.locator("#sheet [data-mode=touchpad]").count(), 0)   # only when the TV has a pointer
         self.page.click('#sheet [data-key="OK"]')
@@ -879,11 +880,12 @@ class UITests(unittest.TestCase):
         self.page.wait_for_function("() => true")
         self.page.wait_for_timeout(300)
         actions = [a for a in sent]
-        self.assertIn(("key", "OK"), actions)
-        self.assertIn(("volume_up", None), actions)
+        self.assertEqual(actions.count(("key", "OK")), 1)            # one tap, one OK
+        self.assertEqual(actions.count(("volume_up", None)), 1)
         self.assertIn(("key", "7"), actions)
         self.assertTrue(any(a == "launch_app" for a, _ in actions))
-        for sel in ("[data-key=UP]", "[data-key=BACK]", "[data-act=volume_up]", "[data-mode=dpad]", "[data-app]", "[data-tab=keys]"):
+        for sel in ("[data-key=UP]", "[data-key=LEFT]", "[data-key=BACK]", "[data-key=REWIND]", "[data-playpause]", "[data-mute]",
+                    "[data-act=volume_up]", "[data-act=channel_down]", "[data-mode=dpad]", "[data-app]", "[data-tab=keys]"):
             box = self.page.locator(f"#sheet {sel}").first.bounding_box()
             self.assertGreaterEqual(min(box["width"], box["height"]), 48, sel)
         self.page.click('#sheet [data-tab="keys"]')                 # the rarer keys are one tap away
@@ -902,6 +904,61 @@ class UITests(unittest.TestCase):
         self.assertTrue(fits)
         width = self.page.evaluate("document.querySelector('#sheet').scrollWidth <= 393")
         self.assertTrue(width)
+
+    def slide(self, x, y, dx, dy, steps=12):
+        """Press at (x, y), slide by (dx, dy) in small moves, lift."""
+        self.page.mouse.move(x, y)
+        self.page.mouse.down()
+        for i in range(1, steps + 1):
+            self.page.mouse.move(x + dx * i / steps, y + dy * i / steps)
+            self.page.wait_for_timeout(40)
+        self.page.mouse.up()
+        self.page.wait_for_timeout(150)
+
+    def test_remote_swipes_step_arrows_and_rails_step_volume(self):
+        sent = self.commands()
+        self.open_tv("lr-tv")
+        self.sheet_settled()
+        pad = self.page.locator("#sheet .dpad").bounding_box()
+        cx, cy = pad["x"] + pad["width"] / 2, pad["y"] + pad["height"] / 2
+        # A swipe moves; sliding further keeps moving; it never selects.
+        self.slide(cx - 60, cy + 30, 150, 10)
+        rights = sent.count(("key", "RIGHT"))
+        self.assertGreaterEqual(rights, 2)
+        self.assertLessEqual(rights, 4)
+        self.slide(cx, cy, 0, -40)                      # a short flick from the middle (on OK) is one step up
+        self.assertEqual(sent.count(("key", "UP")), 1)
+        self.assertNotIn(("key", "OK"), sent)
+        # A tap anywhere that isn't an arrow selects, once.
+        self.page.mouse.click(pad["x"] + 30, pad["y"] + pad["height"] - 30)
+        self.page.wait_for_timeout(150)
+        self.assertEqual(sent.count(("key", "OK")), 1)
+        # A tap on an arrow is that arrow, once; starting a swipe on it is a swipe.
+        self.page.click('#sheet .dpad [data-key="DOWN"]')
+        self.page.wait_for_timeout(150)
+        self.assertEqual(sent.count(("key", "DOWN")), 1)
+        left = self.page.locator('#sheet .dpad [data-key="LEFT"]').bounding_box()
+        self.slide(left["x"] + left["width"] / 2, left["y"] + left["height"] / 2, 60, 0, steps=6)
+        self.assertEqual(sent.count(("key", "LEFT")), 0)
+        self.assertEqual(sent.count(("key", "RIGHT")), rights + 1)
+        # The volume rail: slide a thumb up for a few steps; + is still one step per tap.
+        rail = self.page.locator('#sheet [data-glide="volume"]').bounding_box()
+        self.slide(rail["x"] + rail["width"] / 2, rail["y"] + rail["height"] / 2 + 30, 0, -110)
+        ups = sent.count(("volume_up", None))
+        self.assertGreaterEqual(ups, 2)
+        self.assertLessEqual(ups, 4)
+        self.assertEqual(sent.count(("volume_down", None)), 0)
+        self.page.click('#sheet [data-act="volume_up"]')
+        self.page.wait_for_timeout(150)
+        self.assertEqual(sent.count(("volume_up", None)), ups + 1)
+        minus = self.page.locator('#sheet [data-act="volume_down"]').bounding_box()   # dragging off − cancels, as buttons do
+        self.slide(minus["x"] + minus["width"] / 2, minus["y"] + minus["height"] / 2, 0, -120, steps=6)
+        self.assertEqual(sent.count(("volume_up", None)), ups + 1)
+        self.assertEqual(sent.count(("volume_down", None)), 0)
+        self.assertEqual(sent.count(("key", "OK")), 1)                  # nothing above selected by accident
+        # The rail fills to the level the TV reports.
+        level = self.page.locator('#sheet [data-glide="volume"]').evaluate("el => el.style.getPropertyValue('--level')")
+        self.assertRegex(level, r"^\d+%$")
 
     def test_touchpad_moves_clicks_and_scrolls_the_pointer(self):
         sent = self.commands()

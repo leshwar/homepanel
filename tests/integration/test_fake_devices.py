@@ -120,6 +120,8 @@ class FakeSoundbar:
         self.eq = {"i_curr_eq": 19, "ai_eq_list": [19, 0, 7, 6]}
         self.product = {"s_model_name": "SC9S", "s_dev_mac": "aa:bb:cc:dd:ee:01"}
         self.sets = []
+        self.drop_after_set = False
+        self.stale_power_ack = False
 
     def _cipher(self):
         from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -149,6 +151,8 @@ class FakeSoundbar:
                     continue
                 if req["cmd"] == "set":
                     self.sets.append((req["msg"], req["data"]))
+                    if self.drop_after_set:
+                        return
                     data = dict(req["data"])
                     if "b_powerkey" in data:
                         data = {"b_powerstatus": data["b_powerkey"]}
@@ -159,6 +163,8 @@ class FakeSoundbar:
                 else:
                     # like the real thing, sometimes say something unasked for first
                     writer.write(self.pack({"cmd": "notibyget", "msg": "PLAY_INFO", "data": {"i_stream_type": 0}}))
+                    if self.stale_power_ack and req["msg"] == "SPK_LIST_VIEW_INFO":
+                        writer.write(self.pack({"cmd":"notiforset","msg":req["msg"],"data":{"b_powerstatus":True}}))
                     writer.write(self.pack({"cmd": "notibyget", "msg": req["msg"], "data": view, "result": "ok"}))
                 await writer.drain()
         except (asyncio.IncompleteReadError, ConnectionError):
@@ -229,6 +235,58 @@ class LGSoundbarAdapterTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn({"id": "26", "name": "Device-reported mode 26", "advanced": True}, dev.meta["sound_modes"])
         await self.adapter.command(dev, Action.SET_SOUND_MODE, "26")
         self.assertEqual(self.fake.sets, [("EQ_VIEW_INFO", {"i_curr_eq": 26})])
+
+    async def test_live_socket_standby_missing_status_and_reconnection_are_read_only(self):
+        from app.core.service import HomeService
+        with tempfile.TemporaryDirectory() as folder:
+            svc = HomeService(folder)
+            dev = Device(id="bar", adapter="lg_soundbar", name="Bar", kind=Kind.SPEAKER,
+                         caps=list(self.mod.CAPS), config={"ip": "127.0.0.1", "port": self.port})
+            svc.store.devices[dev.id] = dev
+            svc.adapters = {"lg_soundbar": self.adapter}
+            self.fake.stale_power_ack = True
+            try:
+                for power in (True, False, None, "false", 0):
+                    self.fake.spk["b_powerstatus"] = power
+                    await svc.refresh(dev.id)
+                    self.assertTrue(dev.state["online"])
+                    self.assertIs(dev.state["on"], power if isinstance(power, bool) else None)
+                self.fake.spk.pop("b_powerstatus")
+                await svc.refresh(dev.id)
+                self.assertIsNone(dev.state["on"])
+                self.fake.spk["b_powerstatus"] = True
+                await svc.refresh(dev.id)
+                self.server.close()
+                await self.server.wait_closed()
+                await svc.refresh(dev.id)
+                self.assertEqual((dev.state["online"],dev.state["on"],dev.state["stale"]),(False,None,True))
+                self.assertTrue(dev.state["last_known"]["on"])
+                self.server = await asyncio.start_server(self.fake.handle,"127.0.0.1",self.port)
+                self.fake.spk["b_powerstatus"] = False
+                await svc.refresh(dev.id)
+                self.assertEqual((dev.state["online"],dev.state["on"]),(True,False))
+                self.assertNotIn("error",dev.state)
+                self.assertNotIn("last_known",dev.state)
+                self.assertEqual(self.fake.sets,[])
+            finally:
+                await svc.stop()
+
+    async def test_lost_soundbar_acknowledgement_never_replays_command(self):
+        from app.core.service import HomeService
+        with tempfile.TemporaryDirectory() as folder:
+            svc = HomeService(folder)
+            dev = Device(id="bar", adapter="lg_soundbar", name="Bar", kind=Kind.SPEAKER,
+                         caps=list(self.mod.CAPS), config={"ip": "127.0.0.1", "port": self.port},
+                         state={"online":True,"on":True})
+            svc.store.devices[dev.id] = dev
+            svc.adapters = {"lg_soundbar":self.adapter}
+            self.fake.drop_after_set = True
+            try:
+                with self.assertRaises(AdapterError):
+                    await svc.command(dev.id,Action.POWER,False)
+                self.assertEqual(self.fake.sets,[("SPK_LIST_VIEW_INFO",{"b_powerkey":False})])
+            finally:
+                await svc.stop()
 
 
 class SearchAllOffersNoDuplicateTV(unittest.IsolatedAsyncioTestCase):

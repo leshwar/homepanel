@@ -6,13 +6,12 @@
 // each profile, so everyone gets their own Home page on every screen they use.
 // The server sends the signed-in profile's layout as settings.home_layout.
 //
-// Edit mode (long-press the page, or the pencil): widgets wiggle; hold one and drag
-// to move it, drag its corner (or tap it) to resize, "…" for more, "−" to hide.
+// Edit mode: grips move, corners resize, and Options configures or hides a widget.
 // Cancel puts everything back; Done saves.
 
 import { api } from "./api.js";
 import { setMarkup, updateRoomCounts } from "./render.js";
-import { homeOverview, overviewEnabled, overviewWidgets, refreshAttention, viewChoices } from "./home-overview.js";
+import { notificationsWidget, refreshAttention } from "./notifications.js";
 import { openDevice } from "./sheet.js";
 import { store, devicesIn, roomGroups, OTHER } from "./store.js";
 import { $, esc, icon, roomIfAmbiguous, toast } from "./util.js";
@@ -23,10 +22,10 @@ import { currentWeather, weatherStatus, refreshWeather } from "./sky.js";
 import { weatherBackdrop, watchWeatherEffects } from "./weather-effects.js";
 import { photoTile, watchPhotoTiles } from "./photo-tile.js";
 import { weatherIcon } from "./clockfaces.js";
-import { SIZES, SIZE_NAMES, columnsFor, arrange, remember, place, fits, placementStyle, gridStyle, bindGridEditor, watchGridWidth } from "./grid.js";
+import { sizeChoices, sizeName, grip, columnsFor, arrange, remember, place, fits, placementStyle, gridStyle, bindGridEditor, watchGridWidth } from "./grid.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
-const TYPE_NAMES = { clock: "Clock", zone: "Clock", weather: "Weather", scenes: "Scenes", rooms: "Rooms", photos: "Photos", favourites: "Favourites" };
+const TYPE_NAMES = { clock: "Clock", notifications:"Notifications", zone: "Clock", weather: "Weather", scenes: "Scenes", rooms: "Rooms", photos: "Photos", favourites: "Favourites" };
 export const MAX_FAVOURITES = 8;
 let syncPhotoTiles = () => {};
 
@@ -78,12 +77,14 @@ export function greeting(now = new Date()) {
 
 // ---------- layout ----------
 let draft = null;          // a copy being edited; null when not editing
+let editingProfile = null, saving = false, selected = null, entryLayout = null;
 let renderedLayout = null;
 export const isEditing = () => !!draft;
-const layout = () => draft || store.settings.home_layout || { version: 3, widgets: [] };
+const layout = () => draft || store.settings.home_layout || { version: 4, widgets: [] };
+const items = () => layout().widgets;
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const columns = () => columnsFor($("#home").clientWidth);
-const placed = (w) => ({ ...w, ...arrange(layout().widgets, columns()).get(w.id) });
+const placed = (w) => ({ ...w, ...arrange(items(), columns()).get(w.id) });
 let cancelGesture = () => {};
 let syncWeatherEffects = () => {};
 
@@ -94,7 +95,7 @@ const updateCounts = (el) => updateRoomCounts(el, (r) => devicesIn(r).filter(isO
 function clockWidget(w, now) {
   const [t, ampm] = splitTime(fmt(now));
   return `<button class="w-fill w-clock" data-ambient aria-label="Show the resting clock">
-      <span class="w-greet" data-greet>${esc(greeting(now))}</span>
+      <span class="w-greet widget-heading" data-greet>${esc(greeting(now))}</span>
       <span class="w-time"><span data-time>${esc(t)}</span><small data-ampm>${esc(ampm)}</small></span>
       <span class="w-date" data-date>${esc(now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }))}</span>
     </button>`;
@@ -108,7 +109,7 @@ function zoneWidget(w, now) {
   const label = w.options?.label || zoneName(tz);
   const region = zoneName(tz);
   return `<div class="w-fill w-zone" data-zone="${esc(tz)}">
-      <span class="w-label">${esc(label)}${region !== label ? ` <em>${esc(region)}</em>` : ""}</span>
+      <span class="w-label widget-heading">${esc(label)}${region !== label ? ` <em>${esc(region)}</em>` : ""}</span>
       <span class="w-time small"><span data-time>${esc(t)}</span><small data-ampm>${esc(ampm)}</small></span>
       <span class="w-sub" data-zone-line>${esc(zoneLine(tz, now))}</span>
     </div>`;
@@ -122,7 +123,7 @@ function weatherWidget() {
       ? "Weather is unavailable. Check the connection and try again."
       : "Show the weather here and let the background follow the sky.";
     return `<div class="w-fill w-weather off" data-weather-status="${state}">
-        <span class="w-label">Weather</span>
+        <span class="w-label widget-heading">Weather</span>
         <p role="status">${message}</p>
         ${state === "loading" ? "" : state === "unavailable"
           ? `<button class="btn small" data-retry-weather>Retry weather</button>`
@@ -131,7 +132,7 @@ function weatherWidget() {
   }
   const place = store.settings.place_name || "";
   return `<div class="w-fill w-weather" data-weather-status="ready">${weatherBackdrop(wx)}
-      <span class="w-label">${esc(place || "Weather")}</span>
+      <span class="w-label widget-heading">${esc(place || "Weather")}</span>
       <span class="w-wx">${weatherIcon(wx.condition, wx.is_day)}<b>${esc(wx.temperature)}°</b></span>
       <span class="w-sub">${esc(wx.label)}${wx.high != null ? ` · H ${esc(wx.high)}° L ${esc(wx.low)}°` : ""}</span>
     </div>`;
@@ -143,8 +144,8 @@ function scenesWidget() {
   if (store.devices.size) items.push(`<button class="scene add" data-new-scene>${icon("plus")}<span>New scene</span></button>`);
   // Nothing saved yet: say what a scene is, so the tile isn't a lone button.
   const hint = !store.scenes.length && store.devices.size
-    ? `<p class="w-hint">Set your devices the way you like, save that as a scene, and bring it back with one tap.</p>` : "";
-  return `<div class="w-fill w-scenes"><span class="w-label">Scenes</span><div class="w-scene-list">${items.join("")}</div>${hint}</div>`;
+    ? `<p class="w-hint">Save device settings as a scene.</p>` : "";
+  return `<div class="w-fill w-scenes"><span class="w-label widget-heading">Scenes</span><div class="w-scene-list">${items.join("")}</div>${hint}</div>`;
 }
 
 function roomsWidget() {
@@ -152,7 +153,7 @@ function roomsWidget() {
   const rows = groups.map((r) =>
     `<button class="w-room" data-go-room="${esc(r)}">${roomIcon(r)}<span>${esc(r === OTHER ? "Other" : r)}</span>
       <b class="count" data-room-count="${esc(r)}" hidden></b></button>`);
-  return `<div class="w-fill w-rooms"><span class="w-label">Rooms</span><div class="w-room-list">${
+  return `<div class="w-fill w-rooms"><span class="w-label widget-heading">Rooms</span><div class="w-room-list">${
     rows.join("") || `<p>Add devices and rooms to see them here.</p>`}</div></div>`;
 }
 
@@ -179,14 +180,15 @@ export function favouritesStale() {
 
 function favouritesWidget(w) {
   const list = favouriteDevices(w.options, store.devices.values());
-  const rows = list.map((d) => tileHtml(d, { ctx: "home", size: "1x1", sub: roomIfAmbiguous(d, list), editing: isEditing() }));
-  return `<div class="w-fill w-favs"><span class="w-label">Favourites</span><div class="w-fav-list">${
+  const rows = list.map((d) => tileHtml(d, { ctx: "home", sub: roomIfAmbiguous(d, list) }));
+  return `<div class="w-fill w-favs"><span class="w-label widget-heading">Favourites</span><div class="w-fav-list">${
     rows.join("") || `<p>Add a device to see it here.</p>`}</div></div>`;
 }
 
 function widgetBody(w, now) {
   switch (w.type) {
     case "clock": return clockWidget(w, now);
+    case "notifications": return notificationsWidget();
     case "zone": return zoneWidget(w, now);
     case "weather": return weatherWidget();
     case "scenes": return scenesWidget();
@@ -204,15 +206,13 @@ const widgetName = (w) => {
 
 function chrome(w) {
   const name = esc(widgetName(w));
-  return `<button class="w-badge w-hide" data-hide aria-label="Hide ${name}">${svg("hide")}</button>
-    <button class="w-badge w-menu" data-menu aria-label="${name} options">${svg("dots")}</button>
-    <button class="w-resize" data-resize aria-label="Change size of ${name} (now ${SIZE_NAMES[w.size]})">${svg("resize")}</button>`;
+  return `${grip(name,saving)}<button class="w-resize" data-resize aria-label="Resize ${name} (now ${sizeName(w.size)}); use arrow keys" ${saving ? "disabled" : ""}>${svg("resize")}</button>`;
 }
 
 function widgetHtml(w, i, now) {
   const body = widgetBody(w, now);
   if (body == null) return "";
-  return `<div class="widget layout-item t-${w.type} s-${w.size}" data-wid="${esc(w.id)}"
+  return `<div class="widget layout-item t-${w.type}${Number(w.size.split("x")[1]) <= 3 ? " short-tile" : ""}" data-wid="${esc(w.id)}"
     ${isEditing() ? `tabindex="0" aria-label="Move ${esc(widgetName(w))} with arrow keys"` : ""}
     style="--i:${i};${placementStyle(w)}">${body}${isEditing() ? chrome(w) : ""}</div>`;
 }
@@ -220,8 +220,12 @@ function widgetHtml(w, i, now) {
 export function renderHome({ enter = false } = {}) {
   const el = $("#home");
   if (!el) return;
-  const overview = overviewEnabled() && !isEditing();
-  const key = JSON.stringify([store.me?.id, layout(), columns(), isEditing(), overview]);
+  if (draft && editingProfile !== store.me?.id) {
+    cancelGesture(); draft=null; editingProfile=null; selected=null; closeMenu();
+    delete document.documentElement.dataset.layoutEditing;
+  }
+  if (el.dataset.gridGesture) return;
+  const key = JSON.stringify([store.me?.id, layout(), columns(), isEditing(), saving]);
   if (renderedLayout === key && el.querySelector(".home-grid")) {
     tickHome();
     refreshHomeParts();
@@ -230,13 +234,16 @@ export function renderHome({ enter = false } = {}) {
   }
   renderedLayout = key;
   const now = new Date();
-  const items = overview ? overviewWidgets(layout().widgets) : layout().widgets;
-  const positions = arrange(items, columns());
-  const visible = items.filter((w) => !w.hidden).map((w) => ({ ...w, ...positions.get(w.id) }));
+  const focus = el.contains(document.activeElement) ? document.activeElement : null;
+  const focusId = focus?.closest(".widget")?.dataset.wid;
+  const focusResize = focus?.hasAttribute("data-resize");
+  const focusGrip = focus?.hasAttribute("data-grip");
+  const scroll = window.scrollY;
+  const list = items();
+  const positions = arrange(list, columns());
+  const visible = list.filter((w) => !w.hidden).map((w) => ({ ...w, ...positions.get(w.id) }));
   el.classList.toggle("editing", isEditing());
-  el.innerHTML = `${!isEditing() ? viewChoices("home_view", store.settings.home_view || "overview", [["overview","Overview"],["free","Free layout"]]) : ""}
-    ${overview ? homeOverview(clockWidget(null, now)) : ""}
-    <div class="home-grid layout-grid" style="${gridStyle(items, columns(), isEditing())}">${visible.map((w, i) => widgetHtml(w, i, now)).join("")}</div>${
+  el.innerHTML = `<div class="home-grid layout-grid" style="${gridStyle(list, columns(), isEditing())}">${visible.map((w, i) => widgetHtml(w, i, now)).join("")}</div>${
     !visible.length ? `<div class="empty"><h2>Your Home page is empty</h2><p>Add the clock, weather, scenes or your rooms.</p>
       <button class="btn primary" data-edit-home>${svg("pencil")}Edit Home page</button></div>` : ""}${
     isEditing() ? editBar() : ""}`;
@@ -247,6 +254,15 @@ export function renderHome({ enter = false } = {}) {
   }
   updateCounts(el);
   refreshAttention(el);
+  if (isEditing()) {
+    el.querySelectorAll(".widget > .w-fill").forEach(content=>{content.inert=true;content.setAttribute("aria-disabled","true");});
+    selectWidget(selected);
+    if (focusId) {
+      const box=el.querySelector(`.widget[data-wid="${CSS.escape(focusId)}"]`);
+      (focusResize ? box?.querySelector("[data-resize]") : focusGrip ? box?.querySelector("[data-grip]") : box)?.focus({preventScroll:true});
+    }
+  }
+  window.scrollTo({top:scroll});
   syncWeatherEffects();
   syncPhotoTiles();
   if (enter && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -297,18 +313,33 @@ export function refreshHomeParts(types = ["rooms", "weather", "scenes", "photos"
 // ---------- edit mode ----------
 function editBar() {
   return `<div class="editbar" role="toolbar" aria-label="Edit Home page">
-      <span class="editbar-hint">Hold to move into free space · corner to resize</span>
-      <button class="btn small" data-add-widget>${icon("plus")}Add</button>
-      <button class="btn small" data-edit-cancel>Cancel</button>
-      <button class="btn small primary" data-edit-done>Done</button>
+      <span class="editbar-hint">Drag a grip to move; drag a corner to resize</span>
+      <button class="btn small" data-widget-options ${!selected || saving ? "disabled" : ""}>Options</button>
+      <button class="btn small" data-add-widget ${saving ? "disabled" : ""}>${icon("plus")}Add</button>
+      <button class="btn small" data-edit-cancel ${saving ? "disabled" : ""}>Cancel</button>
+      <button class="btn small primary" data-edit-done ${saving ? "disabled" : ""}>${saving ? "Saving..." : "Done"}</button>
     </div>`;
+}
+
+function selectWidget(id) {
+  const el=$("#home");
+  selected=items().some(w=>w.id===id && !w.hidden) ? id : null;
+  el.querySelectorAll(".widget").forEach(box=>box.classList.toggle("edit-selected",box.dataset.wid===selected));
+  const button=el.querySelector("[data-widget-options]");
+  if (button) {
+    button.disabled=!selected || saving;
+    button.setAttribute("aria-label",selected ? `${widgetName(find(selected))} options` : "Select a widget for options");
+  }
 }
 
 export function startEditing() {
   if (isEditing()) return;
-  draft = clone(store.settings.home_layout || { version: 3, widgets: [] });
-  draft.widgets = draft.widgets.filter((w) => w.type !== "device");   // devices live on the Rooms pages
-  remember(draft.widgets, columns());
+  editingProfile=store.me?.id;
+  selected=null;
+  entryLayout=clone(store.settings.home_layout || {version:4,widgets:[]});
+  draft = clone(entryLayout);
+  remember(items(), columns());
+  document.documentElement.dataset.layoutEditing="home";
   haptic(18);
   renderHome();
 }
@@ -316,20 +347,26 @@ export function startEditing() {
 export function stopEditing() {
   cancelGesture();
   draft = null;
+  editingProfile=null;selected=null;
+  entryLayout=null;
+  delete document.documentElement.dataset.layoutEditing;
   closeMenu();
   renderHome();
 }
 
 async function saveEditing() {
+  if (saving || !draft) return;
   const next = draft;
-  const profile = store.me?.id;
+  const profile = editingProfile;
+  saving=true;renderHome();
   try {
-    const s = await api.saveLayout(next);     // this profile's own Home page
+    const s = await api.saveLayout(next, entryLayout);
     if (draft !== next || store.me?.id !== profile) return;
     store.settings = { ...store.settings, ...s };
     stopEditing();
     toast("Home page saved");
   } catch (e) { toast(e.message, true); }
+  finally { saving=false;renderHome(); }
 }
 
 const find = (id) => draft.widgets.find((w) => w.id === id);
@@ -337,14 +374,8 @@ const find = (id) => draft.widgets.find((w) => w.id === id);
 function setSize(id, size) {
   const w = find(id);
   if (!w) return;
-  const p = arrange(draft.widgets, columns()).get(id);
-  if (!place(draft.widgets, columns(), id, { ...p, size })) return toast("Not enough free space. Move the tile first or choose a smaller size.", true);
-  renderHome();
-}
-
-function move(id, dx, dy) {
-  const p = arrange(draft.widgets, columns()).get(id);
-  if (!place(draft.widgets, columns(), id, { ...p, x: p.x + dx, y: p.y + dy })) return toast("Choose an empty space inside the grid.", true);
+  const p = arrange(items(), columns()).get(id);
+  if (!place(items(), columns(), id, { ...p, size })) return toast("Not enough free space. Move the tile first or choose a smaller size.", true);
   renderHome();
 }
 
@@ -376,22 +407,17 @@ function widgetMenu(id) {
       <label class="chip"><input type="checkbox" data-fav-pick="${esc(id)}" value="${esc(d.id)}" ${chosen.includes(d.id) ? "checked" : ""}>${
         esc(d.name)}${d.room ? ` <small>${esc(d.room)}</small>` : ""}</label>`).join("") || "<p>No devices yet.</p>"}</div>` : "";
   openMenu(`<h3>${esc(widgetName(w))}</h3>
-    <div class="seg" role="radiogroup" aria-label="Size">${SIZES.map((s) =>
-      `<button role="radio" aria-checked="${w.size === s}" data-size-pick="${s}" data-wid="${esc(id)}">${SIZE_NAMES[s]}</button>`).join("")}</div>
+    <div class="seg" role="radiogroup" aria-label="Size">${sizeChoices(w,columns()).map((s) =>
+      `<button role="radio" aria-checked="${w.size === s}" data-size-pick="${s}" data-wid="${esc(id)}">${sizeName(s)}</button>`).join("")}</div>
     ${zones}${favs}
-    <div class="wmenu-row">
-      <button class="btn small" data-move="-1,0" data-wid="${esc(id)}">Left</button>
-      <button class="btn small" data-move="1,0" data-wid="${esc(id)}">Right</button>
-      <button class="btn small" data-move="0,-1" data-wid="${esc(id)}">Up</button>
-      <button class="btn small" data-move="0,1" data-wid="${esc(id)}">Down</button>
-    </div>
+    <p>Arrow keys on the grip move one cell. Arrow keys on the corner change width and height.</p>
     <p>Column ${w.x + 1}, row ${w.y + 1}. Changes apply to this ${columns()}-column layout.</p>
     <button class="btn small danger" data-hide-id="${esc(id)}">${svg("hide")}Hide from Home</button>
     <button class="btn small primary" data-menu-close>Close</button>`, `${widgetName(w)} options`);
 }
 
 function addMenu() {
-  const hidden = draft.widgets.filter((w) => w.hidden);
+  const hidden = items().filter((w) => w.hidden);
   openMenu(`<h3>Add to Home</h3>
     ${hidden.length ? `<p class="group-label">Hidden widgets</p><div class="wmenu-list">${hidden.map((w) =>
       `<button class="chip" data-unhide="${esc(w.id)}">${icon("plus")}${esc(widgetName(w))}</button>`).join("")}</div>` : ""}
@@ -401,20 +427,25 @@ function addMenu() {
       <div class="wmenu-list"><button class="chip" data-add-favourites>${icon("plus")}Favourites</button></div>` : ""}
     ${!draft.widgets.some(w => w.type === "photos") ? `<p class="group-label">Photo library</p>
       <div class="wmenu-list"><button class="chip" data-add-photos>${icon("plus")}Photos</button></div>` : ""}
+    <div class="wmenu-list">${["clock","notifications"].filter(type=>!draft.widgets.some(w=>w.type===type)).map(type=>
+      `<button class="chip" data-add-type="${type}">${icon("plus")}${TYPE_NAMES[type]}</button>`).join("")}</div>
     <button class="btn small primary" data-menu-close>Close</button>`, "Add to Home");
 }
 
 function addWidget(w) {
   const existing = find(w.id);
   if (existing) {
+    const projected=items().find(item=>item.id===w.id);
     for (const cols of [2, 4, 6]) {
-      const others = [...arrange(draft.widgets, cols).values()];
-      if (existing.positions?.[cols] && !fits(existing.positions[cols], others, cols)) delete existing.positions[cols];
+      const others = [...arrange(items(), cols).values()];
+      if (projected.positions?.[cols] && !fits(projected.positions[cols], others, cols)) {
+        const positions={...projected.positions};delete positions[cols];projected.positions=positions;
+      }
     }
     existing.hidden = false;
   }
   else draft.widgets.push(w);
-  remember(draft.widgets, columns());
+  remember(items(), columns());
   closeMenu();
   renderHome();
   $(`#home .widget[data-wid="${CSS.escape(w.id)}"]`)?.scrollIntoView({
@@ -427,20 +458,29 @@ export function setupHome({ goRoom, showAmbient }) {
   const el = $("#home");
   syncWeatherEffects = watchWeatherEffects(el);
   syncPhotoTiles = watchPhotoTiles(el, isEditing);
-  cancelGesture = bindGridEditor(el, { enabled: isEditing, items: () => draft.widgets,
+  cancelGesture = bindGridEditor(el, { enabled: () => isEditing() && !saving, items,
     render: renderHome, error: (message) => toast(message, true) });
   watchGridWidth(el, () => { cancelGesture(); renderHome(); });
+  addEventListener("resize",()=>{cancelGesture();renderHome();});
+  el.addEventListener("focusin",e=>{if(isEditing()) selectWidget(e.target.closest(".widget")?.dataset.wid || selected);});
+  el.addEventListener("pointerdown",e=>{if(isEditing()) selectWidget(e.target.closest(".widget")?.dataset.wid || selected);});
+  el.addEventListener("keydown",e=>{
+    if (isEditing() && !saving && e.target.matches(".widget") && ["Enter"," "].includes(e.key)) {
+      e.preventDefault();selectWidget(e.target.dataset.wid);widgetMenu(selected);
+    }
+  });
 
   el.addEventListener("click", async (e) => {
     const t = e.target;
     if (isEditing()) {
+      if (saving) return;
       if (t.closest("[data-edit-done]")) return saveEditing();
       if (t.closest("[data-edit-cancel]")) return stopEditing();
       if (t.closest("[data-add-widget]")) return addMenu();
+      if (t.closest("[data-widget-options]") && selected) return widgetMenu(selected);
       const box = t.closest(".widget");
       if (!box) return;
-      if (t.closest("[data-hide]")) { find(box.dataset.wid).hidden = true; return renderHome(); }
-      if (t.closest("[data-menu]")) return widgetMenu(box.dataset.wid);
+      selectWidget(box.dataset.wid);
       return;                                  // widgets don't act while editing
     }
     if (t.closest("[data-edit-home]")) return startEditing();
@@ -468,26 +508,29 @@ export function setupHome({ goRoom, showAmbient }) {
   // The menu and Add dialogs live on <body>.
   document.addEventListener("click", (e) => {
     const t = e.target;
-    if (!t.closest(".wmenu-wrap") || !isEditing()) return;
+    if (!t.closest(".wmenu-wrap") || !isEditing() || saving) return;
     if (t.closest("[data-menu-close]")) return closeMenu();
     const size = t.closest("[data-size-pick]");
     if (size) { setSize(size.dataset.wid, size.dataset.sizePick); return widgetMenu(size.dataset.wid); }
-    const mv = t.closest("[data-move]");
-    if (mv) { move(mv.dataset.wid, ...mv.dataset.move.split(",").map(Number)); return widgetMenu(mv.dataset.wid); }
     const hide = t.closest("[data-hide-id]");
     if (hide) { find(hide.dataset.hideId).hidden = true; closeMenu(); return renderHome(); }
     const un = t.closest("[data-unhide]");
     if (un) return addWidget(find(un.dataset.unhide));
     if (t.closest("[data-add-zone]")) {
-      return addWidget({ id: `zone-${Date.now().toString(36)}`, type: "zone", size: "1x1", hidden: false,
+      return addWidget({ id: `zone-${Date.now().toString(36)}`, type: "zone", size: "1x3", hidden: false,
                          options: { tz: null, label: "US" } });
     }
     if (t.closest("[data-add-favourites]")) {
-      return addWidget({ id: `favs-${Date.now().toString(36)}`, type: "favourites", size: "2x2", hidden: false,
+      return addWidget({ id: `favs-${Date.now().toString(36)}`, type: "favourites", size: "2x6", hidden: false,
                          options: { devices: [] } });
     }
     if (t.closest("[data-add-photos]")) {
-      return addWidget({ id: `photos-${Date.now().toString(36)}`, type: "photos", size: "2x2", hidden: false, options: {} });
+      return addWidget({ id: `photos-${Date.now().toString(36)}`, type: "photos", size: "2x6", hidden: false, options: {} });
+    }
+    const added=t.closest("[data-add-type]");
+    if (added) {
+      const type=added.dataset.addType, id=find(type) ? `${type}-${Date.now().toString(36)}` : type;
+      return addWidget({id,type,size:"2x4",hidden:false,options:{}});
     }
   });
   document.addEventListener("change", (e) => {

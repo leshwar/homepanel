@@ -62,6 +62,8 @@ class IdleVacuumTests(unittest.TestCase):
           assert.equal(idleNight(new Date(2026,10,11,22),{}),true);
           assert.equal(idleNight(new Date(2026,10,11,6),{}),true);
           assert.equal(idleNight(new Date(2026,10,11,7),{}),false);
+          assert.equal(idleNight(new Date(2026,10,11,21,59,59),{}),false);
+          assert.equal(idleNight(new Date(2026,10,11,6,59,59),{}),true);
           assert.equal(idleNight(new Date(2026,10,11,23),{frame_night_clock:false}),false);
           assert.equal(idleNight(now,{clock_face:'night'}),true);
           assert.notDeepEqual(driftOffset(100000,40,30),driftOffset(900000,40,30));

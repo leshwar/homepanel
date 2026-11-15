@@ -161,12 +161,7 @@ html[data-tiles="light"] .tile.attn .tile-status { color: #7a4a00; }
 .tile.busy .tile-icon { animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 50% { opacity: .5; } }
 
-.tile.wide { grid-column: span 2; }
 .tile-tv-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
-.tile-tv-ctl { display: flex; gap: 8px; }
-.tile-tv-ctl button { width: 52px; height: 52px; border-radius: 50%; background: rgb(255 255 255 / .06);
-                      display: grid; place-items: center; }
-.tile-tv-ctl button:active { background: rgb(255 255 255 / .14); }
 
 .empty { grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--haze); }
 .empty h2 { color: var(--paper); font-weight: 500; font-size: calc(22px * var(--text-scale)); margin: 0 0 8px; }
@@ -334,8 +329,7 @@ html[data-bg="ocean"] .clock-time, html[data-bg="aurora"] .clock-time { text-sha
 }
 .tile.on { background-color: rgb(var(--surface-rgb) / min(.98, max(.86, calc(var(--glass-alpha) + .06)))); }
 .tile-icon { background: var(--well); }
-.tile-more:active, .tile-tv-ctl button:active { background: rgb(255 255 255 / .14); }
-.tile-tv-ctl button { background: rgb(255 255 255 / .09); }
+.tile-more:active { background: rgb(255 255 255 / .14); }
 .dpad .ok { background: rgb(255 255 255 / .08); }
 .room:not([aria-selected="true"]) { background: rgb(var(--surface-rgb) / max(.8, var(--glass-alpha)));
   -webkit-backdrop-filter: blur(var(--glass-blur)); backdrop-filter: blur(var(--glass-blur)); }
@@ -461,8 +455,8 @@ html[data-tiles="light"] .tile.on { background-color: rgb(255 255 255 / clamp(.8
 html[data-tiles="light"] .tile .tile-icon:not(.pic) { background: rgb(20 26 39 / .07); color: var(--haze); }
 html[data-tiles="light"] .tile.on .tile-icon:not(.pic) { background: rgb(var(--glow)); color: #1a1d22; }
 html[data-tiles="light"] .tile.on .tile-status { color: var(--paper); opacity: .75; }
-html[data-tiles="light"] :is(.tile-tv-ctl button, .w-scene-list .scene, .w-room, .widget .btn:not(.primary)) { background: rgb(20 26 39 / .08); }
-html[data-tiles="light"] :is(.tile-more:active, .tile-tv-ctl button:active) { background: rgb(20 26 39 / .14); }
+html[data-tiles="light"] :is(.w-scene-list .scene, .w-room, .widget .btn:not(.primary)) { background: rgb(20 26 39 / .08); }
+html[data-tiles="light"] .tile-more:active { background: rgb(20 26 39 / .14); }
 html[data-tiles="light"] .tile::before { mix-blend-mode: multiply; }
 html[data-tiles="light"] .tile-icon.pic .art { filter: drop-shadow(0 4px 8px rgb(0 0 30 / .22)); }
 

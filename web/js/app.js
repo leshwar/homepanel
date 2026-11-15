@@ -5,7 +5,7 @@
 import { api, connectEvents } from "./api.js";
 import { setMarkup, updateRoomCounts, syncAttributes } from "./render.js";
 import { store, onChange, reload, upsertDevice, setRoom, setView, devicesIn, applySnapshot, addRoom } from "./store.js";
-import { $, esc, icon, glow, headline, roomStatus, toast } from "./util.js";
+import { $, esc, icon, glow, headline, roomStatus, powerUnknown, toast } from "./util.js";
 import { refreshSheet, closeSheet } from "./sheet.js";
 import { openSettings, isSettingsOpen, refreshSettings, closeSettings, roomAddForm } from "./settings.js";
 import { applyTransparency } from "./glass.js";
@@ -15,13 +15,12 @@ import { renderAmbient } from "./clockfaces.js";
 import { svg, roomIcon } from "./icons.js";
 import { updateTiles, bindTiles } from "./tiles.js";
 import { attachCardRanges, cancelCardGestures } from "./room-cards.js";
-import { viewChoices } from "./home-overview.js";
 import { applySky, refreshWeather, onWeather } from "./sky.js";
 import { applyWallpaper } from "./wallpaper.js";
 import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEditing, stopEditing, favouritesStale } from "./home.js";
 import { startAuth } from "./auth.js";
 import "./profiles.js";      // Settings → Profiles
-import { roomTiles, roomLayoutKey, setupRoomEditor, startRoomEditing, stopRoomEditing, isRoomEditing } from "./room-layout.js";
+import { roomTiles, roomLayoutKey, setupRoomEditor, startRoomEditing, stopRoomEditing, isRoomEditing, syncRoomEditor } from "./room-layout.js";
 import { roomGrip, roomEditButton, roomNameField, roomNameHelp, editableRoomNames, syncRoomSorters, isSortingRooms, isEditingRooms, isEditingRoomName, canLeaveRoomNames, toggleRoomEditing } from "./room-sort.js";
 import { applyTypography } from "./typography.js";
 import { setupVoice, closeVoice, isVoiceOpen } from "./voice.js";
@@ -200,7 +199,7 @@ function renderTitle() {
   // Still tappable (the panel's picture can be stale), but it stops looking like something is on.
   $("#all-off").classList.toggle("idle", !all.some(canTurnOff));
   $("#edit-home").hidden = !home;
-  $("#clock").hidden = home && (store.settings.home_view !== "free" || store.settings.home_layout?.widgets?.some((w) => w.type === "clock" && !w.hidden));
+  $("#clock").hidden = home && !!store.settings.home_layout?.widgets?.some((w) => w.type === "clock" && !w.hidden);
 }
 
 // Keep the chosen tab visible in the scrolling bar.
@@ -248,14 +247,14 @@ function roomHead(r, linked) {
   const title = linked && tabOrder().length
     ? `<button class="room-title" data-room="${esc(r)}" aria-label="Open ${name}">${name}${icon("right")}</button>`
     : `<h2 class="room-title">${name}</h2>`;
-  const status = roomStatus(list.length, on);
+  const status = roomStatus(list.length, on, list.some(powerUnknown));
   // In "All" an empty room is one line with its own Add button, not a full empty page.
   const add = linked && !list.length
     ? `<button class="btn small" data-add-device aria-label="Add a device to ${name}">${icon("plus")}<span>Add a device</span></button>` : "";
   return `<div class="room-head${linked ? "" : " single"}${list.length ? "" : " empty-room"}" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>
-    ${!linked && !isRoomEditing() ? viewChoices("room_view", store.settings.room_view || "compact", [["compact","Compact"],["free","Free layout"]]) : ""}${
-    offable ? `<button class="room-off" data-room-off="${esc(r)}" aria-label="Turn off ${name}">${icon("power")}<span>Turn off</span></button>` : ""}
-    ${list.length ? `<button class="btn small" data-edit-room="${esc(r)}" aria-label="Edit ${name} tiles">${svg("pencil")}<span>Edit tiles</span></button>` : add}</div>`;
+    ${
+    offable ? `<button class="room-off" data-room-off="${esc(r)}" aria-label="Turn off ${name}" ${isRoomEditing() ? "disabled" : ""}>${icon("power")}<span>Turn off</span></button>` : ""}
+    ${list.length ? `<button class="btn small" data-edit-room="${esc(r)}" aria-label="Edit ${name} tiles" ${isRoomEditing() ? "disabled" : ""}>${svg("pencil")}<span>Edit tiles</span></button>` : add}</div>`;
 }
 
 function updateHeads() {
@@ -293,8 +292,9 @@ function openSorting() {
 
 // ---------- tiles ----------
 let renderedRooms = null;
-function renderGrid() {
+function renderGrid(force = false) {
   const grid = $("#grid");
+  syncRoomEditor();
   if (grid.dataset.gridGesture) return;
   if (!store.devices.size && (store.room === "all" || store.me?.role !== "admin")) {
     renderedRooms = null;
@@ -308,15 +308,15 @@ function renderGrid() {
   const room = store.room;
   const groups = room === "all" ? roomGroups() : [room];
   const key = JSON.stringify([store.me?.id, room, groups.map(roomLayoutKey)]);
-  if (renderedRooms === key && grid.querySelector(".room-section")) {
+  if (!force && renderedRooms === key && grid.querySelector(".room-section")) {
     for (const id of new Set([...grid.querySelectorAll(".tile")].map(el => el.dataset.id))) updateTiles(id);
     updateHeads();
     return;
   }
   const focused = grid.contains(document.activeElement) ? document.activeElement : null;
-  const focusedItem = focused?.closest(".layout-item");
-  const focusAttr = focused && ["data-more", "data-quick-action", "data-act", "data-resize", "data-room-options"].find(name => focused.hasAttribute(name));
-  const anchor = window.scrollY > grid.offsetTop ? [...grid.querySelectorAll(".layout-item")]
+  const focusedItem = focused?.closest(".layout-item,.room-card");
+  const focusAttr = focused && ["data-more", "data-quick-action", "data-act", "data-resize", "data-room-options", "data-grip"].find(name => focused.hasAttribute(name));
+  const anchor = window.scrollY > grid.offsetTop ? [...grid.querySelectorAll(".layout-item,.room-card")]
     .find(el => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; }) : null;
   const anchorTop = anchor?.getBoundingClientRect().top;
   const section = (r, linked) => `<section class="room-section" aria-label="${esc(roomLabel(r))}">${roomHead(r, linked)}${
@@ -324,8 +324,7 @@ function renderGrid() {
       <h2>No devices in this room yet</h2><p>Add a device or choose this room in a device's settings.</p>
       <button class="btn primary" data-add-device>${icon("plus")}Add a device</button></div>`}</section>`;
   cancelCardGestures();
-  const choice = room === "all" && !isRoomEditing() ? viewChoices("room_view", store.settings.room_view || "compact", [["compact","Compact"],["free","Free layout"]]) : "";
-  const html = choice + (room === "all" ? roomGroups().map((r) => section(r, true)).join("") : section(room, false));
+  const html = room === "all" ? roomGroups().map((r) => section(r, true)).join("") : section(room, false);
   setMarkup(grid, html);
   attachCardRanges(grid, updateTiles);
   renderedRooms = key;
@@ -396,7 +395,7 @@ function setupGrid() {
   // Swipe sideways anywhere on the grid to change room tab.
   let start = null, swiped = false;
   grid.addEventListener("pointerdown", (e) => {
-    if (isRoomEditing() || e.target.closest("input, label, [data-quick-action], [data-act], [data-layout-view], [data-edit-room], [data-room-off]")) return;
+    if (isRoomEditing() || e.target.closest("input, label, [data-quick-action], [data-act], [data-edit-room], [data-room-off]")) return;
     start = { x: e.clientX, y: e.clientY };
     swiped = false;
   });
@@ -422,7 +421,6 @@ function setupGrid() {
     if (isRoomEditing()) return;
     const edit = e.target.closest("[data-edit-room]");
     if (edit) {
-      goRoom(edit.dataset.editRoom);
       return startRoomEditing(edit.dataset.editRoom);
     }
     if (e.target.closest("[data-sort-rooms]")) return openSorting();
@@ -442,29 +440,30 @@ async function turnOff(room = null) {
 }
 
 function setupChrome() {
-  let savingView = false;
-  document.addEventListener("click", async e => {
-    const button = e.target.closest("[data-layout-view]");
-    if (!button || savingView || !canNavigate()) return;
-    const profile = store.me?.id, key = button.dataset.layoutView, value = button.dataset.layoutValue;
-    savingView = true;
-    document.querySelectorAll("[data-layout-view]").forEach(b=>{b.disabled=true;});
-    cancelCardGestures();
-    try {
-      await api.updateMe({[key]:value});
-      if (profile !== store.me?.id) return;
-      await reload();
-      document.querySelector(`[data-layout-view="${key}"][data-layout-value="${value}"]`)?.focus({preventScroll:true});
-    } catch (error) { toast(error.message, true); }
-    finally { savingView=false; document.querySelectorAll("[data-layout-view]").forEach(b=>{b.disabled=false;}); }
-  });
   const dock = $("#dock");
+  const main = $(".main");
   const clearance = () => {
-    const box = dock.getBoundingClientRect();
-    const pixels = box.height > 0 ? Math.max(0, innerHeight - box.top) + 24 : 24;
+    const boxes = [dock, ...document.querySelectorAll(".editbar")].map(el=>el.getBoundingClientRect()).filter(box=>box.height>0);
+    const pixels = Math.max(0, ...boxes.map(box=>innerHeight-box.top)) + 24;
     document.documentElement.style.setProperty("--dock-clearance", `${Math.ceil(pixels)}px`);
   };
   new ResizeObserver(clearance).observe(dock);
+  const toolbars = new ResizeObserver(clearance);
+  const observedToolbars = new Set();
+  new MutationObserver(() => {
+    for (const bar of observedToolbars) if (!bar.isConnected) { toolbars.unobserve(bar); observedToolbars.delete(bar); }
+    document.querySelectorAll(".editbar").forEach(bar=>{
+      if (!observedToolbars.has(bar)) {toolbars.observe(bar);observedToolbars.add(bar);}
+    });
+    clearance();
+  }).observe(main, {childList:true,subtree:true});
+  const editorChrome = () => { $(".topbar-actions").inert = editing(); clearance(); };
+  new MutationObserver(editorChrome).observe(document.documentElement, {attributes:true,attributeFilter:["data-layout-editing"]});
+  for (const type of ["pointerdown","click","keydown","input","change"]) document.addEventListener(type,e=>{
+    if (editing() && e.target.closest(".topbar-actions, .tile, [data-room-off], [data-scene], [data-new-scene], [data-attention], [data-ambient], [data-retry-weather], [data-photo-settings], [data-photo-link], [data-setup-weather]")) {
+      e.preventDefault();e.stopImmediatePropagation();
+    }
+  },true);
   addEventListener("resize", () => { cancelCardGestures(); clearance(); });
   addEventListener("blur", cancelCardGestures);
   document.addEventListener("visibilitychange", () => { if (document.hidden) cancelCardGestures(); });
@@ -677,7 +676,7 @@ onChange((what, id) => {
 onWeather(() => { refreshHomeParts(["weather"]); renderAmbient(); });
 
 setupGrid();
-setupRoomEditor($("#grid"), renderGrid);
+setupRoomEditor($("#grid"), () => renderGrid(true));
 setupChrome();
 setupVoice();
 setupHome({ goRoom, showAmbient });

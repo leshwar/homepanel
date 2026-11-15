@@ -21,25 +21,26 @@ class GridTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-    def test_free_placement_preserves_holes_and_other_tiles(self):
+    def test_spatial_placement_preserves_holes_and_other_tiles(self):
         self.run_js("""
-            const items = [{id: 'a', size: '1x1'}, {id: 'b', size: '2x1'}];
+            const items = [{id: 'a', type:'zone', size: '1x3'}, {id: 'b', size: '2x3'}];
             for (const cols of [2, 4, 6]) {
                 const before = remember(items, cols);
-                assert.equal(place(items, cols, 'a', {x: 0, y: 5, size: '2x2'}), true);
+                assert.equal(place(items, cols, 'a', {x: 0, y: 12, size: '2x6'}), true);
                 const saved = arrange(items, cols);
-                assert.deepEqual(saved.get('a'), {x: 0, y: 5, size: '2x2'});
+                assert.deepEqual(saved.get('a'), {x: 0, y: 12, size: '2x6'});
                 assert.deepEqual(saved.get('b'), before.get('b'));
                 assert.equal(place(items, cols, 'a', {...saved.get('b')}), false);
-                assert.equal(place(items, cols, 'a', {x: cols - 1, y: 5, size: '2x2'}), false);
-                assert.equal(place(items, cols, 'a', {x: 0, y: -1, size: '1x1'}), false);
+                assert.equal(place(items, cols, 'a', {x: cols - 1, y: 12, size: '2x6'}), false);
+                assert.equal(place(items, cols, 'a', {x: 0, y: -1, size: '1x3'}), false);
                 assert.deepEqual(arrange(items, cols), saved);
             }
         """)
 
     def test_settling_does_not_scale_touch_targets_below_their_layout_size(self):
         self.run_js("""
-            const handlers = {}, animations = [], items = [{id:'a',size:'1x1'}];
+            const handlers = {}, animations = [], items = [{id:'a',type:'zone',size:'1x3'}];
+            globalThis.addEventListener=()=>{};
             globalThis.getComputedStyle = () => ({gridTemplateColumns:'100px 100px',
               columnGap:'10px',gridAutoRows:'100px',rowGap:'10px'});
             globalThis.matchMedia = () => ({matches:false});
@@ -47,11 +48,11 @@ class GridTests(unittest.TestCase):
             const grid = {};
             const box = {dataset:{wid:'a'}, parentElement:grid, style:{},
               classList:{add(){},remove(){}}, getBoundingClientRect:()=>({left:0,top:0})};
-            const root = {clientWidth:500,dataset:{},setPointerCapture(){},
+            const root = {clientWidth:500,dataset:{},setPointerCapture(){},hasPointerCapture(){return false;},
               addEventListener:(name,fn)=>{handlers[name]=fn;},
               querySelector:()=>({animate:frames=>animations.push(frames)})};
             bindGridEditor(root,{enabled:()=>true,items:()=>items,render(){},error:message=>assert.fail(message)});
-            const target={closest:selector=>selector==='.layout-item'?box:selector==='[data-resize]'?{}:null};
+            const target={closest:selector=>selector==='.layout-item'?box:selector.includes('[data-resize]')?{}:null};
             const event={target,button:0,pointerId:1,clientX:0,clientY:0,preventDefault(){}};
             handlers.pointerdown(event); handlers.pointerup(event);
             assert.equal(animations.length,1);
@@ -63,9 +64,9 @@ class GridTests(unittest.TestCase):
     def test_responsive_projection_does_not_mutate_saved_positions(self):
         self.run_js("""
             const items = [
-              {id: 'a', size: '1x1', positions: {6: {x: 4, y: 3, size: '2x2'}}},
-              {id: 'b', size: '2x1', positions: {6: {x: 0, y: 0, size: '2x1'}}},
-              {id: 'c', size: '1x1'},
+              {id: 'a', type:'zone', size: '1x3', positions: {6: {x: 4, y: 3, size: '2x6'}}},
+              {id: 'b', size: '2x3', positions: {6: {x: 0, y: 0, size: '2x3'}}},
+              {id: 'c', type:'zone', size: '1x3'},
             ];
             const original = JSON.stringify(items);
             for (const cols of [2, 4, 6]) {
@@ -76,8 +77,8 @@ class GridTests(unittest.TestCase):
                 }
             }
             assert.equal(JSON.stringify(items), original);
-            assert.equal(place(items, 2, 'a', {x: 0, y: 8, size: '1x1'}), true);
-            assert.deepEqual(items[0].positions[6], {x: 4, y: 3, size: '2x2'});
+            assert.equal(place(items, 2, 'a', {x: 0, y: 18, size: '1x3'}), true);
+            assert.deepEqual(items[0].positions[6], {x: 4, y: 3, size: '2x6'});
             assert.equal(columnsFor(599), 2);
             assert.equal(columnsFor(600), 4);
             assert.equal(columnsFor(959), 4);
@@ -87,13 +88,13 @@ class GridTests(unittest.TestCase):
     def test_new_and_hidden_items_do_not_compact_existing_positions(self):
         self.run_js("""
             const items = [
-                {id: 'a', size: '1x1', positions: {4: {x: 3, y: 3, size: '1x1'}}},
-                {id: 'hidden', hidden: true, size: '2x2', positions: {4: {x: 0, y: 0, size: '2x2'}}},
-                {id: 'new', size: '2x1'},
+                {id: 'a', type:'zone', size: '1x3', positions: {4: {x: 3, y: 3, size: '1x3'}}},
+                {id: 'hidden', hidden: true, size: '2x6', positions: {4: {x: 0, y: 0, size: '2x6'}}},
+                {id: 'new', size: '2x3'},
             ];
             const positions = remember(items, 4);
-            assert.deepEqual(positions.get('a'), {x: 3, y: 3, size: '1x1'});
-            assert.deepEqual(positions.get('new'), {x: 0, y: 0, size: '2x1'});
+            assert.deepEqual(positions.get('a'), {x: 3, y: 3, size: '1x3'});
+            assert.deepEqual(positions.get('new'), {x: 0, y: 0, size: '2x3'});
             assert.equal(positions.has('hidden'), false);
         """)
 

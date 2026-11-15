@@ -1,6 +1,5 @@
-"""Compact-card semantics, attention filtering and non-destructive view preferences."""
+"""Compact-card semantics and permission-filtered notification contents."""
 import base64
-import json
 from pathlib import Path
 import shutil
 import subprocess
@@ -28,7 +27,7 @@ class OverviewLogicTests(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stderr)
 
     def test_attention_is_prioritized_deduplicated_and_clears_with_visible_set(self):
-        self.run_js("home-overview.js","const store={settings:{}};", """
+        self.run_js("notifications.js","const store={settings:{}};", """
           const d=(id,state,caps=[])=>({id,name:id,kind:'vacuum',caps,state});
           const problem=d('tank',{online:true,activity:'docked',problem:'Empty tank'});
           const offline=d('offline',{online:false,problem:'Old problem'});
@@ -39,11 +38,6 @@ class OverviewLogicTests(unittest.TestCase):
           assert.equal(items[2].text,'Offline · Check connection');
           assert.equal(m.attentionItems([d('ok',{online:true,activity:'docked',battery:100})]).length,0);
           assert.deepEqual(m.attentionItems([]),[]);
-          const layout=[{id:'clock',type:'clock',positions:{6:{x:0,y:0,size:'2x1'}}},
-            {id:'photo',type:'photos',positions:{6:{x:2,y:4,size:'2x2'}}}];
-          const original=JSON.stringify(layout),projected=m.overviewWidgets(layout);
-          assert.deepEqual(projected,[layout[1]]); assert.equal(JSON.stringify(layout),original);
-          assert.deepEqual(projected[0].positions,layout[1].positions);
         """)
 
     def test_cards_show_only_supported_safe_controls_and_real_status(self):
@@ -67,18 +61,12 @@ class OverviewLogicTests(unittest.TestCase):
 
 
 class LayoutViewPreferenceTests(unittest.TestCase):
-    def test_preferences_do_not_rewrite_saved_layouts(self):
+    def test_retired_mode_requests_are_refused_without_changing_profile(self):
         with tempfile.TemporaryDirectory() as folder:
             svc = HomeService(folder)
             svc.profiles.migrate(svc.store.settings)
             profile = svc.profiles.owner()
-            profile["home_layout"] = {"version":3,"widgets":[{"id":"clock","type":"clock","size":"2x1"}]}
-            profile["room_layouts"] = {"Room":{"version":3,"widgets":[{"id":"tv","size":"2x2","positions":{"2":{"x":0,"y":3,"size":"2x2"}}}]}}
-            before = json.dumps([profile["home_layout"],profile["room_layouts"]],sort_keys=True)
-            for room,home in (("compact","overview"),("free","free"),("compact","overview")):
-                updated = svc.profiles.update(profile["id"],{"room_view":room,"home_view":home})
-                self.assertEqual(json.dumps([updated["home_layout"],updated["room_layouts"]],sort_keys=True),before)
-            restored = HomeService(folder).profiles.owner()
-            self.assertEqual((restored["room_view"],restored["home_view"]),("compact","overview"))
+            before = dict(profile)
             with self.assertRaises(ProfileError):
-                svc.profiles.update(profile["id"],{"room_view":"grid-that-does-not-exist"})
+                svc.profiles.update(profile["id"],{"room_view":"free"})
+            self.assertEqual(svc.profiles.owner(),before)

@@ -292,13 +292,13 @@ class AccessFilterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(seen, ["bd-tv"])
 
     async def test_layouts_are_per_profile(self):
-        mine = {"widgets": [{"id": "clock", "type": "clock", "size": "1x1"},
+        mine = {"widgets": [{"id": "clock", "type": "clock", "size": "2x3"},
                             {"id": "dev-lr-tv", "type": "device", "size": "1x1", "options": {"device_id": "lr-tv"}}]}
         saved = self.svc.save_my_layout(mine)["home_layout"]
         self.assertEqual([w["id"] for w in saved["widgets"]], ["clock"])   # a hidden device's widget is left out
-        self.assertEqual(self.svc.profiles.get("sam")["home_layout"]["widgets"][0]["size"], "1x1")
+        self.assertEqual(self.svc.profiles.get("sam")["home_layout"]["widgets"][0]["size"], "2x3")
         current_viewer.set(Viewer(profile=self.svc.profiles.get("owner")))
-        self.assertEqual(self.svc.settings()["home_layout"]["widgets"][0]["size"], "2x2")   # Owner keeps the default
+        self.assertEqual(self.svc.settings()["home_layout"]["widgets"][0]["size"], "2x4")   # Owner keeps the default
 
     async def test_removing_a_device_removes_it_from_profiles(self):
         current_viewer.set(None)

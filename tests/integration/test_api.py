@@ -110,7 +110,7 @@ class ApiTests(unittest.TestCase):
         default = s["settings"]["home_layout"]
         self.assertEqual(default["widgets"][0]["type"], "clock")
         try:
-            mine = {"widgets": [{"id": "zone-us", "type": "zone", "size": "2x1",
+            mine = {"widgets": [{"id": "zone-us", "type": "zone", "size": "2x3",
                                  "options": {"tz": "America/Los_Angeles", "label": "US"}}]}
             status, saved = self.call("PUT", "/settings", {"home_layout": mine})
             self.assertEqual(status, 200)

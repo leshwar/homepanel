@@ -1,4 +1,4 @@
-"""Compact room geometry, safe controls and Home attention against isolated devices."""
+"""Unified compact room content, safe controls and movable notification contents."""
 import itertools
 import os
 import shutil
@@ -40,10 +40,7 @@ class CompactOverviewTests(unittest.TestCase):
         self.page.on("request",lambda r:self.commands.append(r.post_data_json) if r.url.endswith("/command") else None)
         self.page.goto(self.server.url)
         self.page.wait_for_selector(".widget,.tile")
-        self.page.evaluate("""async()=>{
-          const {store,setView,emit}=await import('/js/store.js');
-          Object.assign(store.settings,{room_view:'compact',home_view:'overview'});emit('all');setView('rooms');
-        }""")
+        self.page.evaluate("async()=>(await import('/js/store.js')).setView('rooms')")
 
     def tearDown(self):
         self.page.close()
@@ -80,33 +77,6 @@ class CompactOverviewTests(unittest.TestCase):
                 }""")
                 self.assertLessEqual(geometry["bottom"],geometry["limit"]-12)
                 self.assertTrue(geometry["hit"])
-        self.assertEqual(self.commands,[])
-
-    def test_free_positions_and_home_widgets_survive_switching_and_reload(self):
-        page=self.page
-        original=page.request.get(self.server.url+"/api/v1/state").json()["settings"]
-        free={"version":3,"widgets":[{"id":"lr-tv","size":"2x2","positions":{"2":{"x":0,"y":3,"size":"2x2"}}}]}
-        page.evaluate("async layout=>(await import('/js/api.js')).api.saveRoomLayout('Living room',layout)",free)
-        page.evaluate("async()=>(await import('/js/store.js')).reload()")
-        saved=page.request.get(self.server.url+"/api/v1/state").json()["settings"]["room_layouts"]
-        page.click('[data-layout-view="room_view"][data-layout-value="free"]')
-        page.wait_for_selector(".tiles.layout-grid")
-        self.assertIn("grid-row: 4",page.locator('.room-tile[data-wid="lr-tv"]').get_attribute("style").replace("grid-row:","grid-row: "))
-        page.reload();page.wait_for_selector(".tiles.layout-grid")
-        page.click('[data-layout-view="room_view"][data-layout-value="compact"]')
-        page.wait_for_selector(".compact-rooms")
-        state=page.request.get(self.server.url+"/api/v1/state").json()["settings"]
-        self.assertEqual(state["room_layouts"],saved)
-        self.assertEqual(state["home_layout"],original["home_layout"])
-        page.evaluate("async()=>(await import('/js/store.js')).setView('home')")
-        page.wait_for_selector(".home-overview")
-        self.assertEqual(page.locator(".home-grid .t-clock").count(),0)
-        page.click('[data-layout-view="home_view"][data-layout-value="free"]')
-        page.wait_for_selector(".home-grid .t-clock")
-        self.assertEqual(page.locator(".home-overview").count(),0)
-        page.click('[data-layout-view="home_view"][data-layout-value="overview"]')
-        page.wait_for_selector(".home-overview")
-        self.assertEqual(page.request.get(self.server.url+"/api/v1/state").json()["settings"]["home_layout"],original["home_layout"])
         self.assertEqual(self.commands,[])
 
     def test_inline_sliders_tap_cancel_resize_snapshot_and_release_safety(self):
@@ -185,22 +155,22 @@ class CompactOverviewTests(unittest.TestCase):
           upsertDevice({...d,caps:['power'],state:{online:true,on:true}});}""")
         self.assertEqual(page.locator('.tile[data-id="lr-soundbar"] [data-card-range], .tile[data-id="lr-soundbar"] [data-act]').count(),0)
 
-    def test_member_view_preferences_are_scoped_and_do_not_reset_geometry(self):
+    def test_member_scope_and_retired_view_request_preserve_geometry(self):
         page=self.page
         owner=page.request.get(self.server.url+"/api/v1/state").json()["settings"]
         response=page.request.post(self.server.url+"/api/v1/auth/sign-in",data={"profile_id":"sam"})
         self.assertTrue(response.ok)
         page.reload();page.wait_for_selector(".tile,.widget")
-        response=page.request.patch(self.server.url+"/api/v1/profiles/me",data={"room_view":"free","home_view":"free","role":"admin"})
+        response=page.request.patch(self.server.url+"/api/v1/profiles/me",data={"role":"admin"})
         self.assertTrue(response.ok)
         sam=page.request.get(self.server.url+"/api/v1/state").json()
         self.assertEqual(sam["me"]["role"],"member")
-        self.assertEqual(sam["settings"]["room_view"],"free")
+        self.assertNotIn("room_view",sam["settings"])
         self.assertNotIn("lr-lamp",[d["id"] for d in sam["devices"]])
         self.assertEqual(page.request.patch(self.server.url+"/api/v1/profiles/me",data={"room_view":"bad"}).status,400)
         page.request.post(self.server.url+"/api/v1/auth/sign-in",data={"profile_id":"owner","password":"homepanel"})
         again=page.request.get(self.server.url+"/api/v1/state").json()["settings"]
-        for key in ("room_view","home_view","home_layout","room_layouts"):
+        for key in ("home_layout","room_layouts"):
             self.assertEqual(again[key],owner[key])
         self.assertEqual(self.commands,[])
 
@@ -212,7 +182,7 @@ class CompactOverviewTests(unittest.TestCase):
         for w,h in ((390,844),(720,1280),(1280,720)):
             page.set_viewport_size({"width":w,"height":h})
             page.evaluate("()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
-            left,right=page.evaluate("()=>['.overview-clock','.home-attention'].map(s=>document.querySelector(s).getBoundingClientRect().toJSON())")
+            left,right=page.evaluate("()=>['.t-clock','.t-notifications'].map(s=>document.querySelector(s).getBoundingClientRect().toJSON())")
             if w>=720:self.assertLessEqual(left["x"]+left["width"],right["x"])
             else:self.assertLessEqual(left["y"]+left["height"],right["y"])
         alert=page.locator('[data-attention="lr-vacuum"]')
@@ -225,9 +195,11 @@ class CompactOverviewTests(unittest.TestCase):
         page.wait_for_selector('#sheet[data-device-id="lr-vacuum"]:not([hidden])')
         self.assertEqual(self.commands,[])
         page.keyboard.press("Escape")
+        alert.focus()
         page.evaluate("""async()=>{const{store,upsertDevice}=await import('/js/store.js'),d=store.devices.get('lr-vacuum');
           upsertDevice({...d,state:{online:true,activity:'docked',battery:100,problem:''}});}""")
         self.assertEqual(page.locator('[data-attention="lr-vacuum"]').count(),0)
+        self.assertTrue(page.locator(".home-attention h2").evaluate("e=>e===document.activeElement"))
         page.evaluate("""async()=>{const{store,applySnapshot}=await import('/js/store.js');
           applySnapshot({devices:[],rooms:[],scenes:[],settings:store.settings,adapters:[],me:{id:'member'}});}""")
         self.assertEqual(page.locator("[data-attention]").count(),0)

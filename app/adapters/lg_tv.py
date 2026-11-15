@@ -326,7 +326,9 @@ class LGTVAdapter(DeviceAdapter):
         app = _tv(c, "current_app_id")
         # an input (HDMI 1 …) shows up as the "current app" with the input's appId
         current_input = next((i["id"] for i in device.meta.get("inputs", []) if i.get("app_id") and i["app_id"] == app), None)
-        return {"online": True, "on": _reported_power(power), "stale": False, "last_known": None, "remote_ready": _control_connected(c),
+        return {"online": True, "on": _reported_power(power),
+                 "screen_on": False if power.get("state") == "Screen Off" else _reported_power(power),
+                 "stale": False, "last_known": None, "remote_ready": _control_connected(c),
                 "wake_available": bool(device.config.get("mac")), "volume": _tv(c, "volume"),
                 "muted": bool(_tv(c, "muted", False)), "app": None if current_input else app, "input": current_input}
 

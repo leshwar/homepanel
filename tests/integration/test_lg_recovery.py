@@ -71,6 +71,20 @@ class LGRecoveryServiceTests(unittest.IsolatedAsyncioTestCase):
         self.c.button.assert_awaited_once_with("UP")
         self.assertEqual(HomeService(self.folder.name).get(self.d.id).config["ip"],NEW)
 
+    async def test_current_off_report_overrides_cached_on_with_both_sockets_open(self):
+        self.a._client.side_effect=None
+        self.a._client.return_value=self.c
+        for report,on,screen in (("Active",True,True),("Screen Off",True,False),
+                                 ("Active Standby",False,False),("Suspend",False,False),("Unknown",None,None)):
+            self.c.get_power_state.return_value={"state":report}
+            await self.svc.refresh(self.d.id)
+            state=self.svc.public_device(self.d)["state"]
+            self.assertEqual((state["online"],state["on"],state["screen_on"]),(True,on,screen))
+            self.assertTrue(state["remote_ready"])
+        self.c.button.assert_not_awaited()
+        self.c.power_off.assert_not_awaited()
+        lg_tv.wake_on_lan.assert_not_awaited()
+
     async def test_outer_timeout_does_not_retry_a_possibly_delivered_key(self):
         self.a._client.side_effect=None
         self.a._client.return_value=self.c

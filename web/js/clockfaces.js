@@ -152,6 +152,7 @@ export function faceInfo() {
 export function renderAmbient(now = new Date()) {
   const root = $("#ambient");
   const stage = $("#ambient-face");
+  const group = $("#ambient-content");
   if (!root || !stage || root.hidden) return;
   const face = faceId(store.settings.clock_face);
   refreshWeather();
@@ -159,8 +160,9 @@ export function renderAmbient(now = new Date()) {
   root.dataset.night = String(idleNight(now, store.settings));
   const line = idleVacuumLine(store.devices.values());
   setMarkup(stage, `${faceHTML(face, now, faceInfo())}<p class="ambient-activity" role="status" ${line ? "" : "hidden"}>${esc(line)}</p>`);
-  const freeX = Math.max(0, (root.clientWidth - stage.offsetWidth) / 2 - 16);
-  const freeY = Math.max(0, (root.clientHeight - stage.offsetHeight) / 2 - 16);
-  const [x, y] = driftOffset(now.getTime(), Math.min(freeX, root.clientWidth * 0.2), Math.min(freeY, root.clientHeight * 0.2));
-  stage.style.transform = `translate(${x}px, ${y}px)`;
+  const target=group||stage;
+  const freeX = Math.max(0, (root.clientWidth - target.offsetWidth) / 2 - 16);
+  const freeY = Math.max(0, (root.clientHeight - target.offsetHeight) / 2 - 16);
+  const [x, y] = driftOffset(now.getTime(), Math.min(freeX, 8), Math.min(freeY, 8));
+  target.style.transform = `translate(${x}px, ${y}px)`;
 }

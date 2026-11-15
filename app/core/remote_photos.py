@@ -178,4 +178,4 @@ class RemotePhotos:
             while len(self._cache) > 8 or sum(len(entry[0]) for entry in self._cache.values()) > 8 * 1024 * 1024:
                 self._cache.popitem(last=False)
             token = hashlib.sha256((config["generation"] + photo).encode()).hexdigest()[:24]
-            return image, token, config["generation"]
+            return image, token, config["generation"], self._client(config).page_url(photo)

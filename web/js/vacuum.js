@@ -4,6 +4,7 @@
 
 import { api } from "./api.js";
 import { esc, icon, WORN_PERCENT } from "./util.js";
+import { vacuumStatus } from "./vacuum-status.js";
 
 const has = (d, c) => d.caps.includes(c);
 
@@ -49,23 +50,30 @@ export function vacuumPanel(d) {
     has(d, "locate") && round("data-locate", "target", "Find"),
   ].filter(Boolean).join("");
 
-  const [label, ic] = ACTIVITY[a] || ["Connecting…", "vacuum"];
-  const charging = a === "docked" && s.battery != null && s.battery < 100;
+  const status = vacuumStatus(s);
   const last = s.last_clean;
   const lastText = last && (last.area_m2 != null || last.minutes != null)
-    ? `Last clean ${[last.area_m2 != null ? `${last.area_m2} m²` : "", last.minutes != null ? `${last.minutes} min` : ""].filter(Boolean).join(" in ")}` : "";
+    ? `${last.result === "completed" ? "Last completed clean" : "Last clean"} ${[last.area_m2 != null ? `${last.area_m2} m²` : "", last.minutes != null ? `${last.minutes} min` : ""].filter(Boolean).join(" in ")}` : "";
 
   const stage = `<div class="vac-stage">
+      <div class="vac-status-card">
       <div class="vac-status" role="status">
-        <span class="vac-state ${a || ""}">${icon(ic)}<b>${charging ? "Charging" : label}</b></span>
+        <span class="vac-state ${status.phase}">${icon(status.glyph)}<b>${esc(status.label)}</b></span>
         ${s.battery != null ? `<span class="vac-batt ${s.battery <= 20 ? "low" : ""}" style="--pct:${s.battery}"
           role="meter" aria-label="Battery" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${s.battery}">
-          <i aria-hidden="true"></i>${s.battery}%</span>` : ""}
+          <i aria-hidden="true"></i>Battery ${s.battery}%</span>` : ""}
       </div>
       ${s.problem ? `<div class="note warn">${esc(s.problem)}</div>` : ""}
+      ${status.active ? `<div class="vac-progress ${status.phase}" role="progressbar" aria-label="Cleaning progress"
+        aria-valuetext="${esc(`${status.label} Completion not reported.${status.metrics ? ` ${status.metrics}` : ""}`)}">
+        <div class="vac-progress-track" aria-hidden="true"></div>
+        <p>Completion not reported${status.phase === "paused" ? " · Paused" : ""}</p></div>` : ""}
+      ${status.metrics ? `<p class="vac-run-stats">Current run · ${esc(status.metrics)}</p>` : ""}
+      ${status.stale ? `<p class="stage-hint">Waiting for fresh current-run stats.</p>` : ""}
+      ${lastText ? `<p class="stage-hint">${esc(lastText)}</p>` : ""}
+      </div>
       ${has(d, "map") ? `<div class="vac-map loading" aria-busy="true"><img src="${api.mapUrl(d.id, s.map_rev || 0)}" alt="Map of your home">
         <span role="status">Loading map...</span></div>` : ""}
-      ${lastText ? `<p class="stage-hint">${esc(lastText)}</p>` : ""}
       <div class="vac-actions">${main}${side}</div>
     </div>`;
 

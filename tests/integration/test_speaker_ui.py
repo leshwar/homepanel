@@ -132,8 +132,11 @@ class SpeakerControlTests(unittest.TestCase):
         self.assertIn("Unmute", page.inner_text("#sheet [data-mute]"))
         self.assertIn("Muted", page.inner_text("#sheet .dial-core"))
         self.assertIn("Muted", page.inner_text("#sheet .panel-head p"))
-        power.click()
-        page.wait_for_selector('#sheet [data-power][aria-checked="false"]')
+        with page.expect_response(lambda response: response.request.method == "POST"
+                                  and response.url.endswith("/devices/lr-soundbar/command")
+                                  and response.request.post_data_json["action"] == "power"):
+            power.click()
+        page.wait_for_selector('#sheet[aria-busy="false"] [data-power][aria-checked="false"]')
         self.assertTrue(page.locator("[data-speaker-volume]").is_disabled())
         self.assertTrue(page.locator('#sheet [data-sound-mode="26"]').is_disabled())
         self.assertIn("Turn it on to change the volume", page.inner_text("#sheet .speaker-stage"))
@@ -143,12 +146,15 @@ class SpeakerControlTests(unittest.TestCase):
     def test_touch_volume_applies_once_on_release_and_tap_does_not_jump(self):
         page = self.page
         cdp = page.context.new_cdp_session(page)
+        page.locator("[data-speaker-volume]").evaluate("e => {window.tappedVolume=e;}")
         box = page.locator("[data-speaker-volume]").bounding_box()
         x, y = box["x"] + box["width"] * .8, box["y"] + box["height"] / 2
         cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
         cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
         self.assertEqual(self.value(), 12)
         self.assertEqual(self.commands, [])
+        self.assertTrue(page.locator("#sheet").is_visible())
+        self.assertTrue(page.locator("[data-speaker-volume]").evaluate("e => e === window.tappedVolume"))
         box = page.locator("[data-speaker-volume]").bounding_box()
         x, y = box["x"] + box["width"] * .25, box["y"] + box["height"] / 2
         cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
@@ -156,8 +162,9 @@ class SpeakerControlTests(unittest.TestCase):
             cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [
                 {"x": x + box["width"] * .15 * step / 6, "y": y}]})
         self.assertEqual(self.commands, [])
-        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
-        page.wait_for_timeout(250)
+        with page.expect_request(lambda request: request.method == "POST"
+                                 and request.url.endswith("/devices/lr-soundbar/command")):
+            cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
         self.assertEqual(self.commands, [{"action": "volume", "value": 27}])
         self.assertEqual(self.value(), 27)
 

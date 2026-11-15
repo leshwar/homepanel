@@ -76,6 +76,12 @@ class RoomsEvent:
     def __init__(self, map_id, rooms): self.map_id, self.rooms = map_id, rooms
 class StatsEvent:
     def __init__(self, area, time, type=None): self.area, self.time, self.type = area, time, type
+class CleanJobStatus(enum.IntEnum):
+    NO_STATUS, CLEANING, FINISHED, MANUALLY_STOPPED, FINISHED_WITH_WARNINGS = -2, -1, 1, 2, 3
+class ReportStatsEvent(StatsEvent):
+    def __init__(self, cleaning_id, status, area=None, time=None):
+        super().__init__(area, time)
+        self.cleaning_id, self.status = cleaning_id, status
 class MapChangedEvent:
     def __init__(self, when=None): self.when = when
 class Room:
@@ -151,14 +157,14 @@ def make_caps():
         caps.station = ns(action=ns(types=tuple(StationAction), execute=lambda a: Command("station", a)))
         caps.play_sound = ns(execute=lambda: Command("sound"))
         caps.map = ns(rooms=object())
-        caps.life_span, caps.stats = object(), object()
+        caps.life_span, caps.stats = object(), ns(report=object())
     return caps
 
 
 class DeviceInfo:
     def __init__(self, api):
         self.api = api
-        self.static = types.SimpleNamespace(capabilities=make_caps())
+        self.static = types.SimpleNamespace(capabilities=make_caps(), data_type=types.SimpleNamespace(name="JSON"))
 
 
 class FakeMap:
@@ -238,7 +244,7 @@ def install_fake_library():
                                  "ErrorEvent": ErrorEvent, "AvailabilityEvent": AvailabilityEvent,
                                  "FanSpeedEvent": FanSpeedEvent, "WorkModeEvent": WorkModeEvent,
                                  "LifeSpanEvent": LifeSpanEvent, "RoomsEvent": RoomsEvent,
-                                 "StatsEvent": StatsEvent, "MapChangedEvent": MapChangedEvent},
+                                 "StatsEvent": StatsEvent, "ReportStatsEvent": ReportStatsEvent, "MapChangedEvent": MapChangedEvent},
     }
     saved = {n: sys.modules.get(n) for n in mods}
     for name, attrs in mods.items():
@@ -326,7 +332,7 @@ class EcovacsAdapterTests(unittest.IsolatedAsyncioTestCase):
         st = await self.a.refresh(d)
         self.assertEqual(st["parts"], [{"id": "filter", "name": "Filter", "percent": 12},     # most worn first
                                        {"id": "brush", "name": "Main brush", "percent": 82}])
-        self.assertEqual(st["last_clean"], {"area_m2": 42, "minutes": 35})
+        self.assertIsNone(st["last_clean"])  # Unscoped stats do not prove a completed or current job.
         self.assertEqual(st["suction"], "max")
 
     async def test_model_that_wants_clean_v2(self):
@@ -457,10 +463,134 @@ class EcovacsAdapterTests(unittest.IsolatedAsyncioTestCase):
         import app.adapters.ecovacs  # noqa: F401
         self.assertGreaterEqual(logging.getLogger("deebot_client").getEffectiveLevel(), logging.WARNING)
 
-    async def test_offline_vacuum_raises(self):
+    async def test_offline_vacuum_is_immediately_marked_offline(self):
         cloud.available = False
-        with self.assertRaises(ConnectionError):
-            await self.a.refresh(self.device())
+        state = await self.a.refresh(self.device())
+        self.assertFalse(state["online"])
+        self.assertIn("isn't connected", state["error"])
+        self.assertIsNone(state["cleaning"])
+
+    async def test_run_stats_pause_return_and_explicit_completion(self):
+        d = self.device()
+        await self.a.refresh(d)
+        bus = self.a._bots["bot1"].events
+        await bus.fire(ReportStatsEvent("old", CleanJobStatus.FINISHED, 34, 6240))
+        self.assertIsNone((await self.a.refresh(d))["last_clean"])
+        await bus.fire(StateEvent(State.CLEANING))
+        await bus.fire(StatsEvent(34, 6240))
+        self.assertIsNone((await self.a.refresh(d))["cleaning"])
+        await bus.fire(ReportStatsEvent("run1", CleanJobStatus.CLEANING, 4, 360))
+        state = await self.a.refresh(d)
+        self.assertEqual(state["cleaning"]["elapsed_seconds"], 360)
+        self.assertEqual(state["cleaning"]["area_m2"], 4)
+        self.assertNotIn("progress", state["cleaning"])
+        self.assertIsNone(state["last_clean"])
+        await bus.fire(ReportStatsEvent("run1", CleanJobStatus.NO_STATUS, 6, 480))
+        self.assertEqual((await self.a.refresh(d))["cleaning"]["elapsed_seconds"], 480)
+        for activity, expected in ((State.PAUSED, "paused"), (State.CLEANING, "cleaning"), (State.RETURNING, "returning")):
+            await bus.fire(StateEvent(activity))
+            self.assertEqual((await self.a.refresh(d))["cleaning"]["status"], expected)
+        await bus.fire(StateEvent(State.DOCKED))
+        self.assertIsNone((await self.a.refresh(d))["cleaning"])
+        self.assertIsNone((await self.a.refresh(d))["last_clean"])
+        await bus.fire(ReportStatsEvent("run1", CleanJobStatus.FINISHED, 20, 1200))
+        state = await self.a.refresh(d)
+        self.assertEqual(state["cleaning"]["status"], "completed")
+        self.assertEqual(state["last_clean"], {"result": "completed", "area_m2": 20, "minutes": 20})
+        await bus.fire(StateEvent(State.CLEANING))
+        await bus.fire(ReportStatsEvent("run1", CleanJobStatus.FINISHED, 20, 1200))
+        self.assertIsNone((await self.a.refresh(d))["cleaning"])
+        await bus.fire(ReportStatsEvent("run2", CleanJobStatus.CLEANING, 0, 0))
+        self.assertEqual((await self.a.refresh(d))["cleaning"]["area_m2"], 0)
+
+    async def test_stopped_error_and_warning_runs_never_turn_into_success(self):
+        d = self.device()
+        await self.a.refresh(d)
+        bus = self.a._bots["bot1"].events
+        for reason in ("stop", "error", "warning"):
+            await bus.fire(StateEvent(State.DOCKED))
+            await bus.fire(ErrorEvent(0))
+            await bus.fire(StateEvent(State.CLEANING))
+            await bus.fire(ReportStatsEvent(reason, CleanJobStatus.CLEANING, 5, 400))
+            if reason == "error":
+                await bus.fire(ErrorEvent(305))
+                await bus.fire(ErrorEvent(0))  # clearing the problem does not prove that run finished
+            terminal = {"stop": CleanJobStatus.MANUALLY_STOPPED, "warning": CleanJobStatus.FINISHED_WITH_WARNINGS,
+                        "error": CleanJobStatus.FINISHED}[reason]
+            await bus.fire(ReportStatsEvent(reason, terminal, 5, 400))
+            await bus.fire(ReportStatsEvent(reason, CleanJobStatus.FINISHED, 5, 400))
+            state = await self.a.refresh(d)
+            self.assertEqual(state["cleaning"]["status"], "stopped" if reason == "stop" else "attention")
+            self.assertIsNone(state["last_clean"])
+
+    async def test_disconnect_expiry_bad_stats_and_late_deliveries(self):
+        from unittest.mock import patch
+        import time
+        d = self.device()
+        await self.a.refresh(d)
+        bus = self.a._bots["bot1"].events
+        await bus.fire(StateEvent(State.CLEANING))
+        await bus.fire(ReportStatsEvent("run1", CleanJobStatus.CLEANING, 5, 400))
+        await bus.fire(ReportStatsEvent("run1", CleanJobStatus.CLEANING, 1, 100))
+        self.assertEqual((await self.a.refresh(d))["cleaning"]["elapsed_seconds"], 400)
+        with patch("app.adapters.ecovacs.time.monotonic", return_value=time.monotonic() + 121):
+            stale = (await self.a.refresh(d))["cleaning"]
+            self.assertTrue(stale["stats_stale"])
+            self.assertNotIn("elapsed_seconds", stale)
+        await bus.fire(AvailabilityEvent(False))
+        self.assertFalse((await self.a.refresh(d))["online"])
+        await bus.fire(AvailabilityEvent(True))
+        await bus.fire(ReportStatsEvent("run1", CleanJobStatus.CLEANING, 8, 600))
+        await bus.fire(ReportStatsEvent("run1", CleanJobStatus.FINISHED, 8, 600))
+        self.assertIsNone((await self.a.refresh(d))["cleaning"])
+        self.assertIsNone((await self.a.refresh(d))["last_clean"])
+        await bus.fire(ReportStatsEvent("run2", CleanJobStatus.CLEANING, float("nan"), -1))
+        current = (await self.a.refresh(d))["cleaning"]
+        self.assertNotIn("area_m2", current)
+        self.assertNotIn("elapsed_seconds", current)
+        await bus.fire(ReportStatsEvent("run2", CleanJobStatus.CLEANING, 0, 0))
+        self.assertEqual((await self.a.refresh(d))["cleaning"]["elapsed_seconds"], 0)
+        await self.a.forget(d)
+        self.assertNotIn("bot1", self.a._jobs)
+
+    async def test_conflicting_active_ids_fall_back_without_carrying_old_metrics(self):
+        d = self.device()
+        await self.a.refresh(d)
+        bus = self.a._bots["bot1"].events
+        await bus.fire(StateEvent(State.CLEANING))
+        await bus.fire(ReportStatsEvent("one", CleanJobStatus.CLEANING, 20, 1200))
+        await bus.fire(ReportStatsEvent("two", CleanJobStatus.CLEANING, 1, 60))
+        self.assertIsNone((await self.a.refresh(d))["cleaning"])
+        await bus.fire(ReportStatsEvent("one", CleanJobStatus.FINISHED, 20, 1200))
+        self.assertIsNone((await self.a.refresh(d))["last_clean"])
+
+    async def test_completion_without_totals_does_not_promote_partial_readings_to_history(self):
+        d = self.device()
+        await self.a.refresh(d)
+        bus = self.a._bots["bot1"].events
+        await bus.fire(StateEvent(State.CLEANING))
+        await bus.fire(ReportStatsEvent("one", CleanJobStatus.CLEANING, 5, 400))
+        await bus.fire(ReportStatsEvent("one", CleanJobStatus.FINISHED))
+        state = await self.a.refresh(d)
+        self.assertEqual(state["cleaning"]["status"], "completed")
+        self.assertEqual(state["last_clean"], {"result": "completed"})
+        await bus.fire(ReportStatsEvent("one", CleanJobStatus.FINISHED, time=600))
+        self.assertEqual((await self.a.refresh(d))["last_clean"], {"result": "completed", "minutes": 10})
+
+    async def test_start_ack_does_not_discard_a_run_report_received_during_the_command(self):
+        d = self.device()
+        await self.a.refresh(d)
+        bot = self.a._bots["bot1"]
+        async def start(_):
+            await bot.events.fire(StateEvent(State.CLEANING))
+            await bot.events.fire(ReportStatsEvent("new", CleanJobStatus.CLEANING, 0, 0))
+            return {"ret": "ok", "resp": {"body": {"code": 0}}}
+        bot.execute_command = start
+        result = await self.a.command(d, Action.CLEAN, Clean.START)
+        self.assertEqual(result["cleaning"]["run_id"], "new")
+        await bot.events.fire(StateEvent(State.PAUSED))
+        result = await self.a.command(d, Action.CLEAN, Clean.START)  # SDK interprets START from pause as resume
+        self.assertEqual(result["cleaning"]["run_id"], "new")
 
     async def test_commands(self):
         d = self.device()

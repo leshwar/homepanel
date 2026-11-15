@@ -5,9 +5,11 @@
 // Faces are sized in container units (cqmin/cqw), so the same markup draws both the
 // full-screen clock and the small previews in Settings → Display and clock.
 
-import { api } from "./api.js";
 import { store } from "./store.js";
 import { $, esc } from "./util.js";
+import { currentWeather, weatherStatus, refreshWeather } from "./sky.js";
+import { setMarkup } from "./render.js";
+import { idleVacuumLine } from "./vacuum-status.js";
 
 export const FACES = [
   { id: "digital", name: "Big digital" },
@@ -83,12 +85,18 @@ function wxRow(info, { highLow = false } = {}) {
 }
 
 // ---------- drawing ----------
-const fmtTime = (now, h24) => now.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: !h24 })
-  .replace(/\s?[AP]M$/i, "");
-const fmtShort = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+function timeHTML(now, h24) {
+  const parts = new Intl.DateTimeFormat([], { hour: "numeric", minute: "2-digit", hour12: !h24 }).formatToParts(now);
+  const time = parts.filter(p => p.type !== "dayPeriod").map(p => p.value).join("").trim();
+  const period = parts.find(p => p.type === "dayPeriod")?.value;
+  return `${esc(time)}${period ? `<span class="cf-meridiem">${esc(period)}</span>` : ""}`;
+}
+
+export const idleNight = (now, settings) => settings.clock_face === "night" ||
+  (settings.frame_night_clock !== false && (now.getHours() >= 22 || now.getHours() < 7));
 
 function analogSVG(now) {
-  const m = now.getMinutes() + now.getSeconds() / 60;
+  const m = now.getMinutes();
   const h = (now.getHours() % 12) + m / 60;
   const ticks = Array.from({ length: 12 }, (_, i) => {
     const major = i % 3 === 0;
@@ -101,10 +109,10 @@ function analogSVG(now) {
     <circle class="cf-pin" r="4"/></svg>`;
 }
 
-// HTML for one face. `info` = { h24, lightsOn, sun: {sunrise, sunset} | null, place: "",
+// HTML for one face. `info` = { h24, lightsOn, place: "",
 // weather: {temperature, high, low, condition, label, is_day} | null }.
 export function faceHTML(face, now, info = {}) {
-  const time = fmtTime(now, info.h24);
+  const time = timeHTML(now, info.h24);
   const date = now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" });
   const on = info.lightsOn || 0;
   const lights = on ? `${on} ${on === 1 ? "light is" : "lights are"} on` : "";
@@ -117,56 +125,27 @@ export function faceHTML(face, now, info = {}) {
         <div class="cf-sub">${esc(date)}</div>${wxRow(info)}</div>`;
     }
     case "date": {
-      const bits = [];
-      if (info.sun?.sunrise) bits.push(`Sunrise ${fmtShort(info.sun.sunrise)}`, `Sunset ${fmtShort(info.sun.sunset)}`);
-      if (lights) bits.push(lights[0].toUpperCase() + lights.slice(1));
       return `<div class="cf cf-date">
         ${info.place ? `<div class="cf-kicker">${esc(info.place)}</div>` : ""}
-        <div class="cf-weekday">${esc(now.toLocaleDateString([], { weekday: "long" }))}</div>
-        <div class="cf-day">${esc(now.toLocaleDateString([], { month: "long", day: "numeric" }))}</div>
-        <div class="cf-time">${esc(time)}</div>
-        ${wxRow({ ...info, place: "" }, { highLow: true })}
-        ${bits.length ? `<div class="cf-sub">${bits.map(esc).join(" · ")}</div>` : ""}</div>`;
+        <div class="cf-time">${time}</div>
+        <div class="cf-calendar"><div class="cf-weekday">${esc(now.toLocaleDateString([], { weekday: "long" }))}</div>
+        <div class="cf-day">${esc(now.toLocaleDateString([], { month: "long", day: "numeric" }))}</div></div>
+        ${wxRow({ ...info, place: "" })}</div>`;
     }
     case "night":
-      return `<div class="cf cf-night"><div class="cf-time">${esc(time)}</div>
+      return `<div class="cf cf-night"><div class="cf-time">${time}</div>
         ${info.weather ? `<div class="cf-temp">${esc(info.weather.temperature)}°</div>` : ""}</div>`;
     default:
-      return `<div class="cf cf-digital"><div class="cf-time">${esc(time)}</div>
+      return `<div class="cf cf-digital"><div class="cf-time">${time}</div>
         <div class="cf-sub">${esc(lights ? `${date}. ${lights}.` : date)}</div>${wxRow(info)}</div>`;
   }
-}
-
-// ---------- sunrise/sunset for the date face (fetched at most once a day) ----------
-let sun = null;
-let sunDay = "";
-function refreshSun() {
-  const today = new Date().toDateString();
-  if (sunDay === today || store.settings.latitude == null) return;
-  sunDay = today;
-  api.sun().then((s) => { sun = s; renderAmbient(); }).catch(() => { sunDay = ""; });
-}
-
-// ---------- weather (the server fetches and caches it; we ask every 10 minutes) ----------
-let weather = null;
-let weatherKey = "";
-let weatherAt = 0;
-function refreshWeather() {
-  const s = store.settings;
-  if (!s.weather_enabled || s.latitude == null) { weather = null; weatherKey = ""; return; }
-  const key = [s.latitude, s.longitude, s.temperature_unit].join();
-  if (key === weatherKey && Date.now() - weatherAt < 10 * 60e3) return;
-  if (key !== weatherKey) weather = null;
-  weatherKey = key; weatherAt = Date.now();
-  api.weather().then((w) => { weather = w?.available ? w : null; renderAmbient(); })
-    .catch(() => { weather = null; });
 }
 
 export function faceInfo() {
   const s = store.settings;
   const lightsOn = [...store.devices.values()].filter((d) => d.kind === "light" && d.state?.on).length;
-  return { h24: !!s.clock_24h, lightsOn, sun: s.latitude != null ? sun : null,
-           place: s.place_name || "", weather: s.weather_enabled ? weather : null };
+  return { h24: !!s.clock_24h, lightsOn, place: s.place_name || "",
+           weather: s.weather_enabled && ["ready", "updating"].includes(weatherStatus()) ? currentWeather() : null };
 }
 
 // Draw the resting clock (if it's showing) and nudge it along its drift path.
@@ -175,10 +154,11 @@ export function renderAmbient(now = new Date()) {
   const stage = $("#ambient-face");
   if (!root || !stage || root.hidden) return;
   const face = faceId(store.settings.clock_face);
-  if (face === "date") refreshSun();
   refreshWeather();
   root.dataset.face = face;
-  stage.innerHTML = faceHTML(face, now, faceInfo());
+  root.dataset.night = String(idleNight(now, store.settings));
+  const line = idleVacuumLine(store.devices.values());
+  setMarkup(stage, `${faceHTML(face, now, faceInfo())}<p class="ambient-activity" role="status" ${line ? "" : "hidden"}>${esc(line)}</p>`);
   const freeX = Math.max(0, (root.clientWidth - stage.offsetWidth) / 2 - 16);
   const freeY = Math.max(0, (root.clientHeight - stage.offsetHeight) / 2 - 16);
   const [x, y] = driftOffset(now.getTime(), Math.min(freeX, root.clientWidth * 0.2), Math.min(freeY, root.clientHeight * 0.2));

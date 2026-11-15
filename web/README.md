@@ -27,6 +27,8 @@ web/
     ├── room-layout.js per-profile room tile layouts and their editor
     ├── room-sort.js three-line room grips, touch sorting, keyboard announcements and persistence
     ├── home.js     the Home page: widgets (clock, other places' clocks, weather, scenes, rooms)
+    ├── home-overview.js time-first overview and real permission-filtered device attention
+    ├── room-cards.js compact capability-driven cards and safe inline level controls
     │               and edit mode (hold to move, drag a corner to resize, hide, Done)
     ├── tiles.js    open-first device tiles, explicit quick actions and stable in-place updates
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
@@ -42,6 +44,7 @@ web/
     ├── purifier.js purifier panel: reported air/filter readings; Mode and Fan speed tabs
     ├── device-controls.js safe release-to-apply range gestures shared by the panels
     ├── vacuum.js   vacuum panel: status, map, main button; Rooms, Options, Station, Care tabs
+    ├── vacuum-status.js shared read-only current-run/status and permission-filtered idle summary
     ├── effects.js  light effects in the light sheet: searchable scenes (Scenes / DIY / Snapshots),
     │               music mode + sensitivity, strip parts (tap parts, then a color), toggles
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
@@ -70,15 +73,23 @@ web/
   palette; pixel-level checks cover visible motion and text contrast across phases.
 - **Glass over a scene.** Or a static background (`.backdrop` in `index.html`:
   gradients plus soft SVG shapes; Ocean, Aurora or Night via `html[data-bg]`) sits
-  behind frosted-glass tiles, sheets and buttons. Settings → Display has the
+  behind theme-aware tiles and buttons. Settings → Display has the
   background, a **Glass transparency** slider (sets `--glass-alpha`, see `js/glass.js`)
   and a **Frosted blur** switch (`html.glass`) for slow screens. Readability takes
   priority over making tiles completely clear: light tiles keep at least 72% backing
-  (84% when on); dark wallpaper tiles keep at least 80% (86% when on). Offline tiles
+  (84% when on); dark tiles keep at least 80% (86% when on). Offline tiles
   keep their backing too, with a disconnected icon and readable warning text rather
   than fading the whole tile. Labels and nested buttons use the tile's text colors,
   independently of the background-aware page title. Wallpaper rails also keep a
   minimum backing, and headings over the picture get a soft shadow.
+  Five bundled scenic artworks (mountains, cedar forest, coast, dunes and stars)
+  are available in the Wallpaper picker, with small local thumbnails and no network
+  dependency. They are labeled as original artwork, not photography; source and
+  CC0 dedication are in `wallpapers/README.md`. Built-ins cannot be deleted; custom
+  uploads keep their IDs and removal controls. Selection, preview/cancel, shuffle,
+  orientation preference and dimming use the existing wallpaper flow. Failed loads
+  keep the last displayed image and show a readable error; late preview loads cannot
+  overwrite a newer selection.
   Settings cards/lists and all device controls use opaque surfaces so dashboard
   content cannot overlap their text; background previews remain visible around settings cards.
 - **Lit devices.** A device that is on gives off light: lamps glow in their real
@@ -173,6 +184,26 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   scroll without shrinking their touch targets.
 - **Animations** are short (150–300 ms) and only move or fade: tile press and "pop" when
   something turns on, tab and page switches, and the sheet sliding in and out.
+- **Layout views.** Rooms default to **Compact**: content-sized cards, full-width on
+  phones and two columns above a 600px content width. Each keeps
+  name/status and an explicit quick action together; lights have release-to-apply
+  brightness, speakers have reported volume and mute, and vacuums show real
+  activity/problem with battery labeled separately. Faulted vacuums do not offer a
+  blind Start shortcut. Unknown/offline controls are disabled rather than guessed.
+  The **Free layout** choice restores the existing per-breakpoint placement and
+  sizes; Edit tiles still opens that editor, even from Compact. No saved geometry
+  is deleted or rewritten by viewing or switching modes.
+  Home defaults to **Overview**, with time/date on the left and actionable device
+  notifications on the right (stacked on phones). Alerts are real offline/pairing,
+  problem or maintenance states, prioritized and deduplicated; they only open controls.
+  The main grid clock is shown in the overview instead, not duplicated. Existing
+  non-clock coordinates are retained; only automatic placements without saved
+  coordinates are derived normally. Home's **Free layout** and editor restore the
+  original clock and geometry. Both choices belong to the signed-in profile and
+  persist through the existing profile API, including for members.
+  The fixed dock's measured height and safe-area offset reserve bottom scroll
+  clearance; the last card can be fully scrolled above navigation. Resize, view/profile
+  changes, overlays and cancellation discard in-progress inline slider gestures.
 - **Room selection.** The sidebar and mobile picker use "All rooms", named rooms
   and "Other" (devices without a room). Swipe the grid sideways to change room;
   the chosen room is remembered. Each room has a heading with
@@ -193,6 +224,17 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   shared panel setting for all profiles/screens, and leaving without saving restores
   the saved size. Shared `--text-scale` and bounded `--readout-scale` tokens scale
   existing typography without zooming the UI or reducing touch targets.
+- **Resting clock.** The selected face is preserved. Date and day keeps its calendar
+  identity but makes time primary, with smaller weekday/date and compact weather.
+  The 12-hour faces include AM/PM; the 24-hour preference still applies. Daytime is
+  readable warm text on charcoal. With the existing night-clock preference, 10 PM–7 AM
+  dims the face on black and hides secondary weather/location details; Dim night stays
+  dim at any hour. A single non-interactive vacuum line shows relevant activity or
+  attention, selected deterministically from the current profile's visible devices.
+  Battery and previous jobs never become progress. Weather uses the existing shared
+  cache, unchanged face markup retains its DOM nodes, and burn-in drift remains bounded.
+  Reduced motion removes transitions. The complete wake gesture, including its
+  generated click or key release, is swallowed before the underlying controls can act.
 - **Photos tile.** Add Photos from the Home editor after an admin configures
   Settings → Photo library. Only explicitly selected albums and profiles are used.
   One bounded stream supplies decoded images to the screen's tiles, without
@@ -238,12 +280,14 @@ Every panel has the same shape (`panel.js`), filled in from what the device can 
 
 Per kind:
 
-- *Lights* (`light.js`): the stage is a tall brightness bar filled in the lamp's colour.
+- *Lights* (`light.js`): the stage is a tall amber brightness bar. Its value sits below
+  the fill so every level stays readable, including saturated blue lights and unknown values.
+  The tile, color wheel and white strip still show the lamp's reported color.
   Tabs: Color (wheel and presets), White (warm-to-cool strip and presets), and, when the light
   lists them, Scenes (search, grouped Scenes / DIY / Snapshots, Update list), Music (modes and
   sensitivity), Segments (tap parts, then a colour) and Options (`effects.js`).
-- *TVs and richer speakers* (`remote.js`): built for eyes on the TV. Recessed surfaces are
-  for sliding, raised keys for pressing. The pad: swipe to move (keep sliding to keep moving),
+- *TVs and richer speakers* (`remote.js`): built for eyes on the TV. Inset surfaces are
+  for sliding, keys for pressing. The pad: swipe to move (keep sliding to keep moving),
   tap to select; the arrows at its edges and OK are real buttons too. It can switch to a
   pointer pad (TVs with `pointer`) or numbers. Either side, the volume and channel rails:
   tap + / − or slide a thumb along the middle, one step per stretch of travel; the volume
@@ -261,6 +305,12 @@ Per kind:
   (start, pause, keep cleaning, or clean the picked rooms) with Stop / Dock / Find beside it.
   Tabs: Rooms, Options (suction, mode), Station, Care (parts wear; a dot on the tab when a
   part is worn). Unknown status asks for a refresh instead of guessing an action.
+  Battery is explicitly labeled. Cleaning, pause and return use an indeterminate
+  progressbar with no numerical value when completion is not reported; its static
+  treatment never animates while paused or needing attention. Current-run time/area
+  are shown only with identified, fresh telemetry, separately from historical cleans.
+  Completed and stopped outcomes require backend evidence, not docking or battery level.
+  Unidentified legacy stats are not relabeled as current progress or a completed run.
 - *Air purifiers* (`purifier.js`): the stage shows its readings; tabs: Mode and Fan speed.
 - *Plugs, switches and anything else*: one big power button, with energy use when the
   device reports watts.
@@ -270,6 +320,20 @@ while dragging and send one command on release; a tap on a track, a cancelled dr
 the panel sends nothing; a control under a finger is never replaced by a live update; and
 keyboard focus and the chosen tab survive updates. Panels are opaque, theme-aware surfaces,
 independent of the dashboard's glass.
+
+The dark palette is warm matte charcoal with warm-white text, darker inset tracks,
+thin neutral outlines, teal power switches, amber brightness/attention and lavender
+volume. Selected chips use blue text and an outline, not only a change of fill.
+Light panels use their own contrast-safe equivalents. Narrow screens give the device
+name and status a full header row; pending commands show "Applying change..." without
+replacing a held control. The brightness readout and an idle speaker's volume remain
+legible instead of fading with the control. Tabs keep their focus outline inside the
+scrolling tab bar. Reduced motion removes control transitions.
+
+Background scenes, wallpaper, glass, typography and profile layouts remain user
+preferences. Dark dashboard surfaces retain at least 80% backing (86% when on) so
+secondary text remains readable; device panels and settings cards stay opaque. Weather
+animations and private photo tiles keep their own content surfaces.
 
 ## Adding a control for a new capability
 

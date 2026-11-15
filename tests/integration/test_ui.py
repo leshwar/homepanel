@@ -86,7 +86,7 @@ class UITests(unittest.TestCase):
         self.assertTrue(self.tile("lr-tv").evaluate("el => el.classList.contains('on')"))
 
     def test_sound_bar_opens_media_controls_and_picks_sound_mode(self):
-        self.page.wait_for_selector('.tile[data-id="lr-soundbar"].wide')
+        self.page.wait_for_selector('.tile[data-id="lr-soundbar"].compact-card')
         self.tile("lr-soundbar").locator(".tile-name").click()
         self.page.wait_for_selector('#sheet[data-kind="speaker"] .dial')
         self.assertTrue(self.tile("lr-soundbar").evaluate("el => el.classList.contains('on')"))  # tap didn't turn it off
@@ -121,7 +121,7 @@ class UITests(unittest.TestCase):
         self.page.mouse.up()
         self.page.wait_for_function("document.querySelector('#bri-val').textContent === '30%'")
         self.page.wait_for_function(
-            "document.querySelector('.tile[data-id=\"lr-ceiling\"] .tile-status').textContent === 'On, 30%'")
+            "document.querySelector('.tile[data-id=\"lr-ceiling\"] .tile-status').textContent === 'White · 30%'")
         self.page.locator("#bri").click()
         self.assertEqual(self.page.inner_text("#bri-val"), "30%")
         self.page.locator("#sheet [data-power]").click()
@@ -531,7 +531,7 @@ class UITests(unittest.TestCase):
         self.page.select_option("[data-room-picker]", "all" if name == "All rooms" else "" if name == "Other" else name)
 
     def swipe(self, dx):
-        box = self.page.locator("#grid .tile").first.bounding_box()
+        box = self.page.locator("#grid .tile [data-more]").first.bounding_box()
         x, y = box["x"] + box["width"] / 2, box["y"] + box["height"] / 2
         self.page.mouse.move(x, y)
         self.page.mouse.down()
@@ -786,7 +786,7 @@ class UITests(unittest.TestCase):
             "document.querySelector('.tile[data-id=\"lr-vacuum\"] .tile-status').textContent.startsWith('Cleaning')")
         self.page.click("#sheet [data-dock]")
         self.page.wait_for_function(
-            "document.querySelector('#sheet .panel-head p').textContent.startsWith('Going back to dock')")
+            "document.querySelector('#sheet .panel-head p').textContent.startsWith('Returning to dock')")
         box = self.page.locator("#sheet [data-clean]").bounding_box()
         self.assertGreaterEqual(box["height"], 48)               # touch target
         self.assertEqual(self.errors, [])
@@ -1015,7 +1015,9 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector('#sheet [data-clean-mode="mop"][aria-pressed="true"]')
         self.page.click('#sheet [data-clean-mode="vacuum"]')
         self.page.wait_for_selector('#sheet [data-clean-mode="vacuum"][aria-pressed="true"]')
-        heights = [self.page.locator(f"#sheet {sel}").bounding_box()["height"] for sel in ('[data-suction="max"]', '[data-clean-mode="mop"]')]
+        heights = self.page.locator("#sheet").evaluate(
+            "(sheet, selectors) => selectors.map(s => sheet.querySelector(s).getBoundingClientRect().height)",
+            ['[data-suction="max"]', '[data-clean-mode="mop"]'])
         self.page.click('#sheet [data-tab="station"]')
         self.page.click('#sheet [data-station="empty_dustbin"]')
         self.page.wait_for_selector("text=Empty dustbin: sent to the station")
@@ -1029,7 +1031,9 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector("#sheet .vac-main >> text=Clean 1 room")
         self.page.click("#sheet [data-rooms-clear]")
         self.page.wait_for_selector("#sheet .vac-main >> text=Start cleaning")
-        heights += [self.page.locator(f"#sheet {sel}").bounding_box()["height"] for sel in (".vac-main", "[data-locate]", '[data-room-pick="2"]')]
+        heights += self.page.locator("#sheet").evaluate(
+            "(sheet, selectors) => selectors.map(s => sheet.querySelector(s).getBoundingClientRect().height)",
+            [".vac-main", "[data-locate]", '[data-room-pick="2"]'])
         self.assertTrue(all(h >= 48 for h in heights), heights)
         no_overflow = self.page.evaluate("document.querySelector('#sheet').scrollWidth <= 393")
         self.assertTrue(no_overflow)
@@ -1146,6 +1150,8 @@ class UITests(unittest.TestCase):
         self.page.wait_for_selector("#ambient:not([hidden])")
 
     def test_clock_shows_weather_and_place_and_hides_weather_when_unavailable(self):
+        from datetime import datetime
+        self.page.clock.set_fixed_time(datetime(2026, 11, 11, 13))
         source = FakeWeatherSource(temperature=53.6, code=61)
         os.environ["HOMEPANEL_WEATHER_URL"] = source.url
         try:
@@ -1303,7 +1309,7 @@ class UITests(unittest.TestCase):
     def test_home_page_has_clocks_and_rooms_but_no_devices(self):
         page = self.home(timezone_id="America/Denver")
         try:
-            page.wait_for_selector('.widget[data-wid="clock"] [data-time]')
+            page.wait_for_selector('.home-overview [data-time]')
             for wid, tz in (("zone-in", "Asia/Kolkata"), ("zone-us", "America/Denver")):   # US = this screen's zone
                 zone = page.locator(f'.widget[data-wid="{wid}"] .w-zone')
                 self.assertEqual(zone.get_attribute("data-zone"), tz)
@@ -1323,7 +1329,7 @@ class UITests(unittest.TestCase):
             ids = set(page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id)"))
             self.assertEqual(ids, {"kt-pendant", "kt-kettle", "kt-fridge"})
             page.click('#dock [data-nav="home"]')
-            page.wait_for_selector('.widget[data-wid="clock"]')
+            page.wait_for_selector('.home-overview [data-time]')
         finally:
             page.close()
 
@@ -1450,6 +1456,8 @@ class UITests(unittest.TestCase):
     def test_edit_home_page_hide_resize_move_and_save_for_every_screen(self):
         page = self.home()
         try:
+            page.click('[data-layout-view="home_view"][data-layout-value="free"]')
+            page.wait_for_selector('.widget[data-wid="clock"]')
             self.long_press(page, '.widget[data-wid="clock"]')                 # long press the page = edit
             page.wait_for_selector(".home.editing .editbar")
             page.click('.widget[data-wid="scenes"] [data-hide]')
@@ -1502,6 +1510,7 @@ class UITests(unittest.TestCase):
             self.assertEqual(self.placements(page), moved)
         finally:
             page.evaluate("fetch('/api/v1/profiles/me/layout', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: '{\"home_layout\": null}'})")
+            page.evaluate("async ()=>(await import('/js/api.js')).api.updateMe({home_view:'overview'})")
             page.close()
 
     def test_room_settings_edit_tiles_resize_save_cancel_and_live_updates(self):
@@ -1539,6 +1548,7 @@ class UITests(unittest.TestCase):
             page.click("[data-room-done]")
             page.wait_for_selector("text=Kitchen layout saved")
             page.reload()
+            page.click('[data-layout-view="room_view"][data-layout-value="free"]')
             page.wait_for_selector(selector)
             self.assertEqual(self.placements(page, ".room-tile"), moved)
             page.click('[data-edit-room="Kitchen"]')
@@ -1556,6 +1566,7 @@ class UITests(unittest.TestCase):
             self.assertEqual(page.evaluate("async () => (await (await import('/js/api.js')).api.state()).settings.room_layouts"), saved)
         finally:
             page.evaluate("async () => (await import('/js/api.js')).api.saveRoomLayout('Kitchen', null)")
+            page.evaluate("async ()=>(await import('/js/api.js')).api.updateMe({room_view:'compact'})")
 
     def test_sky_background_follows_the_weather(self):
         source = FakeWeatherSource(temperature=28.4, code=71)                 # snow

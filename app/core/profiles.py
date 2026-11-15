@@ -378,6 +378,11 @@ class Profiles:
         if "pin" in data:
             raise ProfileError("Profile PINs are no longer used. Reload the panel and save again.")
         p = dict(current or {})
+        for key, choices in (("room_view", ("compact", "free")), ("home_view", ("overview", "free"))):
+            if key in data:
+                if data[key] not in choices:
+                    raise ProfileError("Choose an available layout view.")
+                p[key] = data[key]
         p.pop("pin_hash", None)
         if "name" in data or not current:
             name = " ".join(str(data.get("name") or "").split())[:24]

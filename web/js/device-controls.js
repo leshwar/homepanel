@@ -14,11 +14,12 @@ export function clearControlGestures() {
 export function bindRelativeRange(range, { value, preview, commit, idle }) {
   let drag = null, pointerChange = false;
   const show = (v) => { range.value = v; preview(v); };
-  const cancel = () => { drag = null; show(value()); };
+  const cancel = () => { drag = null; pointerChange = true; show(value()); };
   for (const event of ["touchstart", "touchmove"]) range.addEventListener(event, (e) => e.preventDefault(), { passive: false });
   range.addEventListener("pointerdown", (e) => {
     if (range.disabled || e.button > 0 || gestures.size) return;
     e.preventDefault();
+    pointerChange = false;
     range.focus({ preventScroll: true });
     range.setPointerCapture(e.pointerId);
     drag = { pointer: e.pointerId, base: value(), value: value(), x: e.clientX, y: e.clientY,
@@ -45,14 +46,19 @@ export function bindRelativeRange(range, { value, preview, commit, idle }) {
     drag = null; gestures.delete(range);
     pointerChange = true;
     setTimeout(() => { pointerChange = false; }, 0);
-    if (e.type === "pointerup" && !done.canceled && done.moved && done.value !== done.base) commit(done.value);
-    else { show(value()); idle(); }
+    if (e.type === "pointerup" && !done.canceled && done.moved && done.value !== done.base && range.isConnected && !range.disabled
+        && Math.abs(range.getBoundingClientRect().width - done.width) < 1) commit(done.value);
+    else { show(value()); idle(done.moved || done.canceled); }
   };
   range.addEventListener("pointerup", finish);
   range.addEventListener("pointercancel", finish);
   range.addEventListener("lostpointercapture", finish);
+  range.addEventListener("keydown", (e) => {
+    if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"].includes(e.key)) pointerChange = false;
+  });
   range.addEventListener("input", () => { if (!drag) preview(Number(range.value)); });
   range.addEventListener("change", () => {
-    if (!drag && !pointerChange && range.isConnected && !range.closest(".closing")) commit(Number(range.value));
+    if (!drag && !pointerChange && range.isConnected && !range.disabled && !range.closest(".closing")) commit(Number(range.value));
   });
+  return () => { cancel(); gestures.delete(range); };
 }

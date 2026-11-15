@@ -10,6 +10,7 @@ from PIL import Image
 from app.api.auth import MEMBER_OK, _match
 from app.core.adapter import AdapterError
 from app.core.photos import DevicePictures, PhotoError, PhotoLibrary
+from app.core.wallpapers import ASSETS, WallpaperLibrary
 from app.core.service import HomeService
 
 
@@ -61,6 +62,24 @@ class WallpaperLibraryTests(unittest.TestCase):
 
     def test_opaque_rgba_png_becomes_jpeg(self):
         self.assertTrue(self.lib.add(image_bytes("PNG", mode="RGBA"))["id"].endswith(".jpg"))
+
+    def test_bundled_art_is_local_small_and_protected_without_changing_upload_ids(self):
+        uploaded = self.lib.add(image_bytes("PNG"))
+        library = WallpaperLibrary(self.lib.folder)
+        builtins = [w for w in library.list() if w.get("builtin")]
+        self.assertEqual(len(builtins), 5)
+        self.assertLess(sum(p.stat().st_size for p in ASSETS.glob("*.webp")), 500_000)
+        for item in builtins:
+            path, media = library.path(item["id"])
+            self.assertEqual(media, "image/webp")
+            with Image.open(path) as image:
+                self.assertEqual(image.size, (1600, 1200))
+                self.assertGreater(len(image.resize((50, 50)).getcolors(2501)), 20)  # actual scenic variation
+            with self.assertRaises(PhotoError):
+                library.delete(item["id"])
+        self.assertEqual(library.path(uploaded["id"]), self.lib.path(uploaded["id"]))
+        library.delete(uploaded["id"])
+        self.assertEqual(len(library.list()), 5)
 
 
 class DevicePictureTests(unittest.TestCase):
@@ -121,7 +140,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_demo_has_wallpapers_and_wallpaper_settings_are_checked(self):
         walls = self.svc.wallpapers.list()
-        self.assertEqual(len(walls), 3)
+        self.assertEqual(len(walls), 5)
         s = self.svc.update_settings({"background": "wallpaper", "wallpaper": walls[0]["id"],
                                       "wallpaper_every": 15, "wallpaper_dim": 200})
         self.assertEqual((s["background"], s["wallpaper"], s["wallpaper_every"], s["wallpaper_dim"]),
@@ -132,10 +151,17 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.svc.update_settings({"wallpaper": ""})["wallpaper"], "shuffle")
 
     async def test_deleting_the_shown_wallpaper_goes_back_to_shuffle(self):
-        w = self.svc.wallpapers.list()[0]["id"]
+        w = self.svc.wallpapers.add(image_bytes("PNG"))["id"]
         self.svc.update_settings({"wallpaper": w})
         self.svc.delete_wallpaper(w)
         self.assertEqual(self.svc.store.settings["wallpaper"], "shuffle")
+
+    async def test_builtin_selection_survives_reload_and_delete_is_rejected(self):
+        wid = self.svc.wallpapers.list()[0]["id"]
+        self.svc.update_settings({"wallpaper": wid})
+        with self.assertRaises(PhotoError):
+            self.svc.delete_wallpaper(wid)
+        self.assertEqual(HomeService(self.dir, demo=True).store.settings["wallpaper"], wid)
 
     async def test_device_picture_set_shown_and_cleaned_up(self):
         d = await self.svc.set_device_picture("lr-tv", cutout_png())

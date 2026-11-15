@@ -34,6 +34,7 @@ from .history import History
 from .layout import LayoutError, clean_layout, clean_room_layout, default_layout, migrate_layout
 from .net import normalize_mac, parse_color
 from .photos import DevicePictures, PhotoLibrary
+from .wallpapers import WallpaperLibrary
 from .remote_photos import RemotePhotos
 from .presence import Presence
 from .profiles import ADMIN, MEMBER, Profiles, Sessions, Viewer, current_viewer, hash_secret, sees
@@ -223,6 +224,10 @@ async def mw_timeout_retry(ctx: CommandContext, call_next):
     last: Exception | None = None
     # A late pointer move is worse than a lost one, so those get one quick try.
     attempts, limit = (1, 3.0) if ctx.action in Action.QUIET else (2, COMMAND_TIMEOUT)
+    if not ctx.adapter.retry_commands:
+        attempts = 1
+    if ctx.action == Action.POWER and ctx.value is True and ctx.adapter.wake_timeout is not None:
+        attempts, limit = 1, min(60.0, ctx.adapter.wake_timeout)
     for _attempt in range(attempts):
         try:
             return await asyncio.wait_for(call_next(ctx), limit)
@@ -261,6 +266,8 @@ class HomeService:
         self._middleware: list[Middleware] = [mw_access, mw_validate, mw_normalize, mw_log, self._mw_in_order, self._mw_adapter_backoff,
                                               mw_timeout_retry]
         self._queues: dict[str, asyncio.Lock] = {}      # per device: commands run one at a time
+        self._pending_wakes: dict[str, asyncio.Task] = {}
+        self._wake_generation: dict[str, int] = {}
         self._commands_done: dict[str, int] = {}        # per device: commands finished (to spot stale reads)
         self.profiles = Profiles(self.store, Sessions(os.path.join(data_dir, "demo-sessions.json" if demo else "sessions.json")))
         self.history = History(os.path.join(data_dir, "demo-history.db" if demo else "history.db"))
@@ -269,7 +276,7 @@ class HomeService:
         self._power_tasks: set[asyncio.Task] = set()
         self.photos = PhotoLibrary(os.path.join(data_dir, "demo-photos" if demo else "photos"))
         self.photo_library = RemotePhotos(self.store, self._publish_layout)
-        self.wallpapers = PhotoLibrary(os.path.join(data_dir, "demo-wallpapers" if demo else "wallpapers"))
+        self.wallpapers = WallpaperLibrary(os.path.join(data_dir, "demo-wallpapers" if demo else "wallpapers"))
         self.device_pictures = DevicePictures(os.path.join(data_dir, "demo-device-pictures" if demo else "device-pictures"))
         self.weather = Weather(lambda: self.store.settings)
         self.geo = Geolocator()          # only used when the user taps "Use my location"
@@ -311,8 +318,34 @@ class HomeService:
         wheel, then a preset). Pointer moves skip the queue: the UI already sends them one by one."""
         if ctx.action in Action.QUIET:
             return await call_next(ctx)
+        did = ctx.device.id
+        wake = ctx.adapter.wake_timeout is not None and ctx.action == Action.POWER and ctx.value is True
+        if ctx.adapter.wake_timeout is not None and (
+                (ctx.action == Action.POWER and ctx.value is False)
+                or ctx.action in (Action.SET_INPUT, Action.LAUNCH_APP, Action.KEY)):
+            self._cancel_wake(did)
+        generation = self._wake_generation.get(did, 0)
         async with self._queues.setdefault(ctx.device.id, asyncio.Lock()):
+            if wake:
+                if generation != self._wake_generation.get(did, 0):
+                    raise AdapterError("TV wake was superseded by a newer action.")
+                task = asyncio.create_task(call_next(ctx))
+                self._pending_wakes[did] = task
+                try:
+                    return await task
+                except asyncio.CancelledError:
+                    if asyncio.current_task().cancelling():
+                        raise
+                    raise AdapterError("TV wake was superseded by a newer action.") from None
+                finally:
+                    if self._pending_wakes.get(did) is task:
+                        self._pending_wakes.pop(did)
             return await call_next(ctx)
+
+    def _cancel_wake(self, device_id: str) -> None:
+        self._wake_generation[device_id] = self._wake_generation.get(device_id, 0) + 1
+        if (task := self._pending_wakes.get(device_id)) and not task.cancelling():
+            task.cancel()
 
     async def _run_pipeline(self, ctx: CommandContext):
         async def terminal(c: CommandContext):
@@ -363,6 +396,11 @@ class HomeService:
                             asyncio.create_task(self.presence.run())]
 
     async def stop(self) -> None:
+        wakes = list(self._pending_wakes.values())
+        for task in wakes:
+            task.cancel()
+        if wakes:
+            await asyncio.gather(*wakes, return_exceptions=True)
         for t in [*self._pollers.values(), *self._background, *self._power_tasks]:
             t.cancel()
         for h in self._soon.values():
@@ -453,6 +491,8 @@ class HomeService:
     def public_device(self, d: Device) -> dict:
         out = asdict(d)
         out.pop("config", None)
+        cls = ADAPTERS.get(d.adapter)
+        out["startup_screens"] = cls.startup_screens if cls and d.kind == "tv" else []
         out["adapter_name"] = self.adapter_meta(d.adapter).get("name", d.adapter)
         out["pairing"] = bool(d.state.get("needs_pairing"))
         if d.kind == "tv":
@@ -514,6 +554,8 @@ class HomeService:
             s.pop("presence", None)          # phones' addresses: admins only
         s["home_layout"] = self.layout_for(viewer)
         s["room_layouts"] = self.room_layouts_for(viewer)
+        s["room_view"] = viewer.profile.get("room_view", "compact") if viewer else "compact"
+        s["home_view"] = viewer.profile.get("home_view", "overview") if viewer else "overview"
         s["photo_library"] = self.photo_library.status()
         return s
 
@@ -611,9 +653,11 @@ class HomeService:
             raise AdapterError(f"{d.name} needs pairing first. Open it in Settings and choose Pair.")
         ctx = CommandContext(d, adapter, action, value)
         config_before, shape_before = dict(d.config), (list(d.caps), dict(d.meta))
-        changed = await self._run_pipeline(ctx) or {}
-        if d.config != config_before or (list(d.caps), dict(d.meta)) != shape_before:
-            self.store.save()              # e.g. a light's list of scenes was read again
+        try:
+            changed = await self._run_pipeline(ctx) or {}
+        finally:
+            if self.store.devices.get(d.id) is d and (d.config != config_before or (list(d.caps), dict(d.meta)) != shape_before):
+                self.store.save()          # verified address/metadata may be learned before a later action fails
         self._failures[d.id] = 0
         if action in Action.QUIET:          # nothing changed; don't flood the live events
             return self.public_device(d)
@@ -682,7 +726,7 @@ class HomeService:
         # for its own fresh read), so its result stays.
         overtaken = lambda: self._commands_done.get(d.id, 0) != done   # noqa: E731
         try:
-            state = await self._with_adapter_backoff(d.adapter, lambda: adapter.refresh(d), REFRESH_TIMEOUT)
+            state = await self._with_adapter_backoff(d.adapter, lambda: adapter.refresh(d), min(30.0, adapter.refresh_timeout))
             self._failures[d.id] = 0
             if not overtaken():
                 d.state = {"online": True, **(state or {})}
@@ -888,6 +932,13 @@ class HomeService:
 
     def update_device(self, device_id: str, changes: dict) -> dict:
         d = self.get(device_id)
+        if "power_on_screen" in changes:
+            choices = self.public_device(d)["startup_screens"]
+            if not isinstance(changes["power_on_screen"], str) or changes["power_on_screen"] not in {option["id"] for option in choices}:
+                raise AdapterError("Choose a supported startup screen for this device.")
+            if d.power_on_screen != changes["power_on_screen"]:
+                self._cancel_wake(device_id)
+                d.power_on_screen = changes["power_on_screen"]
         for k in ("name", "room", "icon", "kind", "keep_on"):
             if k in changes:
                 setattr(d, k, changes[k])
@@ -907,6 +958,7 @@ class HomeService:
         return self.public_device(d)
 
     async def remove_device(self, device_id: str) -> None:
+        self._cancel_wake(device_id)
         d = self.store.devices.pop(device_id, None)
         if not d:
             raise KeyError(device_id)
@@ -1173,7 +1225,7 @@ class HomeService:
         viewer = current_viewer.get()
         if viewer is None:
             raise AdapterError("Sign in first.")
-        mine = {k: data[k] for k in ("name", "color", "email", "pin", "password") if k in data}
+        mine = {k: data[k] for k in ("name", "color", "email", "pin", "password", "room_view", "home_view") if k in data}
         return await self.update_profile(viewer.id, mine)
 
     def delete_profile(self, profile_id: str) -> None:

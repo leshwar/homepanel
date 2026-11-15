@@ -127,7 +127,7 @@ class FavouritesTests(unittest.TestCase):
 
     def test_wide_media_tile_shows_its_volume_level(self):
         page = self.page
-        page.evaluate("async () => { const s = await import('/js/store.js'); s.setRoom('Living room'); s.setView('rooms'); }")
+        page.evaluate("async () => { const s = await import('/js/store.js'); s.store.settings.room_view='free'; s.setRoom('Living room'); s.setView('rooms'); }")
         bar = page.locator('#grid .tile[data-id="lr-soundbar"]')
         bar.wait_for()
         level = bar.locator(".tile-vol")

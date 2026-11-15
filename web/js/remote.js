@@ -1,5 +1,5 @@
-// TV (and richer speaker) remote for the device panel, built for eyes on the TV: the
-// surfaces you slide on are recessed, the keys you press are raised.
+// TV (and richer speaker) remote for the device panel, built for eyes on the TV: inset
+// surfaces are for sliding, keys are for pressing.
 //
 //   pad     swipe to move (keep sliding to keep moving), tap to select; the arrows at its
 //           edges and OK in the middle are real buttons too. It can switch to a pointer

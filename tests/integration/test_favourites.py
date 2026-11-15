@@ -57,7 +57,7 @@ class FavouritesTests(unittest.TestCase):
 
     def save_layout(self, extra):
         widgets = [{k: v for k, v in w.items() if k != "positions"} for w in self.layout["widgets"]]
-        r = self.page.request.put(self.api + "/profiles/me/layout", data={"home_layout": {"version": 3, "widgets": widgets + extra}})
+        r = self.page.request.put(self.api + "/profiles/me/layout", data={"home_layout": {"version": 4, "widgets": widgets + extra}})
         self.assertEqual(r.status, 200, r.text())
         self.page.reload()
         self.page.wait_for_selector(".widget")
@@ -65,7 +65,7 @@ class FavouritesTests(unittest.TestCase):
     def test_favourites_open_controls_and_only_the_quick_button_sends_a_command(self):
         page = self.page
         page.request.post(f"{self.api}/devices/bd-lamp/command", data={"action": "power", "value": False})   # a known start
-        self.save_layout([{"id": "favs", "type": "favourites", "size": "2x2", "hidden": False,
+        self.save_layout([{"id": "favs", "type": "favourites", "size": "2x6", "hidden": False,
                            "options": {"devices": ["lr-vacuum", "bd-lamp", "gone"]}}])
         rows = page.locator(".t-favourites .w-favs .tile")
         rows.first.wait_for()
@@ -127,25 +127,26 @@ class FavouritesTests(unittest.TestCase):
         self.assertEqual([w["options"] for w in saved if w["type"] == "favourites"], [{"devices": ["kt-kettle", "lr-tv"]}])
         self.assertEqual(self.commands, [])
 
-    def test_wide_media_tile_shows_its_volume_level(self):
+    def test_compact_speaker_keeps_its_reported_level_and_disables_it_when_off(self):
         page = self.page
-        page.evaluate("async () => { const s = await import('/js/store.js'); s.store.settings.room_view='free'; s.setRoom('Living room'); s.setView('rooms'); }")
+        page.evaluate("async () => { const s = await import('/js/store.js'); s.setRoom('Living room'); s.setView('rooms'); }")
         bar = page.locator('#grid .tile[data-id="lr-soundbar"]')
         bar.wait_for()
-        level = bar.locator(".tile-vol")
-        self.assertEqual(level.inner_text(), "12")
-        self.assertEqual(level.get_attribute("aria-label"), "Volume 12%")
+        level = bar.locator(".card-range output")
+        self.assertEqual(level.inner_text(), "12%")
+        self.assertEqual(bar.locator("input").get_attribute("aria-valuetext"), "12%")
         page.evaluate("""async () => {
           const {store, upsertDevice} = await import('/js/store.js'), d = store.devices.get('lr-soundbar');
           upsertDevice({...d, state: {...d.state, volume: 31}});
         }""")
-        page.wait_for_function("""() => document.querySelector('#grid .tile[data-id="lr-soundbar"] .tile-vol')?.textContent === '31'""")
+        page.wait_for_function("""() => document.querySelector('#grid .tile[data-id="lr-soundbar"] .card-range output')?.textContent === '31%'""")
         page.evaluate("""async () => {
           const {store, upsertDevice} = await import('/js/store.js'), d = store.devices.get('lr-soundbar');
           upsertDevice({...d, state: {...d.state, on: false}});
         }""")
         page.wait_for_selector('#grid .tile[data-id="lr-soundbar"]:not(.on)')
-        self.assertEqual(bar.locator(".tile-vol, [data-act]").count(), 0)
+        self.assertTrue(bar.locator("[data-card-range]").is_disabled())
+        self.assertEqual(level.inner_text(),"31%")
 
     def test_automation_runs_when_a_device_turns_on(self):
         page = self.page

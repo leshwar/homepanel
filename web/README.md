@@ -27,9 +27,9 @@ web/
     ├── room-layout.js per-profile room tile layouts and their editor
     ├── room-sort.js three-line room grips, touch sorting, keyboard announcements and persistence
     ├── home.js     the Home page: widgets (clock, other places' clocks, weather, scenes, rooms)
-    ├── home-overview.js time-first overview and real permission-filtered device attention
+    ├── notifications.js ordinary movable widget with permission-filtered device attention
     ├── room-cards.js compact capability-driven cards and safe inline level controls
-    │               and edit mode (hold to move, drag a corner to resize, hide, Done)
+    │               and shared grid editing (grip to move, corner to resize, Options, Done)
     ├── tiles.js    open-first device tiles, explicit quick actions and stable in-place updates
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
     ├── sky.js      weather from the server → html[data-sky] / [data-period] for the Sky background
@@ -184,34 +184,33 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   scroll without shrinking their touch targets.
 - **Animations** are short (150–300 ms) and only move or fade: tile press and "pop" when
   something turns on, tab and page switches, and the sheet sliding in and out.
-- **Layout views.** Rooms default to **Compact**: content-sized cards, full-width on
-  phones and two columns above a 600px content width. Each keeps
+- **One editable grid.** Every Home widget and room card uses the same responsive
+  2/4/6-column grid with fine rows, normally 40px before font scaling. Room cards
+  start compact: full-width on phones, two cards across on larger screens. Each keeps
   name/status and an explicit quick action together; lights have release-to-apply
   brightness, speakers have reported volume and mute, and vacuums show real
   activity/problem with battery labeled separately. Faulted vacuums do not offer a
   blind Start shortcut. Unknown/offline controls are disabled rather than guessed.
-  The **Free layout** choice restores the existing per-breakpoint placement and
-  sizes. Edit stays in the selected view: Compact uses three-line grips to reorder
-  the same content-sized cards (drag or arrow keys), while Free keeps grid movement
-  and resizing. Compact order uses the existing saved room widget order without
-  changing its stored free-layout positions. No saved geometry is migrated or reset.
-  Home defaults to **Overview**, with time/date on the left and actionable device
-  notifications on the right (stacked on phones). Alerts are real offline/pairing,
+  Three-line grips move any top-level tile into empty grid space; corner handles
+  resize it. Arrow keys on a grip move one cell; on a corner they change width/height.
+  There are no separate Compact, Free or Overview modes.
+  Home starts with time/date on the left and actionable device
+  notifications on the right (stacked on phones), but both are ordinary editable
+  widgets. Alerts are real offline/pairing,
   problem or maintenance states, prioritized and deduplicated; they only open controls.
-  The main grid clock is shown in the overview instead, not duplicated, including
-  while editing. The clock and notifications are fixed in Overview; only visible
-  widgets below them are arranged. Overview initially inherits non-clock free
-  positions, then keeps explicit edits in optional `overview_positions` using the
-  same validated per-breakpoint geometry. That lets an edited widget occupy the
-  old clock's visible empty space without changing the original Free arrangement.
-  Hidden clocks remain available only in Free layout, not as phantom Overview tiles.
+  Version 4 migrates each profile from its selected legacy presentation: compact
+  array order becomes compact coordinates; Overview coordinates become the single
+  grid below its now-movable clock/notifications; Free positions retain their gaps,
+  with old rows mapped to three fine rows. Minimum widths may expand formerly tiny
+  cards. Hidden widgets and options remain intact. The previous store is backed up
+  privately before the one-way conversion; alternate layouts are not runtime paths.
   Select a Home widget and use Options in the editor footer to hide/configure/resize
   it; no hide buttons cover widget headings. Existing resize corners and grid
-  keyboard controls remain available. View choices and card content keep their
+  keyboard controls remain available. Tile geometry and card content keep their
   geometry in Edit; device/scene/photo/weather actions are inert until editing ends.
-  Done saves the selected presentation, Cancel leaves the saved layout untouched,
-  and failed saves retain the draft. Both choices belong to the signed-in profile and
-  persist through the existing profile API, including for members.
+  Done saves the actual edited geometry, Cancel leaves saved data untouched,
+  and failed or concurrent saves retain the draft and show an error. Layouts remain
+  per-profile, including for members; looking at another width never rewrites them.
   The fixed dock's measured height and safe-area offset reserve bottom scroll
   clearance; the last card can be fully scrolled above navigation. Resize, view/profile
   changes, overlays and cancellation discard in-progress inline slider gestures.

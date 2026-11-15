@@ -6,13 +6,12 @@
 // each profile, so everyone gets their own Home page on every screen they use.
 // The server sends the signed-in profile's layout as settings.home_layout.
 //
-// Edit mode (long-press the page, or the pencil): widgets wiggle; hold one and drag
-// to move it, drag its corner (or tap it) to resize, "…" for more, "−" to hide.
+// Edit mode: grips move, corners resize, and Options configures or hides a widget.
 // Cancel puts everything back; Done saves.
 
 import { api } from "./api.js";
 import { setMarkup, updateRoomCounts } from "./render.js";
-import { homeOverview, overviewEnabled, overviewWidgets, refreshAttention, viewChoices } from "./home-overview.js";
+import { notificationsWidget, refreshAttention } from "./notifications.js";
 import { openDevice } from "./sheet.js";
 import { store, devicesIn, roomGroups, OTHER } from "./store.js";
 import { $, esc, icon, roomIfAmbiguous, toast } from "./util.js";
@@ -23,10 +22,10 @@ import { currentWeather, weatherStatus, refreshWeather } from "./sky.js";
 import { weatherBackdrop, watchWeatherEffects } from "./weather-effects.js";
 import { photoTile, watchPhotoTiles } from "./photo-tile.js";
 import { weatherIcon } from "./clockfaces.js";
-import { SIZES, SIZE_NAMES, columnsFor, arrange, remember, place, fits, placementStyle, gridStyle, bindGridEditor, watchGridWidth } from "./grid.js";
+import { sizeChoices, sizeName, grip, columnsFor, arrange, remember, place, fits, placementStyle, gridStyle, bindGridEditor, watchGridWidth } from "./grid.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
-const TYPE_NAMES = { clock: "Clock", zone: "Clock", weather: "Weather", scenes: "Scenes", rooms: "Rooms", photos: "Photos", favourites: "Favourites" };
+const TYPE_NAMES = { clock: "Clock", notifications:"Notifications", zone: "Clock", weather: "Weather", scenes: "Scenes", rooms: "Rooms", photos: "Photos", favourites: "Favourites" };
 export const MAX_FAVOURITES = 8;
 let syncPhotoTiles = () => {};
 
@@ -78,12 +77,11 @@ export function greeting(now = new Date()) {
 
 // ---------- layout ----------
 let draft = null;          // a copy being edited; null when not editing
-let editOverview = false, editingProfile = null, saving = false, selected = null;
+let editingProfile = null, saving = false, selected = null, entryLayout = null;
 let renderedLayout = null;
 export const isEditing = () => !!draft;
-const layout = () => draft || store.settings.home_layout || { version: 3, widgets: [] };
-const showingOverview = () => isEditing() ? editOverview : overviewEnabled();
-const items = () => showingOverview() ? overviewWidgets(layout().widgets) : layout().widgets;
+const layout = () => draft || store.settings.home_layout || { version: 4, widgets: [] };
+const items = () => layout().widgets;
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const columns = () => columnsFor($("#home").clientWidth);
 const placed = (w) => ({ ...w, ...arrange(items(), columns()).get(w.id) });
@@ -182,7 +180,7 @@ export function favouritesStale() {
 
 function favouritesWidget(w) {
   const list = favouriteDevices(w.options, store.devices.values());
-  const rows = list.map((d) => tileHtml(d, { ctx: "home", size: "1x1", sub: roomIfAmbiguous(d, list) }));
+  const rows = list.map((d) => tileHtml(d, { ctx: "home", sub: roomIfAmbiguous(d, list) }));
   return `<div class="w-fill w-favs"><span class="w-label">Favourites</span><div class="w-fav-list">${
     rows.join("") || `<p>Add a device to see it here.</p>`}</div></div>`;
 }
@@ -190,6 +188,7 @@ function favouritesWidget(w) {
 function widgetBody(w, now) {
   switch (w.type) {
     case "clock": return clockWidget(w, now);
+    case "notifications": return notificationsWidget();
     case "zone": return zoneWidget(w, now);
     case "weather": return weatherWidget();
     case "scenes": return scenesWidget();
@@ -207,13 +206,13 @@ const widgetName = (w) => {
 
 function chrome(w) {
   const name = esc(widgetName(w));
-  return `<button class="w-resize" data-resize aria-label="Change size of ${name} (now ${SIZE_NAMES[w.size]})" ${saving ? "disabled" : ""}>${svg("resize")}</button>`;
+  return `${grip(name)}<button class="w-resize" data-resize aria-label="Resize ${name} (now ${sizeName(w.size)}); use arrow keys" ${saving ? "disabled" : ""}>${svg("resize")}</button>`;
 }
 
 function widgetHtml(w, i, now) {
   const body = widgetBody(w, now);
   if (body == null) return "";
-  return `<div class="widget layout-item t-${w.type} s-${w.size}" data-wid="${esc(w.id)}"
+  return `<div class="widget layout-item t-${w.type}${Number(w.size.split("x")[1]) <= 3 ? " short-tile" : ""}" data-wid="${esc(w.id)}"
     ${isEditing() ? `tabindex="0" aria-label="Move ${esc(widgetName(w))} with arrow keys"` : ""}
     style="--i:${i};${placementStyle(w)}">${body}${isEditing() ? chrome(w) : ""}</div>`;
 }
@@ -226,8 +225,7 @@ export function renderHome({ enter = false } = {}) {
     delete document.documentElement.dataset.layoutEditing;
   }
   if (el.dataset.gridGesture) return;
-  const overview = showingOverview();
-  const key = JSON.stringify([store.me?.id, layout(), columns(), isEditing(), overview, saving]);
+  const key = JSON.stringify([store.me?.id, layout(), columns(), isEditing(), saving]);
   if (renderedLayout === key && el.querySelector(".home-grid")) {
     tickHome();
     refreshHomeParts();
@@ -239,14 +237,13 @@ export function renderHome({ enter = false } = {}) {
   const focus = el.contains(document.activeElement) ? document.activeElement : null;
   const focusId = focus?.closest(".widget")?.dataset.wid;
   const focusResize = focus?.hasAttribute("data-resize");
+  const focusGrip = focus?.hasAttribute("data-grip");
   const scroll = window.scrollY;
   const list = items();
   const positions = arrange(list, columns());
   const visible = list.filter((w) => !w.hidden).map((w) => ({ ...w, ...positions.get(w.id) }));
   el.classList.toggle("editing", isEditing());
-  el.innerHTML = `${viewChoices("home_view", overview ? "overview" : "free", [["overview","Overview"],["free","Free layout"]], isEditing())}
-    ${overview ? homeOverview(clockWidget(null, now)) : ""}
-    <div class="home-grid layout-grid" style="${gridStyle(list, columns(), isEditing())}">${visible.map((w, i) => widgetHtml(w, i, now)).join("")}</div>${
+  el.innerHTML = `<div class="home-grid layout-grid" style="${gridStyle(list, columns(), isEditing())}">${visible.map((w, i) => widgetHtml(w, i, now)).join("")}</div>${
     !visible.length ? `<div class="empty"><h2>Your Home page is empty</h2><p>Add the clock, weather, scenes or your rooms.</p>
       <button class="btn primary" data-edit-home>${svg("pencil")}Edit Home page</button></div>` : ""}${
     isEditing() ? editBar() : ""}`;
@@ -258,12 +255,12 @@ export function renderHome({ enter = false } = {}) {
   updateCounts(el);
   refreshAttention(el);
   if (isEditing()) {
-    el.querySelectorAll(".widget > .w-fill, .home-overview").forEach(content=>{content.inert=true;content.setAttribute("aria-disabled","true");});
-    el.querySelector(".home-overview")?.setAttribute("aria-label", "Fixed clock and notifications; edit the widgets below");
+    el.querySelectorAll(".widget > .w-fill").forEach(content=>{content.inert=true;content.setAttribute("aria-disabled","true");});
+    el.querySelectorAll("[data-grip]").forEach(button=>{button.disabled=saving;});
     selectWidget(selected);
     if (focusId) {
       const box=el.querySelector(`.widget[data-wid="${CSS.escape(focusId)}"]`);
-      (focusResize ? box?.querySelector("[data-resize]") : box)?.focus({preventScroll:true});
+      (focusResize ? box?.querySelector("[data-resize]") : focusGrip ? box?.querySelector("[data-grip]") : box)?.focus({preventScroll:true});
     }
   }
   window.scrollTo({top:scroll});
@@ -317,7 +314,7 @@ export function refreshHomeParts(types = ["rooms", "weather", "scenes", "photos"
 // ---------- edit mode ----------
 function editBar() {
   return `<div class="editbar" role="toolbar" aria-label="Edit Home page">
-      <span class="editbar-hint">${editOverview ? "Clock and notifications stay fixed. " : ""}Select a widget for options; drag to move</span>
+      <span class="editbar-hint">Drag a grip to move; drag a corner to resize</span>
       <button class="btn small" data-widget-options ${!selected || saving ? "disabled" : ""}>Options</button>
       <button class="btn small" data-add-widget ${saving ? "disabled" : ""}>${icon("plus")}Add</button>
       <button class="btn small" data-edit-cancel ${saving ? "disabled" : ""}>Cancel</button>
@@ -338,11 +335,10 @@ function selectWidget(id) {
 
 export function startEditing() {
   if (isEditing()) return;
-  editOverview=overviewEnabled();
   editingProfile=store.me?.id;
   selected=null;
-  draft = clone(store.settings.home_layout || { version: 3, widgets: [] });
-  draft.widgets = draft.widgets.filter((w) => w.type !== "device");   // devices live on the Rooms pages
+  entryLayout=clone(store.settings.home_layout || {version:4,widgets:[]});
+  draft = clone(entryLayout);
   remember(items(), columns());
   document.documentElement.dataset.layoutEditing="home";
   haptic(18);
@@ -353,6 +349,7 @@ export function stopEditing() {
   cancelGesture();
   draft = null;
   editingProfile=null;selected=null;
+  entryLayout=null;
   delete document.documentElement.dataset.layoutEditing;
   closeMenu();
   renderHome();
@@ -364,7 +361,7 @@ async function saveEditing() {
   const profile = editingProfile;
   saving=true;renderHome();
   try {
-    const s = await api.saveLayout(next);     // this profile's own Home page
+    const s = await api.saveLayout(next, entryLayout);
     if (draft !== next || store.me?.id !== profile) return;
     store.settings = { ...store.settings, ...s };
     stopEditing();
@@ -380,12 +377,6 @@ function setSize(id, size) {
   if (!w) return;
   const p = arrange(items(), columns()).get(id);
   if (!place(items(), columns(), id, { ...p, size })) return toast("Not enough free space. Move the tile first or choose a smaller size.", true);
-  renderHome();
-}
-
-function move(id, dx, dy) {
-  const p = arrange(items(), columns()).get(id);
-  if (!place(items(), columns(), id, { ...p, x: p.x + dx, y: p.y + dy })) return toast("Choose an empty space inside the grid.", true);
   renderHome();
 }
 
@@ -417,15 +408,10 @@ function widgetMenu(id) {
       <label class="chip"><input type="checkbox" data-fav-pick="${esc(id)}" value="${esc(d.id)}" ${chosen.includes(d.id) ? "checked" : ""}>${
         esc(d.name)}${d.room ? ` <small>${esc(d.room)}</small>` : ""}</label>`).join("") || "<p>No devices yet.</p>"}</div>` : "";
   openMenu(`<h3>${esc(widgetName(w))}</h3>
-    <div class="seg" role="radiogroup" aria-label="Size">${SIZES.map((s) =>
-      `<button role="radio" aria-checked="${w.size === s}" data-size-pick="${s}" data-wid="${esc(id)}">${SIZE_NAMES[s]}</button>`).join("")}</div>
+    <div class="seg" role="radiogroup" aria-label="Size">${sizeChoices(w,columns()).map((s) =>
+      `<button role="radio" aria-checked="${w.size === s}" data-size-pick="${s}" data-wid="${esc(id)}">${sizeName(s)}</button>`).join("")}</div>
     ${zones}${favs}
-    <div class="wmenu-row">
-      <button class="btn small" data-move="-1,0" data-wid="${esc(id)}">Left</button>
-      <button class="btn small" data-move="1,0" data-wid="${esc(id)}">Right</button>
-      <button class="btn small" data-move="0,-1" data-wid="${esc(id)}">Up</button>
-      <button class="btn small" data-move="0,1" data-wid="${esc(id)}">Down</button>
-    </div>
+    <p>Arrow keys on the grip move one cell. Arrow keys on the corner change width and height.</p>
     <p>Column ${w.x + 1}, row ${w.y + 1}. Changes apply to this ${columns()}-column layout.</p>
     <button class="btn small danger" data-hide-id="${esc(id)}">${svg("hide")}Hide from Home</button>
     <button class="btn small primary" data-menu-close>Close</button>`, `${widgetName(w)} options`);
@@ -442,6 +428,8 @@ function addMenu() {
       <div class="wmenu-list"><button class="chip" data-add-favourites>${icon("plus")}Favourites</button></div>` : ""}
     ${!draft.widgets.some(w => w.type === "photos") ? `<p class="group-label">Photo library</p>
       <div class="wmenu-list"><button class="chip" data-add-photos>${icon("plus")}Photos</button></div>` : ""}
+    <div class="wmenu-list">${["clock","notifications"].filter(type=>!draft.widgets.some(w=>w.type===type)).map(type=>
+      `<button class="chip" data-add-type="${type}">${icon("plus")}${TYPE_NAMES[type]}</button>`).join("")}</div>
     <button class="btn small primary" data-menu-close>Close</button>`, "Add to Home");
 }
 
@@ -525,22 +513,25 @@ export function setupHome({ goRoom, showAmbient }) {
     if (t.closest("[data-menu-close]")) return closeMenu();
     const size = t.closest("[data-size-pick]");
     if (size) { setSize(size.dataset.wid, size.dataset.sizePick); return widgetMenu(size.dataset.wid); }
-    const mv = t.closest("[data-move]");
-    if (mv) { move(mv.dataset.wid, ...mv.dataset.move.split(",").map(Number)); return widgetMenu(mv.dataset.wid); }
     const hide = t.closest("[data-hide-id]");
     if (hide) { find(hide.dataset.hideId).hidden = true; closeMenu(); return renderHome(); }
     const un = t.closest("[data-unhide]");
     if (un) return addWidget(find(un.dataset.unhide));
     if (t.closest("[data-add-zone]")) {
-      return addWidget({ id: `zone-${Date.now().toString(36)}`, type: "zone", size: "1x1", hidden: false,
+      return addWidget({ id: `zone-${Date.now().toString(36)}`, type: "zone", size: "1x3", hidden: false,
                          options: { tz: null, label: "US" } });
     }
     if (t.closest("[data-add-favourites]")) {
-      return addWidget({ id: `favs-${Date.now().toString(36)}`, type: "favourites", size: "2x2", hidden: false,
+      return addWidget({ id: `favs-${Date.now().toString(36)}`, type: "favourites", size: "2x6", hidden: false,
                          options: { devices: [] } });
     }
     if (t.closest("[data-add-photos]")) {
-      return addWidget({ id: `photos-${Date.now().toString(36)}`, type: "photos", size: "2x2", hidden: false, options: {} });
+      return addWidget({ id: `photos-${Date.now().toString(36)}`, type: "photos", size: "2x6", hidden: false, options: {} });
+    }
+    const added=t.closest("[data-add-type]");
+    if (added) {
+      const type=added.dataset.addType, id=find(type) ? `${type}-${Date.now().toString(36)}` : type;
+      return addWidget({id,type,size:"2x4",hidden:false,options:{}});
     }
   });
   document.addEventListener("change", (e) => {

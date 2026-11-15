@@ -122,8 +122,11 @@ Each profile keeps its own `home_layout` and `room_layouts`;
 `settings.home_layout` is the shared Home default. Grid positions and sizes are
 saved independently for 2, 4 and 6 columns. The shared UI grid editor rejects
 occupied cells, and `app/core/layout.py` validates bounds and overlap at the API.
-Older ordered layouts still work; rendering a different screen size never
-rewrites saved coordinates.
+Every top-level tile, including clock/notifications, is movable/resizable on the
+same compact grid. Version 4 converts selected legacy layouts once, retaining a
+private pre-migration backup; there are no alternate view engines. Fine rows keep
+room cards compact. Rendering another screen size never rewrites saved coordinates,
+and expected-layout checks reject concurrent saves.
 
 Sessions are random tokens kept only as SHA-256 hashes in `data/sessions.json`;
 optional passwords are scrypt hashes. Profiles without passwords open with one tap.

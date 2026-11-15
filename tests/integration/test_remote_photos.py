@@ -251,8 +251,8 @@ class RemotePhotoBrowserTests(unittest.TestCase):
         def state(route):
             payload = route.fetch().json()
             payload["settings"]["photo_library"] = source
-            payload["settings"]["home_layout"] = {"version": 3, "widgets": [
-                {"id": "photos", "type": "photos", "size": "2x2", "options": {}}]}
+            payload["settings"]["home_layout"] = {"version": 4, "widgets": [
+                {"id": "photos", "type": "photos", "size": "2x6", "options": {}}]}
             route.fulfill(json=payload)
         def image(route):
             calls.append(route)

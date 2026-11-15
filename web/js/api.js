@@ -48,8 +48,8 @@ export const api = {
   updateProfile: (id, p) => call("PATCH", `/profiles/${encodeURIComponent(id)}`, p),
   deleteProfile: (id) => call("DELETE", `/profiles/${encodeURIComponent(id)}`),
   updateMe: (p) => call("PATCH", "/profiles/me", p),
-  saveLayout: (layout) => call("PUT", "/profiles/me/layout", { home_layout: layout }),   // null = back to the default
-  saveRoomLayout: (room, layout) => call("PUT", "/profiles/me/rooms/layout", { room, layout }),
+  saveLayout: (layout, expected) => call("PUT", "/profiles/me/layout", { home_layout: layout, expected }),
+  saveRoomLayout: (room, layout, expected) => call("PUT", "/profiles/me/rooms/layout", { room, layout, expected }),
 
   state: () => call("GET", "/state"),
   health: () => call("GET", "/health"),

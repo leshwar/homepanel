@@ -561,7 +561,8 @@ async def update_me(request):
 
 @handle_errors
 async def put_my_layout(request):
-    return _svc(request).save_my_layout((await _body(request)).get("home_layout"))
+    body = await _body(request)
+    return _svc(request).save_my_layout(body.get("home_layout"), body.get("expected", ...))
 
 
 @handle_errors
@@ -569,7 +570,7 @@ async def put_my_room_layout(request):
     body = await _body(request)
     if "room" not in body or "layout" not in body:
         raise AdapterError("Choose a room and include its layout.")
-    return _svc(request).save_my_room_layout(body["room"], body["layout"])
+    return _svc(request).save_my_room_layout(body["room"], body["layout"], body.get("expected", ...))
 
 
 routes = [

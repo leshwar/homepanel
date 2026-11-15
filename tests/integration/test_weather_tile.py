@@ -53,7 +53,7 @@ class WeatherTileTests(unittest.TestCase):
         self.page.evaluate("""async () => {
             const {api} = await import('/js/api.js');
             await api.saveSettings({weather_enabled:false, background:'night', place_name:'Demo weather'});
-            await api.saveLayout({widgets:[{id:'weather',type:'weather',size:'2x2'}]});
+            await api.saveLayout({widgets:[{id:'weather',type:'weather',size:'2x6'}]});
             await (await import('/js/store.js')).reload();
         }""")
 
@@ -164,7 +164,7 @@ class WeatherTileTests(unittest.TestCase):
         self.page.wait_for_timeout(250)
         self.assertNotEqual(rain.evaluate("e => getComputedStyle(e).transform"), before)
         self.assertEqual(rain.evaluate("e => getComputedStyle(e).animationTimingFunction"), "linear")
-        for size in ("1x1", "2x1", "2x2"):
+        for size in ("2x3", "3x4", "4x6"):
             self.page.click("#edit-home")
             self.page.locator('.widget[data-wid="weather"]').focus()
             self.page.click('[data-widget-options]')
@@ -225,7 +225,7 @@ class WeatherTileTests(unittest.TestCase):
                     self.page.locator(".w-weather-fx").evaluate(
                         "(el, time) => el.getAnimations({subtree:true}).forEach(a => {a.pause(); a.currentTime=time;})", phase * 1000)
                     self.assert_scene_text_is_readable_without_backdrops()
-        for size in ("1x1", "2x1"):
+        for size in ("2x3", "2x4"):
             self.page.evaluate("""async size => {
                 await (await import('/js/api.js')).api.saveLayout({widgets:[{id:'weather',type:'weather',size}]});
                 await (await import('/js/store.js')).reload();

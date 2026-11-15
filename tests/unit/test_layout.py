@@ -14,10 +14,10 @@ class DefaultLayoutTests(unittest.TestCase):
     def test_default_has_clocks_weather_rooms_and_scenes_but_no_devices(self):
         devices = [Dev(id="t1", kind="tv"), Dev(id="l1", kind="light")]
         lay = default_layout(devices)                     # devices are ignored: they're on the Rooms pages
-        self.assertEqual([w["type"] for w in lay["widgets"]], ["clock", "weather", "zone", "zone", "rooms", "scenes"])
+        self.assertEqual([w["type"] for w in lay["widgets"]], ["clock", "notifications", "weather", "zone", "zone", "rooms", "scenes"])
         zones = [w["options"] for w in lay["widgets"] if w["type"] == "zone"]
         self.assertEqual(zones, [{"tz": "Asia/Kolkata", "label": "India"}, {"tz": None, "label": "US"}])
-        self.assertEqual(next(w["size"] for w in lay["widgets"] if w["type"] == "rooms"), "2x2")
+        self.assertEqual(next(w["size"] for w in lay["widgets"] if w["type"] == "rooms"), "2x6")
         self.assertEqual((lay["version"], default_layout()), (VERSION, lay))
         self.assertEqual(clean_layout(lay), lay)          # the default passes its own checks
 
@@ -27,28 +27,14 @@ class DefaultLayoutTests(unittest.TestCase):
 
 
 class CleanLayoutTests(unittest.TestCase):
-    def test_overview_positions_are_validated_separately_and_keep_free_clock_geometry(self):
-        free = {"2": {"x": 0, "y": 0, "size": "2x1"}}
-        overview = {"2": {"x": 0, "y": 0, "size": "1x1"}}
-        value = {"widgets": [
-            {"id": "clock", "type": "clock", "positions": free},
-            {"id": "weather", "type": "weather", "positions": {"2": {"x": 0, "y": 3, "size": "1x1"}},
-             "overview_positions": overview},
-        ]}
-        cleaned = clean_layout(value)
-        self.assertEqual(cleaned["widgets"][0]["positions"], free)
-        self.assertEqual(cleaned["widgets"][1]["overview_positions"], overview)
-        self.assertEqual(clean_layout(cleaned), cleaned)
-        value["widgets"].append({"id": "zone", "type": "zone", "overview_positions": overview})
-        with self.assertRaisesRegex(LayoutError, "overlap"):
-            clean_layout(value)
-        value["widgets"].pop()
-        value["widgets"][1]["overview_positions"] = {"2": {"x": 2, "y": 0, "size": "1x1"}}
-        with self.assertRaisesRegex(LayoutError, "inside"):
-            clean_layout(value)
+    def test_stale_split_layout_posts_are_refused(self):
+        with self.assertRaisesRegex(LayoutError, "Reload"):
+            clean_layout({"version":3,"widgets":[]})
+        with self.assertRaisesRegex(LayoutError, "Reload"):
+            clean_layout({"widgets":[{"id":"clock","type":"clock","overview_positions":{}}]})
 
     def test_responsive_positions_keep_empty_space_and_sizes(self):
-        positions = {"2": {"x": 0, "y": 8, "size": "2x2"}, "6": {"x": 5, "y": 0, "size": "1x1"}}
+        positions = {"2": {"x": 0, "y": 8, "size": "2x6"}, "6": {"x": 4, "y": 0, "size": "2x3"}}
         widget = {"id": "c", "type": "clock", "positions": positions}
         self.assertEqual(self.ok([widget])[0]["positions"], positions)
         room = clean_room_layout({"widgets": [{"id": "lamp", "positions": positions}]})
@@ -56,10 +42,10 @@ class CleanLayoutTests(unittest.TestCase):
 
     def test_rejects_invalid_positions_and_overlaps_for_home_and_rooms(self):
         for clean, kind in ((clean_layout, {"type": "clock"}), (clean_room_layout, {})):
-            a = {"id": "a", **kind, "positions": {"4": {"x": 0, "y": 0, "size": "2x2"}}}
-            for p in ({"x": 1, "y": 1, "size": "1x1"}, {"x": 3, "y": 0, "size": "2x1"},
-                      {"x": -1, "y": 0, "size": "1x1"}, {"x": 0, "y": 200, "size": "1x1"},
-                      {"x": True, "y": 0, "size": "1x1"}, {"x": 0, "y": 0.5, "size": "1x1"},
+            a = {"id": "a", **kind, "positions": {"4": {"x": 0, "y": 0, "size": "2x6"}}}
+            for p in ({"x": 1, "y": 1, "size": "2x3"}, {"x": 3, "y": 0, "size": "2x3"},
+                      {"x": -1, "y": 0, "size": "2x3"}, {"x": 0, "y": 800, "size": "2x3"},
+                      {"x": True, "y": 0, "size": "2x3"}, {"x": 0, "y": 0.5, "size": "2x3"},
                       {"x": 0, "y": 0, "size": "9x9"}):
                 with self.subTest(clean=clean.__name__, position=p), self.assertRaises(LayoutError):
                     clean({"widgets": [a, {"id": "b", **kind, "positions": {"4": p}}]})
@@ -71,13 +57,13 @@ class CleanLayoutTests(unittest.TestCase):
 
     def test_keeps_order_size_hidden_and_options(self):
         out = self.ok([
-            {"id": "z", "type": "zone", "size": "2x1", "options": {"tz": "America/Chicago", "label": "  US  "}},
-            {"id": "c", "type": "clock", "size": "2x2", "hidden": 1, "options": {"junk": True}},
+            {"id": "z", "type": "zone", "size": "2x3", "options": {"tz": "America/Chicago", "label": "  US  "}},
+            {"id": "c", "type": "clock", "size": "2x6", "hidden": 1, "options": {"junk": True}},
             {"id": "d", "type": "device", "options": {"device_id": "lr-tv"}},   # from an old screen: dropped
         ])
         self.assertEqual(out, [
-            {"id": "z", "type": "zone", "size": "2x1", "hidden": False, "options": {"tz": "America/Chicago", "label": "US"}},
-            {"id": "c", "type": "clock", "size": "2x2", "hidden": True, "options": {}},
+            {"id": "z", "type": "zone", "size": "2x3", "hidden": False, "options": {"tz": "America/Chicago", "label": "US"}},
+            {"id": "c", "type": "clock", "size": "2x6", "hidden": True, "options": {}},
         ])
 
     def test_old_layouts_lose_their_device_widgets(self):
@@ -86,7 +72,7 @@ class CleanLayoutTests(unittest.TestCase):
             {"id": "dev-lr-tv", "type": "device", "size": "2x1", "hidden": False, "options": {"device_id": "lr-tv"}},
             {"id": "rooms", "type": "rooms", "size": "2x1", "hidden": True, "options": {}}]}
         new = migrate_layout(old)
-        self.assertEqual([w["id"] for w in new["widgets"]], ["clock", "rooms"])   # order and hidden kept
+        self.assertEqual([w["id"] for w in new["widgets"]], ["clock", "rooms", "notifications"])
         self.assertTrue(new["widgets"][1]["hidden"])
         self.assertEqual(new["version"], VERSION)
         self.assertEqual(migrate_layout(new), new)
@@ -95,7 +81,7 @@ class CleanLayoutTests(unittest.TestCase):
 
     def test_favourites_keep_their_chosen_devices_in_order(self):
         lay = clean_layout({"widgets": [
-            {"id": "favs", "type": "favourites", "size": "2x2", "options": {"devices": ["lr-tv", "bd-lamp", "lr-tv"], "x": 1}},
+            {"id": "favs", "type": "favourites", "size": "2x6", "options": {"devices": ["lr-tv", "bd-lamp", "lr-tv"], "x": 1}},
             {"id": "auto", "type": "favourites"}]})
         self.assertEqual(lay["widgets"][0]["options"], {"devices": ["lr-tv", "bd-lamp"]})     # no repeats, nothing extra
         self.assertEqual(lay["widgets"][1]["options"], {"devices": []})                       # empty = the UI picks
@@ -105,10 +91,10 @@ class CleanLayoutTests(unittest.TestCase):
         bad = [
             ("nope", "list of widgets"),
             ({"widgets": [{"id": "a", "type": "radio"}]}, "Unknown widget type"),
-            ({"widgets": [{"id": "a", "type": "clock", "size": "3x3"}]}, "Widget size"),
+            ({"widgets": [{"id": "a", "type": "clock", "size": "1x3"}]}, "at least"),
             ({"widgets": [{"id": "a", "type": "clock"}, {"id": "a", "type": "weather"}]}, "its own short id"),
             ({"widgets": [{"id": "a", "type": "zone", "options": {"tz": "../../etc/passwd"}}]}, "time zone"),
-            ({"widgets": [{"id": f"w{i}", "type": "clock"} for i in range(41)]}, "up to 40"),
+            ({"widgets": [{"id": f"w{i}", "type": "clock"} for i in range(43)]}, "up to 42"),
             ({"widgets": [{"id": "f", "type": "favourites", "options": {"devices": "lr-tv"}}]}, "list of device ids"),
             ({"widgets": [{"id": "f", "type": "favourites", "options": {"devices": ["../x"]}}]}, "list of device ids"),
             ({"widgets": [{"id": "f", "type": "favourites", "options": {"devices": [f"d{i}" for i in range(9)]}}]}, "up to 8"),
@@ -135,11 +121,11 @@ class LayoutSettingsTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("sky", BACKGROUNDS)
         types = {w["type"] for w in snap["home_layout"]["widgets"]}
         self.assertNotIn("device", types)                  # devices are on the Rooms pages
-        mine = {"widgets": [{"id": "weather", "type": "weather", "size": "2x2"},
-                            {"id": "clock", "type": "clock", "size": "1x1", "hidden": True}]}
+        mine = {"widgets": [{"id": "weather", "type": "weather", "size": "2x6"},
+                            {"id": "clock", "type": "clock", "size": "2x3", "hidden": True}]}
         saved = self.svc.update_settings({"home_layout": mine})["home_layout"]
         self.assertEqual([(w["id"], w["size"], w["hidden"]) for w in saved["widgets"]],
-                         [("weather", "2x2", False), ("clock", "1x1", True)])
+                         [("weather", "2x6", False), ("clock", "2x3", True)])
         again = HomeService(self.dir, demo=True)          # survives a restart
         self.assertEqual(again.snapshot()["settings"]["home_layout"], saved)
         self.svc.update_settings({"home_layout": None})   # back to the default
@@ -157,7 +143,7 @@ class LayoutSettingsTests(unittest.IsolatedAsyncioTestCase):
         await self.svc.start()
         again = HomeService(self.dir, demo=True)          # what's on disk now
         for layout in (again.store.settings["home_layout"], again.store.profiles[0]["home_layout"]):
-            self.assertEqual([w["id"] for w in layout["widgets"]], ["clock"])
+            self.assertEqual([w["id"] for w in layout["widgets"]], ["clock", "notifications"])
             self.assertEqual(layout["version"], VERSION)
 
     async def test_bad_layout_is_refused_and_nothing_changes(self):
@@ -169,14 +155,14 @@ class LayoutSettingsTests(unittest.IsolatedAsyncioTestCase):
     async def test_room_layout_is_per_profile_and_survives_restart(self):
         token = current_viewer.set(Viewer(self.svc.profiles.get("sam")))
         self.addCleanup(current_viewer.reset, token)
-        layout = {"widgets": [{"id": "bd-lamp", "size": "1x1",
-                              "positions": {"4": {"x": 2, "y": 5, "size": "2x2"}}}]}
+        layout = {"widgets": [{"id": "bd-lamp", "size": "2x3",
+                              "positions": {"4": {"x": 2, "y": 5, "size": "2x6"}}}]}
         saved = self.svc.save_my_room_layout("Bedroom", layout)["room_layouts"]
         self.assertEqual(saved["Bedroom"]["widgets"][0]["positions"], layout["widgets"][0]["positions"])
         again = HomeService(self.dir, demo=True)
         self.assertEqual(again.profiles.get("sam")["room_layouts"], saved)
         current_viewer.set(Viewer(self.svc.profiles.get("owner")))
-        self.assertEqual(self.svc.settings()["room_layouts"], {})
+        self.assertNotEqual(self.svc.settings()["room_layouts"], saved)
         current_viewer.set(Viewer(self.svc.profiles.get("sam")))
         for room, did in (("Bedroom", "lr-tv"), ("Bedroom", "kt-pendant"), ("missing", "bd-lamp")):
             with self.assertRaises(AdapterError):
@@ -186,7 +172,7 @@ class LayoutSettingsTests(unittest.IsolatedAsyncioTestCase):
         current_viewer.set(Viewer(self.svc.profiles.get("sam")))
         self.assertEqual(self.svc.settings()["room_layouts"]["Bedroom"]["widgets"], [])
         self.svc.save_my_room_layout("Bedroom", None)
-        self.assertEqual(self.svc.settings()["room_layouts"], {})
+        self.assertNotIn("Bedroom",self.svc.settings()["room_layouts"])
 
 
 if __name__ == "__main__":

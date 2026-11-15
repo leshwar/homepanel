@@ -40,8 +40,8 @@ without pytest, not an additional required pass.
 | Service, adapters and commands | `test_service.py`, `test_adapters.py`, feature-named files | `test_api.py`, `test_fake_devices.py` |
 | Profiles and access | `test_profiles.py` | `test_auth.py` (HTTP and Chromium) |
 | Tile placement and rendering | `test_grid.py`, `test_layout.py`, `test_ui_render.py` | `test_ui.py`, `test_auth.py` |
-| Compact Rooms and Home overview | `test_compact_overview.py` | `test_compact_overview.py`, `test_interactions.py` (retained layouts, profile views, inline gesture safety, real attention and final-card/dock clearance) |
-| Selected-view editing | `test_layout.py` | `test_edit_parity.py` (normal/Edit/Cancel geometry, compact pointer/touch/keyboard order, separate overview positions, save errors, profile and resize safety) |
+| Compact cards and Notifications | `test_notifications.py` | `test_room_cards.py`, `test_interactions.py` (inline gesture safety, real attention and final-card/dock clearance) |
+| Unified layout and migration | `test_layout.py`, `test_unified_layout.py`, `test_grid.py` | `test_unified_layout.py` (all top-level types move/resize, normal/Edit/Cancel geometry, persistence, save errors, profile and resize safety) |
 | Voice, weather, photos and other features | Relevant `test_<feature>.py` | `test_voice.py`, `test_ui.py`, `test_api.py` |
 | UI contrast and lifecycle | `test_ui_tone.py`, `test_main.py` | `test_readability.py`, `test_shutdown.py` |
 | Weather tile animation | `test_weather_effects.py`, `test_weather.py` | `test_weather_tile.py` (mocked conditions, sizes, reduced motion and error/retry states) |

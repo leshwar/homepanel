@@ -1,7 +1,7 @@
 // Ordinary activation opens controls. Only explicit quick-action buttons send commands.
 
 import { store, command } from "./store.js";
-import { esc, icon, isMedia, glowVar, needsAttention, statusText, toast } from "./util.js";
+import { esc, icon, glowVar, needsAttention, statusText, toast } from "./util.js";
 import { openDevice } from "./sheet.js";
 import { deviceIcon } from "./icons.js";
 import { devicePicture } from "./art.js";
@@ -32,32 +32,21 @@ export function primaryAction(d) {
     glyph: "power", disabled: disabled || !known };
 }
 
-// A wide TV or speaker tile shows its level between − and +, when the device reports one.
-const volumeLevel = (s) => (Number.isFinite(s.volume) ? Math.max(0, Math.min(100, Math.round(s.volume))) : null);
-
-// size: the widget size on Home ("1x1", "2x1", "2x2"); ctx: "rooms" or "home".
-// sub: optional text before the status, e.g. the room name on Home.
-export function tileHtml(d, { size = "", ctx = "rooms", sub = "", editing = false, compact = false } = {}) {
+// Rooms have one compact card renderer; Home's nested favourites are short rows.
+export function tileHtml(d, { ctx = "rooms", sub = "", editing = false } = {}) {
   const s = d.state || {};
   const on = isOn(d);
   const offline = s.online === false || s.needs_pairing;
   const level = d.kind === "light" && s.brightness ? Math.max(0.15, s.brightness / 100) : 1;
-  const wide = size ? size !== "1x1" : ctx === "rooms" && isMedia(d);
   const busy = store.busy.has(d.id) || pending.has(d.id), quick = primaryAction(d);
-  if (compact) return `<div class="tile compact-card${on ? " on" : ""}${offline ? " offline" : ""}${needsAttention(d) ? " attn" : ""}${busy ? " busy" : ""}"
+  if (ctx === "rooms") return `<div class="tile compact-card${on ? " on" : ""}${offline ? " offline" : ""}${needsAttention(d) ? " attn" : ""}${busy ? " busy" : ""}"
     data-id="${esc(d.id)}" data-ctx="${ctx}" data-compact="true" data-on="${on}" data-editing="${editing}" ${editing ? 'inert aria-disabled="true"' : ""}
     role="group" style="--glow:${glowVar(d)}" aria-busy="${busy}" aria-label="${esc(d.name)}">${compactBody(d, quick, tilePicture(d, offline, ctx), busy)}</div>`;
-  const cls = ["tile", on && "on", offline && "offline", busy && "busy", wide && "wide", needsAttention(d) && "attn"]
+  const cls = ["tile", on && "on", offline && "offline", busy && "busy", needsAttention(d) && "attn"]
     .filter(Boolean).join(" ");
   const status = statusText(d);
-  const tvControls = isMedia(d) && d.caps.includes("volume") && on && wide ? `
-      <div class="tile-tv-ctl">
-        <button type="button" data-act="volume_down" aria-label="${esc(d.name)} volume down" ${busy || editing || offline || s.online !== true ? "disabled" : ""}>${icon("minus")}</button>
-        ${volumeLevel(s) == null ? "" : `<output class="tile-vol" aria-label="Volume ${volumeLevel(s)}%">${s.muted ? "Muted" : volumeLevel(s)}</output>`}
-        <button type="button" data-act="volume_up" aria-label="${esc(d.name)} volume up" ${busy || editing || offline || s.online !== true ? "disabled" : ""}>${icon("plus")}</button>
-      </div>` : "";
   return `
-    <div class="${cls}" data-id="${esc(d.id)}" data-ctx="${ctx}" data-size="${esc(size)}" data-sub="${esc(sub)}" data-on="${on}" data-editing="${editing}"
+    <div class="${cls}" data-id="${esc(d.id)}" data-ctx="${ctx}" data-sub="${esc(sub)}" data-on="${on}" data-editing="${editing}"
          role="group" ${editing ? 'inert aria-disabled="true"' : ""} style="--glow:${glowVar(d)};--level:${level}" aria-busy="${busy}" aria-label="${esc(d.name)}">
       ${tilePicture(d, offline, ctx)}
       <div class="tile-tv-row">
@@ -68,7 +57,6 @@ export function tileHtml(d, { size = "", ctx = "rooms", sub = "", editing = fals
         </button>
         ${quick ? `<button type="button" class="tile-quick" data-quick-action="${quick.action}" data-value="${quick.value}"
           aria-label="${esc(quick.label)}: ${esc(d.name)}" title="${esc(quick.label)}" ${quick.disabled || editing ? "disabled" : ""}>${icon(quick.glyph)}</button>` : ""}
-        ${tvControls}
       </div>
     </div>`;
 }
@@ -90,7 +78,7 @@ export function updateTiles(id, subFor = (d, el) => el.dataset.sub || "") {
   for (const old of els) {
     if (heldTiles.has(old) || pending.has(id) || cardHeld(old) || old.closest("[data-grid-gesture]")) continue;
     const tmp = document.createElement("div");
-    tmp.innerHTML = tileHtml(d, { size: old.dataset.size, ctx: old.dataset.ctx, sub: subFor(d, old), editing: old.dataset.editing === "true", compact: old.dataset.compact === "true" });
+    tmp.innerHTML = tileHtml(d, { ctx: old.dataset.ctx, sub: subFor(d, old), editing: old.dataset.editing === "true" });
     const el = tmp.firstElementChild;
     if (old.dataset.compact === "true") { syncCompact(old, el); attachCardRanges(old, updateTiles); continue; }
     const turnedOn = old.dataset.on !== el.dataset.on && el.dataset.on === "true";
@@ -102,28 +90,17 @@ export function updateTiles(id, subFor = (d, el) => el.dataset.sub || "") {
     syncAttributes(old.querySelector("[data-more]"), el.querySelector("[data-more]"));
     const picture = old.querySelector(".tile-icon"), nextPicture = el.querySelector(".tile-icon");
     if (!picture.isEqualNode(nextPicture)) picture.replaceWith(nextPicture);
-    for (const selector of [".tile-quick", ".tile-tv-ctl"]) {
+    for (const selector of [".tile-quick"]) {
       const current = old.querySelector(selector), next = el.querySelector(selector);
       if (current && next) {
         syncAttributes(current, next);
-        if (selector === ".tile-quick") {
-          if (current.innerHTML !== next.innerHTML) current.innerHTML = next.innerHTML;
-        } else {
-          current.querySelectorAll("[data-act]").forEach(button => syncAttributes(button, next.querySelector(`[data-act="${button.dataset.act}"]`)));
-          const level = current.querySelector(".tile-vol"), nextLevel = next.querySelector(".tile-vol");
-          if (level && nextLevel) {
-            syncAttributes(level, nextLevel);
-            if (level.textContent !== nextLevel.textContent) level.textContent = nextLevel.textContent;
-          } else if (level) level.remove();
-          else if (nextLevel) current.insertBefore(nextLevel, current.querySelector('[data-act="volume_up"]'));
-        }
+        if (current.innerHTML !== next.innerHTML) current.innerHTML = next.innerHTML;
       } else if (current) {
         const focused = current.contains(document.activeElement);
         current.remove();
         if (focused) old.querySelector("[data-more]").focus({ preventScroll: true });
       } else if (next) {
-        if (selector === ".tile-quick") old.querySelector(".tile-tv-row").insertBefore(next, old.querySelector(".tile-tv-ctl"));
-        else old.querySelector(".tile-tv-row").append(next);
+        old.querySelector(".tile-tv-row").append(next);
       }
     }
     if (turnedOn && !matchMedia("(prefers-reduced-motion: reduce)").matches) {

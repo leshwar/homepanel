@@ -109,8 +109,8 @@ class AttentionTests(unittest.TestCase):
         layout = page.request.get(api + "/state").json()["settings"]["home_layout"]
         try:
             widgets = [{k: v for k, v in w.items() if k != "positions"} for w in layout["widgets"]]
-            widgets.append({"id": "photos-1", "type": "photos", "size": "2x2", "hidden": False, "options": {}})
-            r = page.request.put(api + "/profiles/me/layout", data={"home_layout": {"version": 3, "widgets": widgets}})
+            widgets.append({"id": "photos-1", "type": "photos", "size": "2x6", "hidden": False, "options": {}})
+            r = page.request.put(api + "/profiles/me/layout", data={"home_layout": {"version": 4, "widgets": widgets}})
             self.assertEqual(r.status, 200, r.text())
             page.reload()
             page.wait_for_selector(".w-photos.empty")

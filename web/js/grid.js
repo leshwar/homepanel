@@ -1,11 +1,16 @@
 // Shared grid geometry and pointer editing for Home and room tiles.
 // Positions are independent at each column count; looking at a smaller screen
 // never rewrites the arrangement saved on a larger one.
-export const SIZES = ["1x1", "2x1", "2x2"];
-export const SIZE_NAMES = { "1x1": "Small", "2x1": "Wide", "2x2": "Large" };
-export const MAX_ROWS = 200;
+export const SIZES = Array.from({length:6},(_,w)=>Array.from({length:22},(_,h)=>`${w+1}x${h+3}`)).flat();
+export const MAX_ROWS = 800;
 export const columnsFor = (width) => width >= 960 ? 6 : width >= 600 ? 4 : 2;
 const dimensions = (p) => p.size.split("x").map(Number);
+export const sizeName = size => `${size.split("x")[0]} columns by ${size.split("x")[1]} rows`;
+export const minimumSize = item => [item?.type === "zone" ? 1 : 2, 3];
+export const sizeChoices = (item, cols) => [...new Set([`${minimumSize(item)[0]}x3`,`${Math.min(cols,3)}x4`,`${cols}x6`])];
+export const grip = name => `<button class="layout-grip" data-grip aria-label="Move ${name}"
+  title="Drag to move; arrow keys move one cell" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight">
+  <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>`;
 const overlaps = (a, b) => {
   const [aw, ah] = dimensions(a), [bw, bh] = dimensions(b);
   return a.x < b.x + bw && b.x < a.x + aw && a.y < b.y + bh && b.y < a.y + ah;
@@ -27,9 +32,10 @@ export function arrange(items, cols) {
   for (const item of waiting) {
     const variants = Object.keys(item.positions || {}).sort((a, b) => Math.abs(a - cols) - Math.abs(b - cols));
     const source = item.positions?.[variants[0]];
-    const size = source?.size || item.size || "1x1";
+    const raw = source?.size || item.size || "2x3", [width,height] = dimensions({size:raw});
+    const size = `${Math.min(width,cols)}x${height}`;
     const placed = [...result.values()];
-    const preferred = source && { ...source, x: Math.min(source.x, cols - dimensions({ size })[0]) };
+    const preferred = source && { ...source, size, x: Math.min(source.x, cols - dimensions({ size })[0]) };
     if (fits(preferred, placed, cols)) { result.set(item.id, preferred); continue; }
     let slot = null;
     for (let y = 0; y < MAX_ROWS && !slot; y++) {
@@ -54,6 +60,8 @@ export function remember(items, cols) {
 
 export function place(items, cols, id, next) {
   const positions = arrange(items, cols);
+  const item = items.find(w=>w.id===id), [minW,minH] = minimumSize(item), [w,h] = dimensions(next);
+  if (w<minW || h<minH) return false;
   if (!positions.has(id) || !fits(next, [...positions].filter(([key]) => key !== id).map(([, p]) => p), cols)) return false;
   remember(items, cols);
   items.find((w) => w.id === id).positions[cols] = { ...next };
@@ -68,7 +76,7 @@ export function placementStyle(p) {
 export function gridStyle(items, cols, editing = false) {
   const positions = arrange(items, cols);
   const rows = Math.max(1, ...[...positions.values()].map((p) => p.y + dimensions(p)[1]));
-  return `--cols:${cols};grid-template-rows:repeat(${Math.min(MAX_ROWS, rows + (editing ? 2 : 0))}, var(--cell))`;
+  return `--cols:${cols};grid-template-rows:repeat(${Math.min(MAX_ROWS, rows + (editing ? 8 : 0))}, var(--cell))`;
 }
 
 export function watchGridWidth(root, render) {
@@ -92,27 +100,26 @@ export function bindGridEditor(root, { enabled, items, render, error }) {
     gesture.box.style.transform = "";
     gesture.marker?.remove();
     delete root.dataset.gridGesture;
+    const pointer = gesture.pointer;
     gesture = null;
+    if (root.hasPointerCapture(pointer)) root.releasePointerCapture(pointer);
   };
   root.addEventListener("pointerdown", (e) => {
     if (!enabled() || gesture || e.button > 0) return;
     const box = e.target.closest(".layout-item");
-    if (!box || e.target.closest("button:not([data-resize]), select, input")) return;
+    if (!box || !e.target.closest("[data-grip], [data-resize]")) return;
     const positions = arrange(items(), cols()), p = positions.get(box.dataset.wid);
     const grid = box.parentElement, cs = getComputedStyle(grid), rect = box.getBoundingClientRect();
     const resizing = !!e.target.closest("[data-resize]");
-    gesture = { box, id: box.dataset.wid, pointer: e.pointerId, resizing, start: p, next: p,
+    gesture = { box, item:items().find(w=>w.id===box.dataset.wid), id: box.dataset.wid, pointer: e.pointerId, resizing, start: p, next: p,
       x: e.clientX, y: e.clientY, grabX: e.clientX - rect.left, grabY: e.clientY - rect.top,
       stepX: parseFloat(cs.gridTemplateColumns) + parseFloat(cs.columnGap),
       stepY: parseFloat(cs.gridAutoRows) + parseFloat(cs.rowGap), gapX: parseFloat(cs.columnGap), gapY: parseFloat(cs.rowGap),
       others: [...positions].filter(([id]) => id !== box.dataset.wid).map(([, p]) => p),
-      grid, cols: cols(), moved: false, active: resizing };
-    root.dataset.gridGesture = "pending";
+      grid, cols: cols(), moved: false, active: true };
+    root.dataset.gridGesture = "active";
     root.setPointerCapture(e.pointerId);  // stable root: tile content may be refreshed by live state
-    if (resizing) e.preventDefault();
-    else gesture.timer = setTimeout(() => {
-      if (gesture) { gesture.active = true; root.dataset.gridGesture = "active"; box.classList.add("dragging"); }
-    }, 220);
+    e.preventDefault();
   });
   root.addEventListener("pointermove", (e) => {
     const g = gesture;
@@ -122,11 +129,13 @@ export function bindGridEditor(root, { enabled, items, render, error }) {
     e.preventDefault();
     if (distance > 8) g.moved = true;
     if (!g.moved) return;
+    g.box.classList.add("dragging");
     const rect = g.grid.getBoundingClientRect();
     if (g.resizing) {
       const [w, h] = dimensions(g.start);
       const width = w + (e.clientX - g.x) / g.stepX, height = h + (e.clientY - g.y) / g.stepY;
-      g.next = { ...g.start, size: height > 1.4 ? "2x2" : width > 1.4 ? "2x1" : "1x1" };
+      const [minW,minH] = minimumSize(g.item);
+      g.next = { ...g.start, size: `${Math.max(minW,Math.round(width))}x${Math.max(minH,Math.round(height))}` };
     } else {
       g.next = { ...g.start, x: Math.round((e.clientX - rect.left - g.grabX) / g.stepX),
         y: Math.round((e.clientY - rect.top - g.grabY) / g.stepY) };
@@ -153,7 +162,8 @@ export function bindGridEditor(root, { enabled, items, render, error }) {
     if (!g || e.pointerId !== g.pointer) return;
     cancel();
     if (!enabled() || cols() !== g.cols) return;
-    if (g.resizing && !g.moved) g.next = { ...g.start, size: SIZES[(SIZES.indexOf(g.start.size) + 1) % SIZES.length] };
+    const choices = sizeChoices(g.item,g.cols);
+    if (g.resizing && !g.moved) g.next = { ...g.start, size: choices[(choices.indexOf(g.start.size) + 1) % choices.length] };
     if (!g.resizing && !g.moved) return;
     suppressClick = true;
     if (!place(items(), g.cols, g.id, g.next)) error("That space is occupied or outside the grid. Move the tile or choose a smaller size.");
@@ -171,14 +181,19 @@ export function bindGridEditor(root, { enabled, items, render, error }) {
     if (suppressClick) { e.preventDefault(); e.stopImmediatePropagation(); suppressClick = false; }
   }, { capture: true });
   root.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && gesture) { e.preventDefault(); cancel(); render(); return; }
     const directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
-    const d = directions[e.key], box = e.target.closest(".layout-item");
-    if (!enabled() || !box || e.target !== box || !d) return;
+    const d = directions[e.key], box = e.target.closest(".layout-item"), resizing=e.target.hasAttribute("data-resize");
+    if (!enabled() || !box || (!e.target.matches("[data-grip],[data-resize]") && e.target !== box) || !d) return;
     e.preventDefault();
     const id = box.dataset.wid, p = arrange(items(), cols()).get(id);
-    if (!place(items(), cols(), id, { ...p, x: p.x + d[0], y: p.y + d[1] })) error("Choose an empty space inside the grid.");
+    const [w,h] = dimensions(p);
+    const next = resizing ? {...p,size:`${w+d[0]}x${h+d[1]}`} : { ...p, x: p.x + d[0], y: p.y + d[1] };
+    if (!place(items(), cols(), id, next)) error("Choose an empty space inside the grid and keep the minimum tile size.");
     render();
-    root.querySelector(`[data-wid="${CSS.escape(id)}"]`)?.focus();
+    const settled = root.querySelector(`[data-wid="${CSS.escape(id)}"]`);
+    (settled?.querySelector(resizing ? "[data-resize]" : "[data-grip]") || settled)?.focus({preventScroll:true});
   });
+  addEventListener("blur",cancel);
   return cancel;
 }

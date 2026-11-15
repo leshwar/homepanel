@@ -95,7 +95,6 @@ class AttentionTests(unittest.TestCase):
         self.assertIn(".room-head:not(.single) .room-status { order: 9; flex: 0 0 100%;", phone)
         self.assertIn(".w-photos.empty, .w-photos.empty .photo-placeholder { background: none; }", css)
         self.assertIn("-webkit-line-clamp: 2", css.split(".w-favs .tile-name {")[1].split("}")[0])
-        self.assertIn(".s-1x1 .w-hint { display: none; }", css)
 
     def test_styles_mark_attention_and_an_idle_all_off(self):
         css = (WEB / "app.css").read_text()

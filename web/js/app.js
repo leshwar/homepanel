@@ -15,13 +15,12 @@ import { renderAmbient } from "./clockfaces.js";
 import { svg, roomIcon } from "./icons.js";
 import { updateTiles, bindTiles } from "./tiles.js";
 import { attachCardRanges, cancelCardGestures } from "./room-cards.js";
-import { viewChoices } from "./home-overview.js";
 import { applySky, refreshWeather, onWeather } from "./sky.js";
 import { applyWallpaper } from "./wallpaper.js";
 import { renderHome, tickHome, refreshHomeParts, setupHome, startEditing, isEditing, stopEditing, favouritesStale } from "./home.js";
 import { startAuth } from "./auth.js";
 import "./profiles.js";      // Settings → Profiles
-import { roomTiles, roomLayoutKey, setupRoomEditor, startRoomEditing, stopRoomEditing, isRoomEditing, compactRooms, syncRoomEditor, syncCompactSorter } from "./room-layout.js";
+import { roomTiles, roomLayoutKey, setupRoomEditor, startRoomEditing, stopRoomEditing, isRoomEditing, syncRoomEditor } from "./room-layout.js";
 import { roomGrip, roomEditButton, roomNameField, roomNameHelp, editableRoomNames, syncRoomSorters, isSortingRooms, isEditingRooms, isEditingRoomName, canLeaveRoomNames, toggleRoomEditing } from "./room-sort.js";
 import { applyTypography } from "./typography.js";
 import { setupVoice, closeVoice, isVoiceOpen } from "./voice.js";
@@ -253,7 +252,7 @@ function roomHead(r, linked) {
   const add = linked && !list.length
     ? `<button class="btn small" data-add-device aria-label="Add a device to ${name}">${icon("plus")}<span>Add a device</span></button>` : "";
   return `<div class="room-head${linked ? "" : " single"}${list.length ? "" : " empty-room"}" data-head="${esc(r)}">${title}<span class="room-status">${status}</span>
-    ${!linked ? viewChoices("room_view", compactRooms() ? "compact" : "free", [["compact","Compact"],["free","Free layout"]], isRoomEditing()) : ""}${
+    ${
     offable ? `<button class="room-off" data-room-off="${esc(r)}" aria-label="Turn off ${name}" ${isRoomEditing() ? "disabled" : ""}>${icon("power")}<span>Turn off</span></button>` : ""}
     ${list.length ? `<button class="btn small" data-edit-room="${esc(r)}" aria-label="Edit ${name} tiles" ${isRoomEditing() ? "disabled" : ""}>${svg("pencil")}<span>Edit tiles</span></button>` : add}</div>`;
 }
@@ -316,7 +315,7 @@ function renderGrid(force = false) {
   }
   const focused = grid.contains(document.activeElement) ? document.activeElement : null;
   const focusedItem = focused?.closest(".layout-item,.room-card");
-  const focusAttr = focused && ["data-more", "data-quick-action", "data-act", "data-resize", "data-room-options", "data-card-grip"].find(name => focused.hasAttribute(name));
+  const focusAttr = focused && ["data-more", "data-quick-action", "data-act", "data-resize", "data-room-options", "data-grip"].find(name => focused.hasAttribute(name));
   const anchor = window.scrollY > grid.offsetTop ? [...grid.querySelectorAll(".layout-item,.room-card")]
     .find(el => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight; }) : null;
   const anchorTop = anchor?.getBoundingClientRect().top;
@@ -325,11 +324,9 @@ function renderGrid(force = false) {
       <h2>No devices in this room yet</h2><p>Add a device or choose this room in a device's settings.</p>
       <button class="btn primary" data-add-device>${icon("plus")}Add a device</button></div>`}</section>`;
   cancelCardGestures();
-  const choice = room === "all" ? viewChoices("room_view", compactRooms() ? "compact" : "free", [["compact","Compact"],["free","Free layout"]], isRoomEditing()) : "";
-  const html = choice + (room === "all" ? roomGroups().map((r) => section(r, true)).join("") : section(room, false));
+  const html = room === "all" ? roomGroups().map((r) => section(r, true)).join("") : section(room, false);
   setMarkup(grid, html);
   attachCardRanges(grid, updateTiles);
-  syncCompactSorter(grid);
   renderedRooms = key;
   if (focusedItem) {
     const item = grid.querySelector(`[data-wid="${CSS.escape(focusedItem.dataset.wid)}"]`);
@@ -398,7 +395,7 @@ function setupGrid() {
   // Swipe sideways anywhere on the grid to change room tab.
   let start = null, swiped = false;
   grid.addEventListener("pointerdown", (e) => {
-    if (isRoomEditing() || e.target.closest("input, label, [data-quick-action], [data-act], [data-layout-view], [data-edit-room], [data-room-off]")) return;
+    if (isRoomEditing() || e.target.closest("input, label, [data-quick-action], [data-act], [data-edit-room], [data-room-off]")) return;
     start = { x: e.clientX, y: e.clientY };
     swiped = false;
   });
@@ -443,22 +440,6 @@ async function turnOff(room = null) {
 }
 
 function setupChrome() {
-  let savingView = false;
-  document.addEventListener("click", async e => {
-    const button = e.target.closest("[data-layout-view]");
-    if (!button || savingView || !canNavigate()) return;
-    const profile = store.me?.id, key = button.dataset.layoutView, value = button.dataset.layoutValue;
-    savingView = true;
-    document.querySelectorAll("[data-layout-view]").forEach(b=>{b.disabled=true;});
-    cancelCardGestures();
-    try {
-      await api.updateMe({[key]:value});
-      if (profile !== store.me?.id) return;
-      await reload();
-      document.querySelector(`[data-layout-view="${key}"][data-layout-value="${value}"]`)?.focus({preventScroll:true});
-    } catch (error) { toast(error.message, true); }
-    finally { savingView=false; document.querySelectorAll("[data-layout-view]").forEach(b=>{b.disabled=false;}); }
-  });
   const dock = $("#dock");
   const main = $(".main");
   const clearance = () => {

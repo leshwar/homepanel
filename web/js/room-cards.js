@@ -1,4 +1,4 @@
-// Content-sized room cards; the free-layout tiles and full device panels stay separate.
+// Compact contents for spatially positioned, resizable room cards.
 import { store, command } from "./store.js";
 import { esc, icon, statusText, needsAttention, wornPart, toast } from "./util.js";
 import { vacuumStatus } from "./vacuum-status.js";

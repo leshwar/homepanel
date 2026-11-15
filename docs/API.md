@@ -92,19 +92,12 @@ A connected power-capable device can still have `on: null` when it did not repor
 a valid power value; this is neither Off nor On. A TV may additionally report
 `screen_on: false` with `on: true` when its screen is off but logical power is on.
 
-`settings.room_view` (`compact` or `free`) and `settings.home_view` (`overview` or
-`free`) are the signed-in profile's presentation preferences. They default to
-`compact`/`overview` without migrating or replacing any saved Home or room geometry.
-Use `PATCH /profiles/me` to change either preference. Members can change their own
-view, not another profile's access or layout.
-
-Home widgets may also include `overview_positions`, with the same 2/4/6-column
-position schema as `positions`. Overview falls back to the free positions until
-edited; subsequent Overview edits preserve the original free coordinates. Overlap
-validation runs independently for each presentation, excluding the main clock from
-Overview. Clock widgets and hidden-state records are not migrated or discarded.
-Compact Rooms use the existing `room_layouts[room].widgets` array order; reordering
-does not rewrite those widgets' stored free positions or sizes.
+Version 4 has one layout path: `home_layout` and each entry in `room_layouts` use
+the same responsive geometry. The retired `home_view`, `room_view` and
+`overview_positions` are consolidated once from the selected legacy presentation.
+The server preserves a private `homepanel.json.layout-v3.bak` before updating the
+store. It contains secrets just like the original store: do not publish it.
+Old split-view save requests must reload rather than overwrite the new geometry.
 
 Devices that support a startup destination expose `startup_screens` as `{id,name}`
 choices and a persisted `power_on_screen` (default `"previous"`). Admins can update
@@ -330,18 +323,21 @@ default. There are no devices on Home: they're on the Rooms pages (All rooms, th
 page per room), which only list rooms with devices the profile can see.
 
 ```json
-{"version": 3, "widgets": [
-  {"id": "clock",   "type": "clock",   "size": "2x2", "hidden": false, "options": {},
-   "positions": {"4": {"x": 2, "y": 4, "size": "2x2"}, "2": {"x": 0, "y": 2, "size": "2x1"}}},
-  {"id": "zone-in", "type": "zone",    "size": "1x1", "hidden": false, "options": {"tz": "Asia/Kolkata", "label": "India"}},
-  {"id": "zone-us", "type": "zone",    "size": "1x1", "hidden": false, "options": {"tz": null, "label": "US"}},
-  {"id": "rooms",   "type": "rooms",   "size": "2x2", "hidden": false, "options": {}}]}
+{"version": 4, "widgets": [
+  {"id": "clock", "type": "clock", "size": "2x4", "hidden": false, "options": {},
+   "positions": {"4": {"x": 0, "y": 0, "size": "2x4"}, "2": {"x": 0, "y": 0, "size": "2x4"}}},
+  {"id": "notifications", "type": "notifications", "size": "2x4", "hidden": false, "options": {}},
+  {"id": "zone-in", "type": "zone", "size": "1x3", "hidden": false, "options": {"tz": "Asia/Kolkata", "label": "India"}},
+  {"id": "rooms", "type": "rooms", "size": "2x6", "hidden": false, "options": {}}]}
 ```
 
-Types: `clock`, `zone` (a clock for another place; `tz: null` = the screen's own zone
+Types: `clock`, `notifications`, `zone` (a clock for another place; `tz: null` = the screen's own zone
 if it's in the US, else US Eastern), `weather`, `scenes`, `rooms` (each room opens its
 page), `photos`, `favourites` (`options.devices`: up to 8 device ids shown as compact
-rows; an empty list lets the screen pick the first few). Sizes are grid columns × rows: `1x1`, `2x1`, `2x2`. Up to 40 widgets; a bad
+rows; an empty list lets the screen pick the first few). Sizes are grid columns × fine rows:
+1–6 columns and 3–24 rows, with a two-column minimum except for timezone clocks.
+Up to 42 widgets (room for the two consolidated header widgets on an old full
+40-widget layout), with at most one primary clock and one Notifications widget; a bad
 layout gets a 400 that says what's wrong. Version 1 layouts could also hold `device`
 widgets: the server drops them when it starts (and from anything an older screen
 saves), so nobody is left with an empty slot.
@@ -349,16 +345,19 @@ saves), so nobody is left with an empty slot.
 `positions` is optional for compatibility with older ordered layouts. Its keys
 are column counts (`"2"`, `"4"`, `"6"`); each value has zero-based integer `x`, `y`
 and a size. A saved position overrides the fallback `size` at that width. Tiles
-must fit inside the columns and 200 rows and may not overlap another visible
+must fit inside the columns and 800 fine rows and may not overlap another visible
 tile in that grid. Bad positions return 400 without changing the saved layout.
 Empty rows/cells persist. Missing widths are derived without modifying the saved
 ones, and editing a width changes only that width's geometry.
 
-Room layouts use `{"version": 3, "widgets": [{"id": "device-id", "size": "1x1",
-"positions": {"4": {"x": 2, "y": 3, "size": "2x2"}}}]}` (up to 100 tiles).
+Room layouts use `{"version": 4, "widgets": [{"id": "device-id", "size": "2x3",
+"positions": {"4": {"x": 2, "y": 3, "size": "2x3"}}}]}` (up to 100 tiles).
 They are stored per profile and room, and returned as `settings.room_layouts`.
 Only visible devices in that room can be saved or returned. New devices use
 free space; removed/moved-away devices are left out of the displayed layout.
+
+The editor includes the entry layout as `expected` in each layout PUT. If another
+screen changed it, the save is refused without overwriting that newer layout.
 
 ## Energy
 

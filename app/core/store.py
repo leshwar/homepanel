@@ -5,6 +5,7 @@ import json
 import os
 import tempfile
 import threading
+import shutil
 from dataclasses import asdict
 
 from .adapter import Device
@@ -88,3 +89,23 @@ class Store:
                 os.chmod(self.path, 0o600)  # holds API keys and device tokens
             except OSError:
                 pass
+
+    def backup_layout_upgrade(self) -> None:
+        """Keep the pre-consolidation data privately; never replace that recovery copy."""
+        if not os.path.exists(self.path):
+            return
+        backup = self.path + ".layout-v3.bak"
+        try:
+            fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            return
+        complete = False
+        try:
+            with os.fdopen(fd, "wb") as target, open(self.path, "rb") as source:
+                shutil.copyfileobj(source, target)
+                target.flush()
+                os.fsync(target.fileno())
+            complete = True
+        finally:
+            if not complete:
+                os.unlink(backup)

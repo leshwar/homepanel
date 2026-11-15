@@ -144,7 +144,7 @@ function scenesWidget() {
   if (store.devices.size) items.push(`<button class="scene add" data-new-scene>${icon("plus")}<span>New scene</span></button>`);
   // Nothing saved yet: say what a scene is, so the tile isn't a lone button.
   const hint = !store.scenes.length && store.devices.size
-    ? `<p class="w-hint">Set your devices the way you like, save that as a scene, and bring it back with one tap.</p>` : "";
+    ? `<p class="w-hint">Save device settings as a scene.</p>` : "";
   return `<div class="w-fill w-scenes"><span class="w-label">Scenes</span><div class="w-scene-list">${items.join("")}</div>${hint}</div>`;
 }
 

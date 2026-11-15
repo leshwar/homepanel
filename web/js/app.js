@@ -199,7 +199,7 @@ function renderTitle() {
   // Still tappable (the panel's picture can be stale), but it stops looking like something is on.
   $("#all-off").classList.toggle("idle", !all.some(canTurnOff));
   $("#edit-home").hidden = !home;
-  $("#clock").hidden = home && (store.settings.home_view !== "free" || store.settings.home_layout?.widgets?.some((w) => w.type === "clock" && !w.hidden));
+  $("#clock").hidden = home && !!store.settings.home_layout?.widgets?.some((w) => w.type === "clock" && !w.hidden);
 }
 
 // Keep the chosen tab visible in the scrolling bar.

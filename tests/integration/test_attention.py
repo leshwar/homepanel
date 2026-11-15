@@ -120,7 +120,7 @@ class AttentionTests(unittest.TestCase):
               store.scenes = []; home.refreshHomeParts(['scenes']);
             }""")
             hint = page.locator(".w-scenes .w-hint")
-            self.assertIn("save that as a scene", hint.inner_text())
+            self.assertEqual(hint.inner_text(),"Save device settings as a scene.")
             self.assertTrue(hint.is_visible())
             self.assertTrue(page.locator(".w-scenes [data-new-scene]").is_visible())
             # Photos with no library: the widget's own glass, not an opaque dark block over it.

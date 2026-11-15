@@ -1206,6 +1206,13 @@ class UITests(unittest.TestCase):
                     self.assertTrue(page.locator('[data-room-off="Kitchen"]').is_visible())
                     page.click(nav)
                     page.wait_for_function("document.documentElement.dataset.view === 'home'")
+            page.evaluate("""async()=>{
+              const {store,emit}=await import('/js/store.js');
+              store.settings.home_layout.widgets.find(w=>w.type==='clock').hidden=true;
+              emit('all');
+            }""")
+            self.assertEqual(page.locator(".home-grid > .t-clock").count(),0)
+            self.assertTrue(page.locator("#clock").is_visible())
         finally:
             page.close()
 

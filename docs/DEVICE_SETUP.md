@@ -33,6 +33,12 @@ Add the tile with **Home → Edit → Add → Photos**, and move/resize it norma
 Only timeline images from the selected albums are eligible; no entire-library
 shuffle, original downloads, EXIF display or face metadata is requested.
 
+Multiple selected albums form a pool: a photo needs to belong to **any one** of
+them, not every album. Selection searches one chosen album at a time, with bounded
+fallbacks for empty albums. Membership and current privacy are independently
+rechecked before each preview, including cached ones. Album choices and profile
+sharing are never broadened to recover an empty result.
+
 The adapter verifies the Immich 2.x/3.x contract and rejects incompatible versions/
 privacy responses rather than retrying a broad search. It uses the official
 [random search](https://api.immich.app/endpoints/search/searchRandom),

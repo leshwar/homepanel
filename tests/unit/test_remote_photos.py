@@ -3,7 +3,7 @@ import io
 import json
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from PIL import Image
 
@@ -13,6 +13,7 @@ from app.core.profiles import Viewer, current_viewer
 from app.core.remote_photos import RemotePhotos, screen_preview
 
 ALBUM = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+SECOND_ALBUM = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 PHOTO = "11111111-1111-4111-8111-111111111111"
 OTHER = "22222222-2222-4222-8222-222222222222"
 
@@ -89,6 +90,34 @@ class PhotoPolicyTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PhotoTransportPolicyTests(unittest.TestCase):
+    def test_album_union_is_bounded_and_revalidation_remains_album_confined(self):
+        source = PhotoSource("http://photo.local", "fixture-key")
+        photo = {"id": PHOTO, "type": "IMAGE", "visibility": "timeline", "isTrashed": False,
+                 "isOffline": False, "updatedAt": "one"}
+        requests = []
+        def request(path, body=None, **kw):
+            requests.append((path, body, kw))
+            if path == "/search/random":
+                return [photo] if body["albumIds"] == [SECOND_ALBUM] else []
+            if path.startswith("/albums?"):
+                return [{"id": SECOND_ALBUM, "albumName": "Selected"}]
+            return {"assets": {"items": [photo] if body["albumIds"] == [SECOND_ALBUM] else []}}
+        source.request = request
+        with patch("app.adapters.immich_photos.secrets.choice", side_effect=lambda values: values[0]):
+            self.assertEqual(source.candidates([ALBUM, SECOND_ALBUM], 99), [{"id": PHOTO}])
+        self.assertEqual(source.validate(PHOTO, [ALBUM, SECOND_ALBUM], 99), "one")
+        searches = [body for path, body, _ in requests if path.startswith("/search/")]
+        self.assertEqual([body["albumIds"] for body in searches], [[ALBUM], [SECOND_ALBUM], [SECOND_ALBUM]])
+        self.assertTrue(all(body["visibility"] == "timeline" and body["withDeleted"] is False
+                            and body["isOffline"] is False and body["withExif"] is False for body in searches))
+        self.assertTrue(all(kw["deadline"] == 99 for _, _, kw in requests))
+        source.request = Mock(return_value=[])
+        self.assertEqual(source.candidates([ALBUM, SECOND_ALBUM, ALBUM], 99), [])
+        self.assertEqual(source.request.call_count, 2)
+        with self.assertRaisesRegex(PhotoError, "no longer in a selected"):
+            source.validate(PHOTO, [ALBUM], 99)
+        self.assertFalse(any(c.args[0] == "/search/metadata" for c in source.request.call_args_list))
+
     def test_urls_and_privacy_contract(self):
         self.assertEqual(server_url("http://laptop.local:2283/api/"), "http://laptop.local:2283")
         self.assertEqual(server_url("https://photos.example/immich"), "https://photos.example/immich")

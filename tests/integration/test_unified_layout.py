@@ -83,6 +83,25 @@ class UnifiedGridTests(unittest.TestCase):
             })};
         })""",where)
 
+    def assert_grips_clear(self, root):
+        grips=root.locator(".layout-item").evaluate_all("""tiles=>tiles.map(tile=>{
+          const r=tile.getBoundingClientRect(),g=tile.querySelector('[data-grip]').getBoundingClientRect();
+          const overlaps=q=>g.x<q.right&&q.x<g.right&&g.y<q.bottom&&q.y<g.bottom;
+          const texts=[...tile.querySelectorAll('.w-label,.w-greet,.photo-caption,h2,.tile-name,.tile-status')];
+          const covered=texts.filter(e=>{
+            if(!e.getClientRects().length)return false;
+            const range=document.createRange();range.selectNodeContents(e);
+            return [...range.getClientRects()].some(overlaps);
+          }).map(e=>e.className||e.tagName);
+          const controls=[...tile.querySelectorAll('.w-time,.w-wx,.tile-icon,[data-photo-settings]')]
+            .filter(e=>e.getClientRects().length&&overlaps(e.getBoundingClientRect())).map(e=>e.className);
+          return {id:tile.dataset.wid,x:g.x-r.x,y:g.y-r.y,covered:[...covered,...controls]};
+        })""")
+        for grip in grips:
+            self.assertAlmostEqual(grip["x"],8,delta=1)
+            self.assertAlmostEqual(grip["y"],8,delta=1)
+            self.assertEqual(grip["covered"],[],grip)
+
     def test_normal_edit_cancel_geometry_and_safe_controls_all_sizes_themes_fonts(self):
         page=self.page
         for where,theme,font,(width,height) in itertools.product(("home","rooms"),("dark","light"),("small","medium","large"),
@@ -99,6 +118,7 @@ class UnifiedGridTests(unittest.TestCase):
                 self.assertEqual(root.locator("[data-grip]").count(),count)
                 self.assertEqual(root.locator("[data-resize]").count(),count)
                 self.assertEqual(page.locator("[data-layout-view],.home-overview,.compact-rooms").count(),0)
+                self.assert_grips_clear(root)
                 for handle in root.locator("[data-grip],[data-resize]").all():
                     box=handle.bounding_box()
                     self.assertGreaterEqual(min(box["width"],box["height"]),48)
@@ -114,6 +134,20 @@ class UnifiedGridTests(unittest.TestCase):
                 self.assertTrue(page.locator("#settings").is_hidden())
                 self.cancel(where)
                 self.assertEqual(self.geometry(where),before)
+                self.assertEqual(root.locator("[data-grip]").count(),0)
+
+    def test_minimum_home_sizes_keep_top_left_grips_clear_of_content(self):
+        kinds=("clock","notifications","zone","weather","photos","scenes","rooms","favourites")
+        self.seed("home",{"version":4,"widgets":[
+            {"id":kind,"type":kind,"size":"1x3" if kind=="zone" else "2x3"} for kind in kinds]})
+        for font,width in itertools.product(("small","medium","large"),(390,720,1280)):
+            with self.subTest(font=font,width=width):
+                self.page.set_viewport_size({"width":width,"height":844})
+                self.page.evaluate("async font=>{const s=await import('/js/store.js');s.store.settings.font_size=font;s.emit('all');}",font)
+                self.show("home");before=self.geometry("home")
+                self.edit("home");self.assert_grips_clear(self.page.locator("#home"))
+                self.assertEqual(self.geometry("home"),before)
+                self.cancel("home");self.assertEqual(self.geometry("home"),before)
 
     def test_every_home_type_moves_and_resizes_with_persistent_exact_geometry(self):
         page=self.page

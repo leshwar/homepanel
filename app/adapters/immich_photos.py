@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 import time
 import urllib.error
 import urllib.parse
@@ -136,24 +137,33 @@ class PhotoSource:
             and photo["isTrashed"] is False and photo.get("isOffline") is False and photo.get("isArchived") is not True
 
     def candidates(self, albums: list[str], deadline) -> list[dict]:
-        if not albums:
-            raise PhotoError("Choose an album before displaying photos.")
-        result = self.request("/search/random", {
-            "size": 12, "type": "IMAGE", "albumIds": albums, "visibility": "timeline",
-            "withDeleted": False, "isOffline": False, "withExif": False, "withPeople": False, "withStacked": False,
-        }, deadline=deadline)
-        if not isinstance(result, list) or len(result) > 12:
-            raise PhotoError("The photo server returned an incompatible search response.")
-        return [{"id": asset_id(p.get("id"))}
-                for p in result if self.eligible(p)]
+        if not 1 <= len(albums) <= 8:
+            raise PhotoError("Choose between one and eight albums before displaying photos.")
+        remaining = list(dict.fromkeys(asset_id(a) for a in albums))
+        # Legacy albumIds is an intersection, not a union. Search one selected
+        # album at a time; shuffled empty-album fallbacks share the same deadline.
+        while remaining:
+            album = secrets.choice(remaining)
+            remaining.remove(album)
+            result = self.request("/search/random", {
+                "size": 12, "type": "IMAGE", "albumIds": [album], "visibility": "timeline",
+                "withDeleted": False, "isOffline": False, "withExif": False, "withPeople": False, "withStacked": False,
+            }, deadline=deadline)
+            if not isinstance(result, list) or len(result) > 12:
+                raise PhotoError("The photo server returned an incompatible search response.")
+            eligible = [{"id": asset_id(p.get("id"))} for p in result if self.eligible(p)]
+            if eligible:
+                return eligible
+        return []
 
     def validate(self, photo: str, albums: list[str], deadline) -> str:
         # Independently confirm membership; a search response alone is not authorization.
         membership = {a["id"] for a in self.albums(photo, deadline=deadline)}
-        if not membership.intersection(albums):
+        selected = sorted(membership.intersection(albums))
+        if not selected:
             raise PhotoError("That photo is no longer in a selected album.")
         result = self.request("/search/metadata", {
-            "id": asset_id(photo), "size": 1, "type": "IMAGE", "albumIds": albums,
+            "id": asset_id(photo), "size": 1, "type": "IMAGE", "albumIds": selected[:1],
             "visibility": "timeline", "withDeleted": False, "isOffline": False,
             "withExif": False, "withPeople": False,
         }, deadline=deadline)

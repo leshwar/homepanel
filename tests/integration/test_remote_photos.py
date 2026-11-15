@@ -15,7 +15,7 @@ from PIL import Image
 
 from tests.helpers import DemoServer
 from tests.integration.test_auth import Client
-from tests.unit.test_remote_photos import ALBUM, PHOTO, OTHER
+from tests.unit.test_remote_photos import ALBUM, SECOND_ALBUM, PHOTO, OTHER
 
 try:
     from playwright.sync_api import sync_playwright
@@ -31,6 +31,7 @@ class FakePhotoServer:
         self.major = 2
         self.failure = None
         self.membership = True
+        self.album_assets = None
         self.assets = [{"id": p, "type": "IMAGE", "visibility": "timeline",
                         "isTrashed": False, "isOffline": False, "updatedAt": "one"} for p in (PHOTO, OTHER)]
         image = io.BytesIO(); Image.new("RGB", (80, 60), "teal").save(image, "JPEG")
@@ -58,11 +59,18 @@ class FakePhotoServer:
                 if path.path == "/api/server/version":
                     result = {"major": source.major, "minor": 0, "patch": 0}
                 elif path.path == "/api/albums":
-                    result = [{"id": ALBUM, "albumName": "Wall display"}] if not path.query or source.membership else []
+                    albums = source.album_assets or {ALBUM: {PHOTO, OTHER}}
+                    query = urllib.parse.parse_qs(path.query)
+                    selected_photo = query.get("assetId", [None])[0]
+                    result = [{"id": a, "albumName": "Wall display"} for a, ids in albums.items()
+                              if not selected_photo or source.membership and selected_photo in ids]
                 elif path.path == "/api/search/random":
-                    result = source.assets
+                    albums = source.album_assets or {ALBUM: {PHOTO, OTHER}}
+                    result = [p for p in source.assets if all(p["id"] in albums.get(a, set()) for a in body["albumIds"])]
                 elif path.path == "/api/search/metadata":
-                    result = {"assets": {"items": [p for p in source.assets if p["id"] == body["id"]]}}
+                    albums = source.album_assets or {ALBUM: {PHOTO, OTHER}}
+                    result = {"assets": {"items": [p for p in source.assets if p["id"] == body["id"]
+                                                  and all(p["id"] in albums.get(a, set()) for a in body["albumIds"])]}}
                 elif path.path.endswith("/thumbnail"):
                     result = source.image; content_type = "image/jpeg"
                 else:
@@ -96,6 +104,7 @@ class RemotePhotoApiTests(unittest.TestCase):
     def setUp(self):
         self.owner = Client(self.server.url); self.owner.sign_in(profile_id="owner", password="homepanel")
         self.remote.failure = None; self.remote.major = 2; self.remote.membership = True
+        self.remote.album_assets = None
         self.remote.assets = [{"id": p, "type": "IMAGE", "visibility": "timeline",
                                "isTrashed": False, "isOffline": False, "updatedAt": "one"} for p in (PHOTO, OTHER)]
         self.owner.call("DELETE", "/photo-library")
@@ -187,6 +196,27 @@ class RemotePhotoApiTests(unittest.TestCase):
                 self.assertEqual(self.image(self.owner)[0], 400)
                 self.assertEqual(len([r for r in self.remote.requests if "/thumbnail" in r[1]]), before)
 
+    def test_disjoint_selected_albums_deliver_photos_without_expanding_scope(self):
+        self.remote.major = 3
+        self.remote.album_assets = {ALBUM: {PHOTO}, SECOND_ALBUM: {OTHER}}
+        self.configure()
+        status, _, _ = self.owner.call("PUT", "/photo-library/source",
+                                      {"albums": [ALBUM, SECOND_ALBUM], "profiles": ["owner"], "seconds": 30})
+        self.assertEqual(status, 200)
+        before = len(self.remote.requests)
+        status, image, _ = self.image(self.owner)
+        self.assertEqual(status, 200)
+        with Image.open(io.BytesIO(image)) as decoded:
+            self.assertEqual(decoded.size, (80, 60))
+        queries = [body for _, path, body, _ in self.remote.requests[before:] if path.startswith("/api/search/")]
+        self.assertTrue(all(len(q["albumIds"]) == 1 and q["albumIds"][0] in (ALBUM, SECOND_ALBUM) for q in queries))
+        self.assertTrue(any("assetId=" in path for _, path, _, _ in self.remote.requests[before:]))
+        self.remote.membership = False
+        self.server.app.state.service.photo_library._attempt.clear()
+        previews = len([r for r in self.remote.requests if "/thumbnail" in r[1]])
+        self.assertEqual(self.image(self.owner)[0], 400)
+        self.assertEqual(len([r for r in self.remote.requests if "/thumbnail" in r[1]]), previews)
+
 
 @unittest.skipIf(sync_playwright is None, "playwright not installed")
 class RemotePhotoBrowserTests(unittest.TestCase):
@@ -207,6 +237,8 @@ class RemotePhotoBrowserTests(unittest.TestCase):
         cls.browser.close(); cls.pw.stop(); cls.remote.stop(); cls.server.stop(); shutil.rmtree(cls.dir, ignore_errors=True)
 
     def test_secure_setup_add_resize_and_private_tile_lifecycle(self):
+        self.remote.major = 3
+        self.remote.album_assets = {ALBUM: {PHOTO}, SECOND_ALBUM: {OTHER}}
         page = self.browser.new_page(viewport={"width": 720, "height": 1280}, reduced_motion="reduce")
         errors = []; page.on("pageerror", lambda e: errors.append(str(e)))
         try:
@@ -220,6 +252,7 @@ class RemotePhotoBrowserTests(unittest.TestCase):
             self.assertEqual(page.input_value('[data-photo-connect] [name=key]'), "")
             self.assertEqual(page.locator("[name=key]").get_attribute("type"), "password")
             page.check(f'[name=album][value="{ALBUM}"]')
+            page.check(f'[name=album][value="{SECOND_ALBUM}"]')
             page.click('[data-photo-source] button[type=submit]')
             page.wait_for_function("async () => (await import('/js/store.js')).store.settings.photo_library.ready")
             page.click("#settings [data-back]"); page.click("#settings [data-back]")
@@ -243,6 +276,7 @@ class RemotePhotoBrowserTests(unittest.TestCase):
             self.assertEqual(errors, [])
         finally:
             page.close()
+            self.remote.album_assets = None
 
     def test_tile_rotation_waits_for_decode_and_pauses_hidden_requests(self):
         page = self.browser.new_page(viewport={"width": 720, "height": 1280})

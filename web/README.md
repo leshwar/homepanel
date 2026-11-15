@@ -191,9 +191,11 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   brightness, speakers have reported volume and mute, and vacuums show real
   activity/problem with battery labeled separately. Faulted vacuums do not offer a
   blind Start shortcut. Unknown/offline controls are disabled rather than guessed.
-  Three-line grips move any top-level tile into empty grid space; corner handles
+  Consistent top-left three-line grips move any top-level tile into empty grid space; corner handles
   resize it. Arrow keys on a grip move one cell; on a corner they change width/height.
   There are no separate Compact, Free or Overview modes.
+  Header space is reserved in both normal and Edit views so grips never replace
+  device icons or cover labels; entering Edit does not shift tile geometry.
   Home starts with time/date on the left and actionable device
   notifications on the right (stacked on phones), but both are ordinary editable
   widgets. Alerts are real offline/pairing,

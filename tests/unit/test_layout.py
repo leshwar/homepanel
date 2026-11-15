@@ -27,6 +27,26 @@ class DefaultLayoutTests(unittest.TestCase):
 
 
 class CleanLayoutTests(unittest.TestCase):
+    def test_overview_positions_are_validated_separately_and_keep_free_clock_geometry(self):
+        free = {"2": {"x": 0, "y": 0, "size": "2x1"}}
+        overview = {"2": {"x": 0, "y": 0, "size": "1x1"}}
+        value = {"widgets": [
+            {"id": "clock", "type": "clock", "positions": free},
+            {"id": "weather", "type": "weather", "positions": {"2": {"x": 0, "y": 3, "size": "1x1"}},
+             "overview_positions": overview},
+        ]}
+        cleaned = clean_layout(value)
+        self.assertEqual(cleaned["widgets"][0]["positions"], free)
+        self.assertEqual(cleaned["widgets"][1]["overview_positions"], overview)
+        self.assertEqual(clean_layout(cleaned), cleaned)
+        value["widgets"].append({"id": "zone", "type": "zone", "overview_positions": overview})
+        with self.assertRaisesRegex(LayoutError, "overlap"):
+            clean_layout(value)
+        value["widgets"].pop()
+        value["widgets"][1]["overview_positions"] = {"2": {"x": 2, "y": 0, "size": "1x1"}}
+        with self.assertRaisesRegex(LayoutError, "inside"):
+            clean_layout(value)
+
     def test_responsive_positions_keep_empty_space_and_sizes(self):
         positions = {"2": {"x": 0, "y": 8, "size": "2x2"}, "6": {"x": 5, "y": 0, "size": "1x1"}}
         widget = {"id": "c", "type": "clock", "positions": positions}

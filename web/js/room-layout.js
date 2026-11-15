@@ -4,11 +4,14 @@ import { store, devicesIn } from "./store.js";
 import { $, esc, toast, isMedia } from "./util.js";
 import { svg } from "./icons.js";
 import { tileHtml } from "./tiles.js";
+import "../vendor/sortablejs/Sortable.min.js";
+import { invalidateMarkup } from "./render.js";
 import { SIZES, SIZE_NAMES, columnsFor, arrange, remember, place, placementStyle, gridStyle, bindGridEditor, watchGridWidth } from "./grid.js";
 
 let draft = null, editingRoom = null, redraw = () => {}, cancelGesture = () => {}, saving = false;
+let editingProfile = null, editCompact = false, sorter = null, sortList = null, sortCancelled = false;
 export const isRoomEditing = () => draft !== null;
-export const compactRooms = () => store.settings.room_view !== "free" && !isRoomEditing();
+export const compactRooms = () => isRoomEditing() ? editCompact : store.settings.room_view !== "free";
 const columns = () => columnsFor($("#grid").clientWidth);
 const label = (r) => r || "Other";
 const KIND_ORDER = { tv: 0, speaker: 1, light: 2, switch: 3, fan: 4, purifier: 5, plug: 6, vacuum: 7, other: 8 };
@@ -16,8 +19,28 @@ const KIND_ORDER = { tv: 0, speaker: 1, light: 2, switch: 3, fan: 4, purifier: 5
 function roomWidgets(room) {
   const devices = devicesIn(room).sort((a, b) => (KIND_ORDER[a.kind] ?? 9) - (KIND_ORDER[b.kind] ?? 9) || a.name.localeCompare(b.name));
   const saved = store.settings.room_layouts?.[room]?.widgets || [];
-  return devices.map((d) => saved.find((w) => w.id === d.id) || { id: d.id, size: isMedia(d) ? "2x1" : "1x1" });
+  const items = devices.map((d) => saved.find((w) => w.id === d.id) || { id: d.id, size: isMedia(d) ? "2x1" : "1x1" });
+  return [...saved.filter(w => devices.some(d => d.id === w.id)), ...items.filter(w => !saved.some(s => s.id === w.id))];
 }
+
+export function syncRoomEditor() {
+  if (draft && editingProfile !== store.me?.id) stopRoomEditing(false);
+  if (draft) draft.widgets = draft.widgets.filter(w => devicesIn(editingRoom).some(d => d.id === w.id));
+}
+
+function toolbar() {
+  return `<div class="editbar" role="toolbar" aria-label="Edit room tiles">
+    <span class="editbar-hint">${editCompact ? "Drag the grips to reorder cards" : "Hold to move · corner to resize"}</span>
+    <button class="btn small" data-room-cancel ${saving ? "disabled" : ""}>Cancel</button>
+    <button class="btn small primary" data-room-done ${saving ? "disabled" : ""}>${saving ? "Saving..." : "Done"}</button>
+    <span class="visually-hidden" role="status" data-card-sort-status></span>
+  </div>`;
+}
+
+const grip = d => `<button type="button" class="card-sort-grip" data-card-grip="${esc(d.id)}"
+  aria-label="Reorder ${esc(d.name)}" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+  title="Drag to reorder; use arrow keys when focused" ${saving ? "disabled" : ""}>
+  <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>`;
 
 export function roomLayoutKey(room) {
   const editing = isRoomEditing() && room === editingRoom;
@@ -29,10 +52,10 @@ export function roomLayoutKey(room) {
 export function roomTiles(room) {
   const editing = isRoomEditing() && room === editingRoom;
   const items = editing ? draft.widgets : roomWidgets(room);
-  if (compactRooms()) return `<div class="compact-rooms">${items.map(w => {
+  if (compactRooms()) return `<div class="compact-rooms${editing ? " editing" : ""}">${items.map(w => {
     const d = store.devices.get(w.id);
-    return `<div class="room-card" data-wid="${esc(w.id)}">${tileHtml(d, {compact:true})}</div>`;
-  }).join("")}</div>`;
+    return `<div class="room-card" data-wid="${esc(w.id)}">${tileHtml(d, {compact:true, editing})}${editing ? grip(d) : ""}</div>`;
+  }).join("")}</div>${editing ? toolbar() : ""}`;
   const positions = arrange(items, columns());
   return `<div class="tiles layout-grid${editing ? " editing" : ""}" style="${gridStyle(items, columns(), editing)}">${
     items.map((w) => {
@@ -43,34 +66,36 @@ export function roomTiles(room) {
         style="${placementStyle(p)}">${tileHtml(d, { size: p.size, editing })}
         ${editing ? `<button class="w-badge w-menu" data-room-options="${esc(w.id)}" aria-label="${esc(d.name)} layout options">${svg("dots")}</button>
           <button class="w-resize" data-resize aria-label="Change size of ${esc(d.name)} (now ${SIZE_NAMES[p.size]})">${svg("resize")}</button>` : ""}</div>`;
-    }).join("")}</div>${editing ? `<div class="editbar" role="toolbar" aria-label="Edit room tiles">
-      <span class="editbar-hint">Hold to move into free space · corner to resize</span>
-      <button class="btn small" data-room-cancel ${saving ? "disabled" : ""}>Cancel</button>
-      <button class="btn small primary" data-room-done ${saving ? "disabled" : ""}>${saving ? "Saving..." : "Done"}</button>
-    </div>` : ""}`;
+    }).join("")}</div>${editing ? toolbar() : ""}`;
 }
 
 export function startRoomEditing(room) {
   if (isRoomEditing()) return;
+  editingProfile = store.me?.id;
+  editCompact = store.settings.room_view !== "free";
   editingRoom = room;
   draft = { version: 3, widgets: JSON.parse(JSON.stringify(roomWidgets(room))) };
-  remember(draft.widgets, columns());
+  if (!editCompact) remember(draft.widgets, columns());
+  document.documentElement.dataset.layoutEditing = "rooms";
   redraw();
 }
 
 function closeOptions() { document.querySelector(".room-layout-menu")?.remove(); }
 
-export function stopRoomEditing() {
+export function stopRoomEditing(render = true) {
   cancelGesture();
+  cancelSort();
   draft = null;
   editingRoom = null;
+  editingProfile = null;
+  delete document.documentElement.dataset.layoutEditing;
   closeOptions();
-  redraw();
+  if (render) redraw();
 }
 
 async function save() {
   if (saving) return;
-  const next = draft, room = editingRoom, profile = store.me?.id;
+  const next = draft, room = editingRoom, profile = editingProfile;
   saving = true;
   redraw();
   try {
@@ -84,6 +109,7 @@ async function save() {
 }
 
 function options(id) {
+  if (!draft || editCompact || saving) return;
   closeOptions();
   const d = store.devices.get(id), p = arrange(draft.widgets, columns()).get(id);
   if (!d || !p) return;
@@ -105,9 +131,25 @@ function options(id) {
 
 export function setupRoomEditor(root, render) {
   redraw = render;
-  cancelGesture = bindGridEditor(root, { enabled: () => isRoomEditing() && !saving, items: () => draft.widgets,
+  cancelGesture = bindGridEditor(root, { enabled: () => isRoomEditing() && !editCompact && !saving, items: () => draft.widgets,
     render, error: (message) => toast(message, true) });
   watchGridWidth(root, () => { cancelGesture(); render(); });
+  addEventListener("resize", () => { cancelSort(); cancelGesture(); render(); });
+  addEventListener("blur", () => { cancelSort(); cancelGesture(); render(); });
+  root.addEventListener("pointercancel", () => { cancelSort(); render(); });
+  root.addEventListener("keydown", e => {
+    const handle = e.target.closest("[data-card-grip]");
+    const step = {ArrowUp:-1,ArrowLeft:-1,ArrowDown:1,ArrowRight:1}[e.key];
+    if (!handle || !step || !draft || saving) return;
+    e.preventDefault(); e.stopPropagation();
+    const index = draft.widgets.findIndex(w => w.id === handle.dataset.cardGrip);
+    if (index + step < 0 || index + step >= draft.widgets.length) return;
+    const [item] = draft.widgets.splice(index, 1);
+    draft.widgets.splice(index + step, 0, item);
+    render();
+    root.querySelector(`[data-card-grip="${CSS.escape(item.id)}"]`)?.focus({preventScroll:true});
+    root.querySelector("[data-card-sort-status]").textContent = `Moved to position ${index + step + 1} of ${draft.widgets.length}`;
+  });
   root.addEventListener("click", (e) => {
     if (e.target.closest("[data-room-done]")) return save();
     if (e.target.closest("[data-room-cancel]")) return stopRoomEditing();
@@ -131,4 +173,42 @@ export function setupRoomEditor(root, render) {
     options(id);
   });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeOptions(); });
+}
+
+function cancelSort() {
+  sortCancelled = true;
+  const current = sorter;
+  sorter = null; sortList = null;
+  current?.destroy();
+  delete $("#grid").dataset.gridGesture;
+}
+
+export function syncCompactSorter(root) {
+  const list = root.querySelector(".compact-rooms.editing");
+  if (list === sortList) { sorter?.option("disabled", saving); return; }
+  cancelSort();
+  if (!list || !draft || !editCompact) return;
+  sortList = list;
+  let entry = null;
+  sorter = new globalThis.Sortable(list, {
+    handle: "[data-card-grip]", draggable: ".room-card", dataIdAttr:"data-wid",
+    group:{name:"compact-cards",pull:false,put:false}, forceFallback:true, fallbackOnBody:true,
+    fallbackTolerance:3, delayOnTouchOnly:true, delay:120, touchStartThreshold:4,
+    animation:matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 180,
+    ghostClass:"card-sort-ghost", fallbackClass:"card-sort-drag", disabled:saving,
+    onStart() { entry=draft; sortCancelled=false; root.dataset.gridGesture="compact"; },
+    onEnd(e) {
+      delete root.dataset.gridGesture;
+      if (!sortCancelled && draft === entry && editingProfile === store.me?.id) {
+        const ids=[...list.querySelectorAll(":scope > .room-card")].map(el=>el.dataset.wid);
+        const permitted=new Set(devicesIn(editingRoom).map(d=>d.id));
+        draft.widgets=ids.map(id=>entry.widgets.find(w=>w.id===id)).filter(w=>w && permitted.has(w.id));
+      }
+      invalidateMarkup(root);
+      queueMicrotask(() => {
+        redraw();
+        root.querySelector(`[data-card-grip="${CSS.escape(e.item.dataset.wid)}"]`)?.focus({preventScroll:true});
+      });
+    },
+  });
 }

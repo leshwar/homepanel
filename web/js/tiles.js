@@ -45,7 +45,7 @@ export function tileHtml(d, { size = "", ctx = "rooms", sub = "", editing = fals
   const wide = size ? size !== "1x1" : ctx === "rooms" && isMedia(d);
   const busy = store.busy.has(d.id) || pending.has(d.id), quick = primaryAction(d);
   if (compact) return `<div class="tile compact-card${on ? " on" : ""}${offline ? " offline" : ""}${needsAttention(d) ? " attn" : ""}${busy ? " busy" : ""}"
-    data-id="${esc(d.id)}" data-ctx="${ctx}" data-compact="true" data-on="${on}" data-editing="false"
+    data-id="${esc(d.id)}" data-ctx="${ctx}" data-compact="true" data-on="${on}" data-editing="${editing}" ${editing ? 'inert aria-disabled="true"' : ""}
     role="group" style="--glow:${glowVar(d)}" aria-busy="${busy}" aria-label="${esc(d.name)}">${compactBody(d, quick, tilePicture(d, offline, ctx), busy)}</div>`;
   const cls = ["tile", on && "on", offline && "offline", busy && "busy", wide && "wide", needsAttention(d) && "attn"]
     .filter(Boolean).join(" ");
@@ -58,7 +58,7 @@ export function tileHtml(d, { size = "", ctx = "rooms", sub = "", editing = fals
       </div>` : "";
   return `
     <div class="${cls}" data-id="${esc(d.id)}" data-ctx="${ctx}" data-size="${esc(size)}" data-sub="${esc(sub)}" data-on="${on}" data-editing="${editing}"
-         role="group" style="--glow:${glowVar(d)};--level:${level}" aria-busy="${busy}" aria-label="${esc(d.name)}">
+         role="group" ${editing ? 'inert aria-disabled="true"' : ""} style="--glow:${glowVar(d)};--level:${level}" aria-busy="${busy}" aria-label="${esc(d.name)}">
       ${tilePicture(d, offline, ctx)}
       <div class="tile-tv-row">
         <button type="button" class="tile-open" data-more tabindex="${editing ? -1 : 0}"
@@ -88,7 +88,7 @@ export function updateTiles(id, subFor = (d, el) => el.dataset.sub || "") {
   const els = document.querySelectorAll(`.tile[data-id="${CSS.escape(id)}"]`);
   if (!d || !els.length) return false;
   for (const old of els) {
-    if (heldTiles.has(old) || pending.has(id) || cardHeld(old)) continue;
+    if (heldTiles.has(old) || pending.has(id) || cardHeld(old) || old.closest("[data-grid-gesture]")) continue;
     const tmp = document.createElement("div");
     tmp.innerHTML = tileHtml(d, { size: old.dataset.size, ctx: old.dataset.ctx, sub: subFor(d, old), editing: old.dataset.editing === "true", compact: old.dataset.compact === "true" });
     const el = tmp.firstElementChild;

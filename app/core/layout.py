@@ -135,7 +135,11 @@ def clean_layout(value: Any) -> dict:
                         "options": _options(kind, w.get("options"))})
         if "positions" in w:
             widgets[-1]["positions"] = _positions(w["positions"])
+        if "overview_positions" in w and kind != "clock":
+            widgets[-1]["overview_positions"] = _positions(w["overview_positions"])
     _check_overlaps(widgets)
+    _check_overlaps([{**w, "positions": w.get("overview_positions", w.get("positions", {}))}
+                     for w in widgets if w["type"] != "clock"])
     return {"version": VERSION, "widgets": widgets}
 
 

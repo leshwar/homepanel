@@ -60,8 +60,12 @@ export function refreshAttention(root) {
 }
 
 // Keep explicit non-clock geometry; only unsaved auto placement is derived again.
-export const overviewWidgets = widgets => widgets.filter(w => w.type !== "clock");
-export function viewChoices(key, current, options) {
+export const overviewWidgets = widgets => widgets.filter(w => w.type !== "clock").map(w => ({
+  ...w,
+  get positions() { return w.overview_positions ?? w.positions; },
+  set positions(value) { w.overview_positions = value; },
+}));
+export function viewChoices(key, current, options, disabled = false) {
   return `<div class="layout-view-choice" role="group" aria-label="${key === "room_view" ? "Room" : "Home"} layout view">
-    ${options.map(([id,label])=>`<button data-layout-view="${key}" data-layout-value="${id}" aria-pressed="${current === id}">${esc(label)}</button>`).join("")}</div>`;
+    ${options.map(([id,label])=>`<button data-layout-view="${key}" data-layout-value="${id}" aria-pressed="${current === id}" ${disabled ? "disabled" : ""}>${esc(label)}</button>`).join("")}</div>`;
 }

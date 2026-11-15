@@ -113,8 +113,10 @@ class FavouritesTests(unittest.TestCase):
         widget.wait_for()
         first = widget.locator(".tile").evaluate_all("els => els.map(e => e.dataset.id)")
         self.assertTrue(0 < len(first) <= 8)                             # nothing chosen yet: the first few devices
-        self.assertEqual(widget.locator(".tile-quick:visible").count(), 0)   # no commands while arranging
-        widget.locator("[data-menu]").click()
+        self.assertGreater(widget.locator(".tile-quick:visible").count(), 0)   # controls keep their geometry but are inert
+        self.assertTrue(widget.locator(".w-fill").first.evaluate("e=>e.inert"))
+        widget.focus()
+        page.click("[data-widget-options]")
         page.check('.fav-pick input[value="kt-kettle"]')
         page.check('.fav-pick input[value="lr-tv"]')
         self.assertEqual(widget.locator(".tile").evaluate_all("els => els.map(e => e.dataset.id)"), ["kt-kettle", "lr-tv"])

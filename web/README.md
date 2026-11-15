@@ -104,7 +104,7 @@ web/
 - **Two pages.** **Home**: a grid of widgets, each profile's own, the same on every screen
   that profile uses (saved with `PUT /profiles/me/layout`, checked by `app/core/layout.py`). Long-press it (or the
   pencil) to edit: hold and drag into an empty grid cell, drag a corner (or tap it) for
-  Small / Wide / Large, "…" for more (and the time zone of a clock), "−" to hide, **Add**
+  Small / Wide / Large, select a widget and use footer **Options** to configure or hide it, **Add**
   to bring widgets back, add a clock or add **Favourites**; Cancel or Done. Device tiles live on
   the Rooms pages (the Rooms widget opens each one). A Favourites widget lists up to 8 chosen
   devices ("…" → tick them; none ticked = the first few) as compact rows: the name opens the
@@ -157,7 +157,7 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   them on a wide TV or speaker tile that reports one) are explicit
   quick actions; they do not also open the panel. Unknown/offline actions are
   disabled, pending commands are visible, and failures show the standard error.
-  Long-press still opens controls; layout Edit hides/disables quick actions.
+  Long-press still opens controls outside Edit; layout Edit retains quick-action geometry but makes device content inert.
   A device that reports a `problem`, or a worn part (`parts` at 10% or less) while it
   rests, says "Needs attention" / "Maintenance due" in a highlighted status line.
 - **Device controls.** Opaque, theme-aware panels have a named status header, a
@@ -191,15 +191,26 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   activity/problem with battery labeled separately. Faulted vacuums do not offer a
   blind Start shortcut. Unknown/offline controls are disabled rather than guessed.
   The **Free layout** choice restores the existing per-breakpoint placement and
-  sizes; Edit tiles still opens that editor, even from Compact. No saved geometry
-  is deleted or rewritten by viewing or switching modes.
+  sizes. Edit stays in the selected view: Compact uses three-line grips to reorder
+  the same content-sized cards (drag or arrow keys), while Free keeps grid movement
+  and resizing. Compact order uses the existing saved room widget order without
+  changing its stored free-layout positions. No saved geometry is migrated or reset.
   Home defaults to **Overview**, with time/date on the left and actionable device
   notifications on the right (stacked on phones). Alerts are real offline/pairing,
   problem or maintenance states, prioritized and deduplicated; they only open controls.
-  The main grid clock is shown in the overview instead, not duplicated. Existing
-  non-clock coordinates are retained; only automatic placements without saved
-  coordinates are derived normally. Home's **Free layout** and editor restore the
-  original clock and geometry. Both choices belong to the signed-in profile and
+  The main grid clock is shown in the overview instead, not duplicated, including
+  while editing. The clock and notifications are fixed in Overview; only visible
+  widgets below them are arranged. Overview initially inherits non-clock free
+  positions, then keeps explicit edits in optional `overview_positions` using the
+  same validated per-breakpoint geometry. That lets an edited widget occupy the
+  old clock's visible empty space without changing the original Free arrangement.
+  Hidden clocks remain available only in Free layout, not as phantom Overview tiles.
+  Select a Home widget and use Options in the editor footer to hide/configure/resize
+  it; no hide buttons cover widget headings. Existing resize corners and grid
+  keyboard controls remain available. View choices and card content keep their
+  geometry in Edit; device/scene/photo/weather actions are inert until editing ends.
+  Done saves the selected presentation, Cancel leaves the saved layout untouched,
+  and failed saves retain the draft. Both choices belong to the signed-in profile and
   persist through the existing profile API, including for members.
   The fixed dock's measured height and safe-area offset reserve bottom scroll
   clearance; the last card can be fully scrolled above navigation. Resize, view/profile

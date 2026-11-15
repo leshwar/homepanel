@@ -1403,12 +1403,15 @@ class UITests(unittest.TestCase):
             page.wait_for_selector('.widget[data-wid="clock"]')
             self.long_press(page, '.widget[data-wid="clock"]')                 # long press the page = edit
             page.wait_for_selector(".home.editing .editbar")
-            page.click('.widget[data-wid="scenes"] [data-hide]')
+            page.locator('.widget[data-wid="scenes"]').focus()
+            page.click('[data-widget-options]')
+            page.click('[data-hide-id="scenes"]')
             before = self.placements(page)
             self.drag_to_cell(page, '.widget[data-wid="weather"]', 2, 2)
             page.click('.widget[data-wid="weather"] [data-resize]')            # a tap on the corner: next size
             self.assertIn("s-2x2", page.get_attribute('.widget[data-wid="weather"]', "class"))
-            page.click('.widget[data-wid="zone-us"] [data-menu]')
+            page.locator('.widget[data-wid="zone-us"]').focus()
+            page.click('[data-widget-options]')
             page.select_option("[data-zone-pick]", "America/Chicago")
             page.click('[data-size-pick="1x1"]')
             page.click(".wmenu button.btn[data-menu-close]")
@@ -1435,7 +1438,9 @@ class UITests(unittest.TestCase):
                 other.close()
 
             page.click("#edit-home")                                           # Cancel puts it all back
-            page.click('.widget[data-wid="weather"] [data-hide]')
+            page.locator('.widget[data-wid="weather"]').focus()
+            page.click('[data-widget-options]')
+            page.click('[data-hide-id="weather"]')
             page.click("[data-add-widget]")                                    # hidden widgets can come back
             page.wait_for_selector('.wmenu [data-unhide="scenes"]')
             self.assertNotIn("Devices", page.inner_text(".wmenu"))            # devices aren't Home widgets any more
@@ -1458,6 +1463,7 @@ class UITests(unittest.TestCase):
 
     def test_room_settings_edit_tiles_resize_save_cancel_and_live_updates(self):
         page = self.page
+        page.evaluate("async()=>{const s=await import('/js/store.js');s.store.settings.room_view='free';s.emit('all');}")
         page.set_viewport_size({"width": 1280, "height": 720})
         page.click('#rail [data-open-settings]')
         page.click('[data-go="rooms"]')

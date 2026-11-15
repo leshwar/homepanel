@@ -94,6 +94,14 @@ an unsafe toggle. Successful verified reads replace stale/error state normally.
 Use `PATCH /profiles/me` to change either preference. Members can change their own
 view, not another profile's access or layout.
 
+Home widgets may also include `overview_positions`, with the same 2/4/6-column
+position schema as `positions`. Overview falls back to the free positions until
+edited; subsequent Overview edits preserve the original free coordinates. Overlap
+validation runs independently for each presentation, excluding the main clock from
+Overview. Clock widgets and hidden-state records are not migrated or discarded.
+Compact Rooms use the existing `room_layouts[room].widgets` array order; reordering
+does not rewrite those widgets' stored free positions or sizes.
+
 Devices that support a startup destination expose `startup_screens` as `{id,name}`
 choices and a persisted `power_on_screen` (default `"previous"`). Admins can update
 `power_on_screen` through the existing device PATCH endpoint. Unsupported choices

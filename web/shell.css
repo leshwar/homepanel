@@ -7,7 +7,7 @@
    iPhone's moving toolbars don't cut things off. Animations are short and only
    move or fade (transform/opacity), so they stay smooth on a Raspberry Pi. */
 
-html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scrollbar-gutter: stable; }
 body { min-height: 100dvh; -webkit-touch-callout: none; overflow-x: hidden; }
 
 .app { min-height: 100dvh; padding: 0; max-width: none; margin: 0; }
@@ -122,7 +122,7 @@ html:not(.glass) :is(.dock-bar, .dock-add, .editbar, .wmenu) { backdrop-filter: 
 .dock-bar button:active, .dock-add:active { transform: scale(.94); }
 .dock-add { flex: 0 0 58px; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; transition: transform .15s var(--ease); }
 .dock-add .i { width: 28px; height: 28px; }
-html:has(.home.editing) .dock { display: none; }
+html[data-layout-editing] .dock { visibility: hidden; }
 @media (max-width: 767px) {
   .toast { bottom: calc(104px + env(safe-area-inset-bottom)); }
   .rooms { margin-top: -4px; }
@@ -268,11 +268,20 @@ body:has(#sheet:not([hidden]), #settings:not([hidden]), #ambient:not([hidden]), 
 .w-room:active, .scene:active { transform: scale(.96); }
 
 /* ---------- edit mode ---------- */
-.home.editing .widget, .tiles.editing .layout-item { cursor: grab; touch-action: none; outline: 1px dashed var(--haze); outline-offset: 3px; }
+.home.editing .widget, .tiles.editing .layout-item, .compact-rooms.editing .room-card { cursor: grab; touch-action: none; outline: 1px dashed var(--haze); outline-offset: 3px; }
 .home.editing .widget > :not(.w-badge):not(.w-resize) { pointer-events: none; }
 .tiles.editing .tile, .tiles.editing .tile * { pointer-events: none; }
 .home.editing .layout-grid, .tiles.editing { background-image: radial-gradient(circle, rgb(180 190 210 / .45) 1px, transparent 1px);
   background-size: calc((100% + var(--g)) / var(--cols)) calc(var(--cell) + var(--g)); padding-bottom: 88px; }
+.home.editing .edit-selected { outline: 2px solid var(--indigo); }
+.home.editing .home-overview { position: relative; }
+.home.editing .home-overview::after { content: "Fixed overview"; position: absolute; right: 12px; bottom: 5px; color: var(--haze);
+  font-size: 11px; pointer-events: none; }
+.compact-rooms.editing .room-card { position: relative; border-radius: 20px; touch-action: pan-y; }
+.card-sort-grip { position: absolute; top: 12px; left: 14px; z-index: 3; width: 48px; height: 48px; display: grid; place-items: center;
+  background: var(--dusk); color: var(--paper); border: 1px solid var(--line); border-radius: 12px; touch-action: none; cursor: grab; }
+.card-sort-ghost { opacity: .35; }
+.card-sort-drag { opacity: .9; z-index: 50; }
 .layout-item.invalid-drop { outline: 3px solid #e77c6f; }
 .layout-grid { position: relative; }
 .grid-drop-target { position: absolute; pointer-events: none; z-index: 4; border: 2px dashed var(--indigo);
@@ -291,7 +300,7 @@ body:has(#sheet:not([hidden]), #settings:not([hidden]), #ambient:not([hidden]), 
   background: rgb(235 238 245 / .92); box-shadow: 0 2px 8px rgb(0 0 0 / .3); }
 .w-badge .i, .w-resize .i { position: relative; width: 18px; height: 18px; color: #1a1d22; stroke-width: 2.6; }
 .w-hide { top: -6px; left: -6px; }
-.w-menu { top: -6px; right: -6px; }
+.w-menu { bottom: -4px; left: -4px; }
 .w-resize { right: -4px; bottom: -4px; cursor: nwse-resize; touch-action: none; }
 .w-resize::before { border-radius: 10px 4px 14px 4px; }
 
@@ -301,6 +310,8 @@ body:has(#sheet:not([hidden]), #settings:not([hidden]), #ambient:not([hidden]), 
            border: 1px solid var(--line); box-shadow: 0 8px 24px rgb(0 0 0 / .2); animation: rise-x .24s var(--ease); }
 @keyframes rise-x { from { transform: translate(-50%, 30px); opacity: 0; } }
 .editbar-hint { color: var(--haze); font-size: calc(15px * var(--text-scale)); white-space: nowrap; margin-right: 4px; }
+.editbar { flex-wrap: wrap; justify-content: center; }
+.editbar-hint { white-space: normal; max-width: 32ch; font-size: calc(13px * var(--text-scale)); }
 .editbar .btn { height: 48px; border-radius: 24px; }
 @media (max-width: 560px) { .editbar-hint { display: none; } .editbar { padding-left: 8px; } }
 
@@ -341,7 +352,8 @@ body:has(#sheet:not([hidden]), #settings:not([hidden]), #ambient:not([hidden]), 
 .tile-open:focus-visible { outline-offset: 4px; }
 .tile:has(.tile-quick:active, .tile-tv-ctl button:active) { transform: none; }
 .tile[data-editing="true"] .tile-open { pointer-events: none; }
-.tile[data-editing="true"] :is(.tile-quick, .tile-tv-ctl) { display: none; }
+.tile[data-editing="true"] { cursor: default; }
+.tile[data-editing="true"] :is(.tile-quick, .tile-tv-ctl button) { opacity: 1; }
 html[data-tiles="light"] .tile-quick { background: rgb(20 26 39 / .08); }
 .tile:active { transform: scale(.96); }
 .tile.pop .tile-icon { animation: pop .34s cubic-bezier(.3, 1.6, .5, 1); }

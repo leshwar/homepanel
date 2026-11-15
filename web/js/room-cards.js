@@ -121,6 +121,7 @@ export function syncCompact(old, next) {
 export function attachCardRanges(root, update) {
   for (const [range] of cancels) if (!range.isConnected) cancels.delete(range);
   for (const range of root.querySelectorAll("[data-card-range]")) {
+    if (range.closest('[data-editing="true"]')) continue;
     if (bound.has(range)) continue;
     bound.add(range);
     const tile = range.closest(".tile"), id = tile.dataset.id, action = range.dataset.cardRange;

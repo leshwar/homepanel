@@ -166,7 +166,8 @@ class WeatherTileTests(unittest.TestCase):
         self.assertEqual(rain.evaluate("e => getComputedStyle(e).animationTimingFunction"), "linear")
         for size in ("1x1", "2x1", "2x2"):
             self.page.click("#edit-home")
-            self.page.click('.widget[data-wid="weather"] [data-menu]')
+            self.page.locator('.widget[data-wid="weather"]').focus()
+            self.page.click('[data-widget-options]')
             self.page.click(f'[data-size-pick="{size}"]')
             self.page.click(".wmenu button[data-menu-close]")
             self.page.click("[data-edit-done]")
@@ -187,7 +188,9 @@ class WeatherTileTests(unittest.TestCase):
             "e => e.getAnimations({subtree:true}).every(a => a.playState === 'paused')"))
         self.page.click('#dock [data-nav="home"]')
         self.page.click("#edit-home")
-        self.page.click('.widget[data-wid="weather"] [data-hide]')
+        self.page.locator('.widget[data-wid="weather"]').focus()
+        self.page.click('[data-widget-options]')
+        self.page.click('[data-hide-id="weather"]')
         self.assertEqual(self.page.locator(".w-weather-fx").count(), 0)
         self.page.click("[data-edit-cancel]")
 

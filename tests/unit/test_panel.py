@@ -197,7 +197,8 @@ class PanelTests(unittest.TestCase):
           assert.ok(Number.isInteger(appHue('Ünïcödé 📺')) && appHue('Ünïcödé 📺') >= 0 && appHue('Ünïcödé 📺') < 360);
           assert.equal(count(apps, /class="app-ic"/g), 3); assert.doesNotMatch(apps, /<img/);        // no token: initials only
           const pics = remotePanel(tv(full, {app:'n'}, {...meta, apps:[{id:'n', name:'Netflix', icon:'t0k3n'}, {id:'x"y', name:'<b>', icon:'t'}]})).tabs[0].html;
-          assert.match(pics, /<img src="\\/icon\\/[^"\\/]+\\/n\\?v=t0k3n" alt=""/);
+          assert.match(pics, /<img data-src="\\/icon\\/[^"\\/]+\\/n\\?v=t0k3n" alt="" decoding="async" hidden>/);   // loaded later, shown once it's there
+          assert.doesNotMatch(pics, / src="/);
           assert.match(pics, /aria-hidden="true">N<img/);                                              // initials stay underneath
           assert.doesNotMatch(pics, /<b>/); assert.match(pics, /class="app-name">&lt;b>/);
           assert.match(p.tabs[3].html, /data-key="MENU"/); assert.match(p.tabs[3].html, /data-key="EXIT"/);

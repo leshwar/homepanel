@@ -930,7 +930,21 @@ class UITests(unittest.TestCase):
         }""")
         self.page.wait_for_function("""(() => { const i = document.querySelector('#sheet [data-app="netflix"] .app-ic img');
           return i && i.complete && i.naturalWidth > 0; })()""")
-        self.page.wait_for_function("""!document.querySelector('#sheet [data-app="youtube"] .app-ic img')""")
+        self.page.wait_for_function("""(() => { const i = document.querySelector('#sheet [data-app="youtube"] .app-ic img');
+          return i && i.hidden && !i.getAttribute('src'); })()""")                       # failed: stays out of the way
+        self.assertFalse(self.page.locator('#sheet [data-app="netflix"] .app-ic img').evaluate("i => i.hidden"))
+        # Loading pictures never redraws the panel: the same nodes stay through unchanged updates.
+        kept = self.page.evaluate("""async () => {
+          const before = document.querySelector('#sheet [data-app="netflix"]');
+          const {store, upsertDevice} = await import('/js/store.js');
+          for (let i = 0; i < 3; i++) {
+            upsertDevice({...store.devices.get('lr-tv')});
+            await new Promise(r => setTimeout(r, 120));
+          }
+          return before === document.querySelector('#sheet [data-app="netflix"]');
+        }""")
+        self.assertTrue(kept)
+        self.assertFalse(self.page.locator('#sheet [data-app="netflix"] .app-ic img').evaluate("i => i.hidden"))
         self.assertEqual(self.page.locator('#sheet [data-app="youtube"] .app-ic').inner_text(), "Y")
         self.assertTrue(any("app=netflix&v=tok" in u for u in asked))
         box = self.page.locator('#sheet [data-app="netflix"]').bounding_box()

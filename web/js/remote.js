@@ -129,14 +129,24 @@ function keyRow(d, s) {
 }
 
 // An app's picture. The TV's own picture when it has one (a.icon is a token from the server,
-// which fetches it from the TV); underneath, and whenever there is none or it fails to load,
+// which fetches it from the TV); underneath, and until it has loaded or whenever it can't,
 // the app's initials on a colour of its own. We never ship or draw anyone's logo.
-const failedIcons = new Map();          // picture address -> when it last failed (retried after a minute)
+// The markup is the same whether or not the picture loads (so an unchanged device never
+// redraws the panel); attachRemote starts the loading and shows each picture once it's there.
+const failedIcons = new Map();          // picture address -> when it last failed (tried again after a minute)
 function appPicture(d, a) {
-  const url = a.icon ? api.appIconUrl(d.id, a.id, a.icon) : "";
-  const show = url && !(Date.now() - (failedIcons.get(url) ?? -Infinity) < 60000);
   return `<span class="app-ic" style="--hue:${appHue(a.name)}" aria-hidden="true">${esc(monogram(a.name))}${
-    show ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async">` : ""}</span>`;
+    a.icon ? `<img data-src="${esc(api.appIconUrl(d.id, a.id, a.icon))}" alt="" decoding="async" hidden>` : ""}</span>`;
+}
+
+function loadAppPictures(root) {
+  for (const img of root.querySelectorAll(".app-ic img[data-src]")) {
+    const url = img.dataset.src;
+    if (img.getAttribute("src") || Date.now() - (failedIcons.get(url) ?? -Infinity) < 60000) continue;
+    img.addEventListener("load", () => { img.hidden = false; }, { once: true });
+    img.addEventListener("error", () => { failedIcons.set(url, Date.now()); img.removeAttribute("src"); }, { once: true });
+    img.src = url;
+  }
 }
 
 // Up to two initials: "Prime Video" -> "PV", "YouTube" -> "Y", "Disney+" -> "D".
@@ -169,11 +179,7 @@ export function attachRemote(root, d) {
   const pad = root.querySelector("#touchpad");
   if (pad) attachTouchpad(pad, d);
   for (const el of root.querySelectorAll("[data-glide]")) attachGlide(el, d, GLIDES[el.dataset.glide]);
-  for (const img of root.querySelectorAll(".app-ic img")) {       // no picture after all: the initials show
-    const drop = () => { failedIcons.set(img.getAttribute("src"), Date.now()); img.remove(); };
-    if (img.complete && !img.naturalWidth && img.getAttribute("src")) drop();
-    else img.addEventListener("error", drop, { once: true });
-  }
+  loadAppPictures(root);
 }
 
 // Clicks inside the remote. Returns true when handled.

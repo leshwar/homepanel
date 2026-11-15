@@ -45,6 +45,7 @@ class ServiceAppIcons(unittest.IsolatedAsyncioTestCase):
         self.svc = HomeService(self.dir, demo=True)
         await self.svc.start()
         self.tv = self.svc.get("lr-tv")
+        self.tv.meta["apps"] = [dict(a) for a in self.tv.meta["apps"]]     # our own copies: the demo's list is shared
         self.adapter = self.svc._adapter_for(self.tv)
         self.calls = []
 

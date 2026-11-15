@@ -44,15 +44,14 @@ class ApiTests(unittest.TestCase):
             asked.append(app_id)
             return ("image/png", png) if app_id == "netflix" else None
         adapter.app_icon = app_icon
-        saved = [dict(a) for a in tv.meta["apps"]]
+        original = tv.meta["apps"]                    # the demo's list is shared: work on copies, put it back after
         try:
             url = f"http://127.0.0.1:{self.port}/api/v1/devices/lr-tv/app-icon?app="
             with self.assertRaises(urllib.error.HTTPError) as none:          # the device marked no picture for it
                 urllib.request.urlopen(url + "netflix&v=1", timeout=5)
             self.assertEqual(none.exception.code, 404)
             self.assertEqual(asked, [])
-            for a in tv.meta["apps"]:
-                a["icon"] = "tok"
+            tv.meta["apps"] = [dict(a, icon="tok") for a in original]
             # The panel is told there is a picture (a token), never where the device keeps it.
             apps = next(d for d in self.call("GET", "/state")[1]["devices"] if d["id"] == "lr-tv")["meta"]["apps"]
             self.assertEqual({a["icon"] for a in apps}, {"tok"})
@@ -73,7 +72,7 @@ class ApiTests(unittest.TestCase):
                 urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/v1/devices/nope/app-icon?app=netflix", timeout=5)
             self.assertEqual(err.exception.code, 404)
         finally:
-            tv.meta["apps"] = saved
+            tv.meta["apps"] = original
             del adapter.app_icon
 
     def test_quick_commands_to_one_device_end_on_the_last_one(self):

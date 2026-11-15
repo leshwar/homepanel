@@ -104,6 +104,14 @@ class EditParityTests(unittest.TestCase):
                     self.assertTrue(selected.is_visible());self.assertTrue(selected.is_disabled())
                     self.assert_geometry(self.geometry(where),before)
                     self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"),width)
+                    toolbar=page.locator(".editbar").bounding_box()
+                    self.assertLessEqual(toolbar["height"],90)
+                    self.assertGreaterEqual(toolbar["x"],0)
+                    self.assertLessEqual(toolbar["x"]+toolbar["width"],width)
+                    self.assertLessEqual(toolbar["y"]+toolbar["height"],height)
+                    for button in page.locator(".editbar button").all():
+                        box=button.bounding_box()
+                        self.assertGreaterEqual(min(box["width"],box["height"]),48)
                     if where=="home":
                         self.assertEqual(page.locator(".home-overview").count(),int(mode=="overview"))
                         self.assertEqual(page.locator(".home-grid .t-clock").count(),int(mode=="free"))

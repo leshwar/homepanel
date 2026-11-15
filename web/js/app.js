@@ -5,7 +5,7 @@
 import { api, connectEvents } from "./api.js";
 import { setMarkup, updateRoomCounts, syncAttributes } from "./render.js";
 import { store, onChange, reload, upsertDevice, setRoom, setView, devicesIn, applySnapshot, addRoom } from "./store.js";
-import { $, esc, icon, glow, headline, roomStatus, toast } from "./util.js";
+import { $, esc, icon, glow, headline, roomStatus, powerUnknown, toast } from "./util.js";
 import { refreshSheet, closeSheet } from "./sheet.js";
 import { openSettings, isSettingsOpen, refreshSettings, closeSettings, roomAddForm } from "./settings.js";
 import { applyTransparency } from "./glass.js";
@@ -248,7 +248,7 @@ function roomHead(r, linked) {
   const title = linked && tabOrder().length
     ? `<button class="room-title" data-room="${esc(r)}" aria-label="Open ${name}">${name}${icon("right")}</button>`
     : `<h2 class="room-title">${name}</h2>`;
-  const status = roomStatus(list.length, on);
+  const status = roomStatus(list.length, on, list.some(powerUnknown));
   // In "All" an empty room is one line with its own Add button, not a full empty page.
   const add = linked && !list.length
     ? `<button class="btn small" data-add-device aria-label="Add a device to ${name}">${icon("plus")}<span>Add a device</span></button>` : "";

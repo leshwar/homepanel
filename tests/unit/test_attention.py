@@ -60,7 +60,9 @@ class AttentionTests(unittest.TestCase):
           assert.equal(headline([dev(true), dev(true), stuck]), '2 things are on · 1 needs attention');
           assert.equal(headline([stuck, stuck]), 'Everything is off · 2 need attention');
           assert.equal(headline([]), '');
-          assert.equal(headline([dev(true, {online: false})]), 'Everything is off');      // offline is not "on"
+          assert.equal(headline([dev(true, {online: false})]), 'Power status unavailable');
+          assert.equal(headline([dev(null)]), 'Power status unavailable');
+          assert.equal(headline([dev(true, {stale:true})]), 'Power status unavailable');
           // A room page: "x of y on", and nothing at all for an empty room.
           assert.equal(headline([dev(true), stuck], 2), '1 of 2 on · 1 needs attention');
           assert.equal(headline([dev(false)], 1), 'Everything is off');
@@ -71,6 +73,18 @@ class AttentionTests(unittest.TestCase):
           assert.equal(roomIfAmbiguous(list[0], list), 'Bedroom');
           assert.equal(roomIfAmbiguous(list[2], list), '');
           assert.equal(roomIfAmbiguous({id: 'd', name: 'Lamp'}, list), '');               // no room to show
+        """)
+
+    def test_media_power_unknown_off_and_screen_off_are_distinct(self):
+        self.run_js("""
+          const {statusText, roomStatus, powerUnknown} = await import(process.argv[1]);
+          const dev = state => ({kind:'tv',caps:['power'],state:{online:true,app:'old-app',...state}});
+          assert.equal(statusText(dev({on:false})), 'Off');
+          assert.equal(statusText(dev({on:null})), 'Power not reported');
+          assert.equal(statusText(dev({on:true,screen_on:false})), 'Screen off');
+          assert.equal(statusText(dev({online:false,on:null,stale:true})), 'Unavailable');
+          assert.equal(powerUnknown(dev({on:null})), true);
+          assert.equal(roomStatus(1,0,true), 'Power status unavailable');
         """)
 
     def test_small_screen_and_empty_state_styles(self):

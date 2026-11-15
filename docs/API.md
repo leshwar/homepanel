@@ -88,6 +88,10 @@ current power evidence. A brand-supported `wake_available: true` allows an expli
 `power: true` request through the usual permission-checked command endpoint, not
 an unsafe toggle. Successful verified reads replace stale/error state normally.
 
+A connected power-capable device can still have `on: null` when it did not report
+a valid power value; this is neither Off nor On. A TV may additionally report
+`screen_on: false` with `on: true` when its screen is off but logical power is on.
+
 `settings.room_view` (`compact` or `free`) and `settings.home_view` (`overview` or
 `free`) are the signed-in profile's presentation preferences. They default to
 `compact`/`overview` without migrating or replacing any saved Home or room geometry.

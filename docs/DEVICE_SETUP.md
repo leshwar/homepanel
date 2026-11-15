@@ -241,6 +241,11 @@ which router event caused it. HomePanel now treats an unreachable address as
 The last reported power is labeled as stale. A verified standby/power-off report
 still appears as Off.
 
+A fresh webOS **Screen Off** report means the TV remains powered on with its
+screen disabled, not standby. HomePanel labels this **Screen off** without
+changing the power switch or sending a screen/wake command. A reachable socket
+or remembered app is never used as proof of power.
+
 For an already paired TV with a saved SSDP UUID, the adapter checks that exact
 identity at most once per minute after connection failure. It accepts only one
 matching candidate in the panel's local IPv4 /24, validates its non-redirected local
@@ -282,6 +287,17 @@ It works while the TV is off, and alongside the TV: volume changed with the TV
 remote shows up on the panel within about 10 seconds. The power button puts the
 sound bar in standby and wakes it, as long as its network stays on in standby
 (the default after it has been set up with the app).
+
+Power comes from the protocol's explicit boolean `b_powerstatus`, not the socket,
+input name or remembered volume. Missing/invalid power is **Power not reported**;
+failed reads are **Unavailable**, with any previous power kept only as stale data.
+A power-command acknowledgement is followed by a status read rather than assumed
+to mean the request took effect. An uncertain command is not automatically replayed.
+
+Some model/firmware reports can disagree with the physical standby indication.
+If a fresh report explicitly says On while the soundbar appears off, HomePanel
+cannot infer a different state from silence or the selected input. Check the
+LG app's status and the physical indicator; do not treat On as proof of playback.
 
 **Spotify on S95TR:** start a track in the Spotify mobile app, tap its device
 icon, and select the soundbar. Use the same Wi-Fi for the first connection; on

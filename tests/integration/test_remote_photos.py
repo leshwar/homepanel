@@ -448,7 +448,8 @@ class RemotePhotoBrowserTests(unittest.TestCase):
                         for text in page.locator("#ambient .cf-time,#ambient .cf-phrase").all():
                             self.assertGreaterEqual(int(text.evaluate("e=>getComputedStyle(e).fontWeight")),400)
                         pixel=Image.open(io.BytesIO(page.screenshot())).convert("RGB").getpixel((2,2))
-                        self.assertLessEqual(max(pixel),75)  # bright fixture is dimmed behind the centered text
+                        self.assertGreater(min(pixel),160)  # photo away from the clock is visibly brighter
+                        self.assertLess(max(pixel),210)
                         self.assertEqual(len(calls),1)
             page.clock.set_system_time(datetime(2026,11,15,23))
             page.evaluate("""async()=>{
@@ -463,6 +464,74 @@ class RemotePhotoBrowserTests(unittest.TestCase):
             source.update(ready=False,permitted=False,generation="")
             page.evaluate("async()=>(await import('/js/store.js')).reload()")
             self.assertEqual(page.locator(".photo-layer[src],.ambient-photo-layer[src],[data-photo-link][href]").count(),0)
+        finally:
+            page.unroute_all(behavior="wait")
+            page.close()
+
+    def test_idle_photo_visibility_increases_without_losing_text_contrast(self):
+        page=self.browser.new_page(viewport={"width":1280,"height":720},reduced_motion="reduce")
+        fixtures=[]
+        for color in ("white",(48,48,48),"mixed"):
+            image=Image.new("RGB",(180,120),"white" if color=="mixed" else color)
+            if color=="mixed":
+                draw=ImageDraw.Draw(image)
+                draw.rectangle((0,0,59,119),fill=(40,70,100))
+                draw.rectangle((120,0,179,119),fill=(230,170,90))
+            out=io.BytesIO();image.save(out,"PNG");fixtures.append(out.getvalue())
+        active=[fixtures[0]]
+        def state(route):
+            payload=route.fetch().json()
+            payload["settings"].update(photo_library={"ready":True,"configured":True,"permitted":True,"generation":"brightness","seconds":300},
+                                       dim_after_seconds=0)
+            route.fulfill(json=payload)
+        def photo(route):
+            route.fulfill(body=active[0],content_type="image/png",
+                          headers={"X-Photo-Token":"brightness","X-Photo-Generation":"brightness"})
+        def luma(rgb):
+            linear=[v/255/12.92 if v/255<=.04045 else ((v/255+.055)/1.055)**2.4 for v in rgb]
+            return sum(v*w for v,w in zip(linear,(.2126,.7152,.0722),strict=True))
+        try:
+            page.clock.install(time=datetime(2026,11,15,13))
+            page.route("**/api/v1/state",state);page.route("**/api/v1/photo-library/next",photo)
+            for index,fixture in enumerate(fixtures):
+                active[0]=fixture
+                page.goto(self.server.url);page.wait_for_selector(".widget")
+                page.evaluate("async()=>{document.querySelector('#ambient').hidden=false;(await import('/js/clockfaces.js')).renderAmbient();}")
+                page.wait_for_selector("#ambient[data-photos=true] .ambient-photo-layer.visible")
+                for width,height,font in ((1280,720,"large"),(720,1280,"medium"),(390,844,"small")):
+                    page.set_viewport_size({"width":width,"height":height})
+                    for face in ("digital","date","analog","words"):
+                        with self.subTest(fixture=index,width=width,face=face):
+                            page.evaluate("""async p=>{
+                              const s=await import('/js/store.js');Object.assign(s.store.settings,{clock_face:p.face,font_size:p.font});
+                              s.emit('all');(await import('/js/clockfaces.js')).renderAmbient();
+                            }""",{"font":font,"face":face})
+                            # Both renders use the same decoded fixture and geometry.
+                            hidden="#ambient-face {visibility:hidden!important}"
+                            before=Image.open(io.BytesIO(page.screenshot(style=hidden+
+                                ".ambient-photo-scrim{background:rgb(0 0 0 / .72)!important}#ambient-content::before{content:none!important}"))).convert("RGB")
+                            after=Image.open(io.BytesIO(page.screenshot(style=hidden))).convert("RGB")
+                            points=[(x,y) for x in (2,width//2,width-3) for y in (2,height-3)]
+                            old=sum(sum(before.getpixel(p)) for p in points)
+                            new=sum(sum(after.getpixel(p)) for p in points)
+                            self.assertGreater(new,old*1.8)
+                            regions=page.locator("#ambient-face").evaluate("""root=>{
+                              const selectors='.cf-time,.cf-meridiem,.cf-phrase,.cf-lead,.cf-sub,.cf-day,.cf-weekday,.cf-kicker,.ambient-activity';
+                              return [...root.querySelectorAll(selectors)].filter(e=>e.getClientRects().length).map(e=>{
+                                const range=document.createRange();range.selectNodeContents(e);
+                                return {color:getComputedStyle(e).color.match(/[\\d.]+/g).slice(0,3).map(Number),
+                                  rects:[...range.getClientRects()].map(r=>({x:r.x,y:r.y,w:r.width,h:r.height}))};
+                              });
+                            }""")
+                            for region in regions:
+                                for r in region["rects"]:
+                                    for x in (r["x"]+1,r["x"]+r["w"]/2,r["x"]+r["w"]-1):
+                                        for y in (r["y"]+1,r["y"]+r["h"]/2,r["y"]+r["h"]-1):
+                                            background=after.getpixel((max(0,min(width-1,round(x))),max(0,min(height-1,round(y)))))
+                                            self.assertGreaterEqual((luma(region["color"])+.05)/(luma(background)+.05),4.5,(region,r,background))
+                page.evaluate("async()=>{(await import('/js/clockfaces.js')).renderAmbient(new Date(2026,10,15,23));}")
+                self.assertTrue(page.locator(".ambient-photos").is_hidden())
+                self.assertEqual(page.locator("#ambient-content").evaluate("e=>getComputedStyle(e,'::before').content"),"none")
         finally:
             page.unroute_all(behavior="wait")
             page.close()

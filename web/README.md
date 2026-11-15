@@ -242,7 +242,8 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   identity but makes time primary, with smaller weekday/date and compact weather.
   The group is centered with moderately bolder type and at most eight pixels of
   burn-in drift around center. Already-shared Photo library albums fill the backdrop
-  with aspect-preserving cover; a full-screen scrim keeps text readable. The same
+  with aspect-preserving cover; light full-screen shading preserves photo visibility,
+  while soft localized shading behind the clock keeps text readable without a card. The same
   decoded stream supplies the tile and idle backdrop without competing pollers.
   The 12-hour faces include AM/PM; the 24-hour preference still applies. Daytime is
   readable warm text on charcoal. With the existing night-clock preference, 10 PM–7 AM

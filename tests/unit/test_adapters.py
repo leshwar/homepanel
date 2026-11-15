@@ -170,7 +170,25 @@ class LGSoundbar(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.dev.state["on"])
         with self.assertRaises(AdapterError):
             await self.adapter.command(self.dev, Action.VOLUME_UP)
-        self.assertEqual(await self.adapter.command(self.dev, Action.POWER, True), {"on": True})
+        # This fake ignores the request: an acknowledgement is not proof of On.
+        self.assertFalse((await self.adapter.command(self.dev, Action.POWER, True))["on"])
+        self.assertEqual(self.link.sets, [("SPK_LIST_VIEW_INFO", {"b_powerkey": True})])
+
+    async def test_missing_or_invalid_power_never_defaults_to_on(self):
+        speaker = self.link.replies["SPK_LIST_VIEW_INFO"]
+        for value in (None, 0, 1, "false", "true", "0", "1", {}, []):
+            with self.subTest(value=value):
+                speaker["b_powerstatus"] = value
+                self.assertIsNone((await self.adapter.refresh(self.dev))["on"])
+        speaker.pop("b_powerstatus")
+        self.assertIsNone((await self.adapter.refresh(self.dev))["on"])
+        self.assertEqual(self.link.sets, [])
+
+    async def test_missing_power_after_acknowledgement_does_not_echo_requested_on(self):
+        self.link.replies.pop("SPK_LIST_VIEW_INFO")
+        state = await self.adapter.command(self.dev, Action.POWER, True)
+        self.assertIsNone(state["on"])
+        self.assertIn("not reported", state["error"])
         self.assertEqual(self.link.sets, [("SPK_LIST_VIEW_INFO", {"b_powerkey": True})])
 
     async def test_commands(self):
@@ -192,13 +210,24 @@ class LGSoundbar(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AdapterError):
             await self.adapter.command(self.dev, Action.SET_INPUT, "3")   # Aux: this model has none
 
-    async def test_unreachable_is_a_connection_error(self):
+    async def test_unreachable_marks_last_power_stale_and_reconnect_replaces_it(self):
+        self.dev.state = {"on": True, "online": True, "volume": 12}
         async def refuse(ip, port=self.mod.PORT, timeout=4.0):
             raise OSError("refused")
         self.mod.Link.open = staticmethod(refuse)
-        with self.assertRaises(ConnectionError) as cm:
-            await self.adapter.refresh(self.dev)
-        self.assertIn("same Wi-Fi", str(cm.exception))
+        self.dev.state = await self.adapter.refresh(self.dev)
+        self.assertEqual((self.dev.state["online"], self.dev.state["on"], self.dev.state["stale"]), (False, None, True))
+        self.assertEqual(self.dev.state["last_known"], {"on": True, "volume": 12})
+        self.assertIn("power is unknown", self.dev.state["error"])
+        async def reconnect(*args):
+            return self.link
+        self.mod.Link.open = staticmethod(reconnect)
+        self.link.replies["SPK_LIST_VIEW_INFO"]["b_powerstatus"] = False
+        state = await self.adapter.refresh(self.dev)
+        self.assertIs(state["on"], False)
+        self.assertNotIn("error", state)
+        self.assertNotIn("last_known", state)
+        self.assertEqual(self.link.sets, [])
 
 
 class NetHelpers(unittest.TestCase):

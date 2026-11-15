@@ -152,11 +152,12 @@ class LGRecoveryTests(unittest.IsolatedAsyncioTestCase):
     async def test_explicit_standby_is_off_but_screen_saver_is_on(self):
         self.a._client.side_effect=None
         self.a._client.return_value=self.c
-        for power,on in (("Suspend",False),("Power Off",False),("Active Standby",False),("Screen Saver",True),("Active",True),("Unknown",None)):
+        for power,on in (("Suspend",False),("Power Off",False),("Active Standby",False),("Screen Saver",True),("Screen Off",True),("Active",True),("Unknown",None)):
             self.c.get_power_state.return_value={"state":power}
             state=await self.a.refresh(self.d)
             self.assertTrue(state["online"])
             self.assertEqual(state["on"],on)
+            self.assertEqual(state["screen_on"], False if power == "Screen Off" else on)
             self.assertFalse(state["stale"])
         self.discovery.assert_not_awaited()
 

@@ -112,7 +112,7 @@ const VIEWS = {
               store.settings.latitude != null ? `${store.presence.length} ${store.presence.length === 1 ? "person" : "people"} watched` : "Set your location for sunrise and sunset")}
         ${row("data-go=photos", "image", "Photo frame", store.settings.idle_screen === "photos"
               ? "Shows when the panel is idle" : "Slideshow of your photos")}
-        ${row('data-go="photo-library"', "image", "Photo library", "Connect an album for the Home Photos tile")}
+        ${row('data-go="photo-library"', "image", "Photo library", "Albums for the Photos tile and resting clock")}
         ${row("data-go=display", "sun", "Display and clock")}
         ${row("data-go=profiles", "users", "Profiles", profilesSummary())}
         ${row("data-go=diagnostics", "pulse", "Diagnostics and logs")}
@@ -598,7 +598,7 @@ const VIEWS = {
         <p id="font-size-help">Manrope is stored on the panel and works offline. Preview the size here, then Save to apply it to all profiles and screens.</p>
         <label class="field"><span>Show the resting clock after</span><select name="dim_after_seconds">
           ${opts.map(([v, l]) => `<option value="${v}" ${Number(s.dim_after_seconds) === v ? "selected" : ""}>${l}</option>`).join("")}
-        </select>        <small>A quiet clock appears when the panel is idle. The night-clock preference dims it at night. Touch to wake.</small></label>
+        </select><small>The centered clock uses photos shared with this profile as its background. Dim night and the night-clock window keep a dark backdrop. Touch to wake.</small></label>
         <span class="field"><span>Clock face</span></span>
         <div class="face-choices" role="radiogroup" aria-label="Clock face">
           ${FACES.map((f) => `

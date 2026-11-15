@@ -53,7 +53,7 @@ class WeatherTileTests(unittest.TestCase):
         self.page.evaluate("""async () => {
             const {api} = await import('/js/api.js');
             await api.saveSettings({weather_enabled:false, background:'night', place_name:'Demo weather'});
-            await api.saveLayout({widgets:[{id:'weather',type:'weather',size:'2x2'}]});
+            await api.saveLayout({widgets:[{id:'weather',type:'weather',size:'2x6'}]});
             await (await import('/js/store.js')).reload();
         }""")
 
@@ -168,7 +168,9 @@ class WeatherTileTests(unittest.TestCase):
             await (await import('/js/api.js')).api.saveLayout({widgets:[{id:'weather',type:'weather',size}]});
             await (await import('/js/store.js')).reload();
         }""", size)
-        self.page.wait_for_selector(f'.widget.s-{size} .w-weather[data-weather-status="ready"]')
+        self.page.wait_for_function("""size => { const [w, h] = size.split('x'), tile = document.querySelector('.widget.t-weather');
+          return tile && tile.style.gridColumn.includes(`span ${w}`) && tile.style.gridRow.includes(`span ${h}`)
+            && tile.querySelector('.w-weather[data-weather-status="ready"]'); }""", arg=size)
 
     def clipped(self):
         """Text in the tile that doesn't fit its line or spills out of the tile (a long place name may be shortened)."""
@@ -186,9 +188,10 @@ class WeatherTileTests(unittest.TestCase):
         self.enable()
         self.page.wait_for_selector(".w-weather.has-hours")
         shown = lambda sel: self.page.locator(f".w-weather {sel}").first.is_visible()
-        # Large: now, one sentence about rain, the line of the next 12 hours, and four hours spelled out.
+        # Tall (2 columns by 6 rows): now, one sentence about rain, the line of the next 12 hours, and four hours spelled out.
         self.assertEqual(self.page.inner_text(".w-wx b"), "72°")
-        self.assertEqual(self.page.locator(".w-sub").inner_text().replace("\n", ""), "Partly-Cloudy, feels like 66°")
+        self.assertEqual(self.page.locator(".w-sub").inner_text().strip(), "Partly-Cloudy")
+        self.assertEqual(self.page.inner_text(".wx-feels"), "Feels like 66°")
         self.assertEqual(self.page.inner_text(".wx-range"), "H 76° L 61°")
         self.assertEqual(self.page.inner_text(".wx-outlook"), "Rain around 11 PM")
         self.assertEqual(self.page.locator(".wx-hour").count(), 4)
@@ -206,15 +209,22 @@ class WeatherTileTests(unittest.TestCase):
         self.assertLessEqual(max(offsets), 1.5, offsets)
         self.assertEqual(self.clipped(), [])
         self.assert_scene_text_is_readable_without_backdrops()
-        # Wide: the hours sit beside now; no line, no sentence. Small: now only.
-        self.resize("2x1")
+        # A little shorter: the hours stay under now; no room for the line or the sentence.
+        self.resize("2x5")
+        self.assertTrue(shown(".wx-hours"))
+        self.assertFalse(shown(".wx-chart") or shown(".wx-outlook") or shown(".wx-feels"))
+        now, hours = self.page.locator(".w-wx b").bounding_box(), self.page.locator(".wx-hours").bounding_box()
+        self.assertLessEqual(now["y"] + now["height"], hours["y"] + 1)             # under it
+        self.assertEqual(self.clipped(), [])
+        # Wide and short: the hours sit beside now. Narrow and short: now only.
+        self.resize("4x3")
         self.assertTrue(shown(".wx-hours"))
         self.assertFalse(shown(".wx-chart") or shown(".wx-outlook") or shown(".wx-feels"))
         self.assertEqual(self.clipped(), [])
         self.assert_scene_text_is_readable_without_backdrops()
         now, hours = self.page.locator(".w-wx b").bounding_box(), self.page.locator(".wx-hours").bounding_box()
         self.assertLessEqual(now["x"] + now["width"], hours["x"])                  # side by side, not on top of each other
-        self.resize("1x1")
+        self.resize("2x3")
         self.assertFalse(shown(".wx-hours") or shown(".wx-chart") or shown(".wx-outlook"))
         self.assertTrue(shown(".wx-range"))
         self.assertEqual(self.clipped(), [])
@@ -222,7 +232,7 @@ class WeatherTileTests(unittest.TestCase):
         self.response = self.weather("clear", False, hours=12)
         self.refresh()
         self.page.wait_for_selector(".w-fx-moon")
-        for size in ("2x1", "2x2"):
+        for size in ("4x3", "2x5", "2x6"):
             with self.subTest(size=size, night=True):
                 self.resize(size)
                 self.assertEqual(self.clipped(), [])
@@ -234,15 +244,15 @@ class WeatherTileTests(unittest.TestCase):
           await (await import('/js/store.js')).reload();
         }""")
         self.page.wait_for_function("document.querySelector('.wx-hour small')?.textContent === '22:00'")
-        for size in ("2x2", "2x1", "1x1"):
+        for size in ("2x6", "2x5", "4x3", "3x4", "2x3"):
             with self.subTest(size=size, large_text=True):
                 self.resize(size)
                 self.assertEqual(self.clipped(), [])
-        # A reading without hours is the small layout at every size.
+        # A reading without hours is just now, at every size.
         self.response = self.weather("rain")
         self.refresh()
         self.page.wait_for_function("!document.querySelector('.w-weather.has-hours')")
-        self.resize("2x2")
+        self.resize("2x6")
         self.assertEqual(self.page.locator(".wx-hours, .wx-chart, .wx-outlook").count(), 0)
         self.assertEqual(self.clipped(), [])
         self.page.evaluate("""async () => {
@@ -259,9 +269,10 @@ class WeatherTileTests(unittest.TestCase):
         self.page.wait_for_timeout(250)
         self.assertNotEqual(rain.evaluate("e => getComputedStyle(e).transform"), before)
         self.assertEqual(rain.evaluate("e => getComputedStyle(e).animationTimingFunction"), "linear")
-        for size in ("1x1", "2x1", "2x2"):
+        for size in ("2x3", "3x4", "4x6"):
             self.page.click("#edit-home")
-            self.page.click('.widget[data-wid="weather"] [data-menu]')
+            self.page.locator('.widget[data-wid="weather"]').focus()
+            self.page.click('[data-widget-options]')
             self.page.click(f'[data-size-pick="{size}"]')
             self.page.click(".wmenu button[data-menu-close]")
             self.page.click("[data-edit-done]")
@@ -282,7 +293,9 @@ class WeatherTileTests(unittest.TestCase):
             "e => e.getAnimations({subtree:true}).every(a => a.playState === 'paused')"))
         self.page.click('#dock [data-nav="home"]')
         self.page.click("#edit-home")
-        self.page.click('.widget[data-wid="weather"] [data-hide]')
+        self.page.locator('.widget[data-wid="weather"]').focus()
+        self.page.click('[data-widget-options]')
+        self.page.click('[data-hide-id="weather"]')
         self.assertEqual(self.page.locator(".w-weather-fx").count(), 0)
         self.page.click("[data-edit-cancel]")
 
@@ -317,7 +330,7 @@ class WeatherTileTests(unittest.TestCase):
                     self.page.locator(".w-weather-fx").evaluate(
                         "(el, time) => el.getAnimations({subtree:true}).forEach(a => {a.pause(); a.currentTime=time;})", phase * 1000)
                     self.assert_scene_text_is_readable_without_backdrops()
-        for size in ("1x1", "2x1"):
+        for size in ("2x3", "2x4"):
             self.page.evaluate("""async size => {
                 await (await import('/js/api.js')).api.saveLayout({widgets:[{id:'weather',type:'weather',size}]});
                 await (await import('/js/store.js')).reload();

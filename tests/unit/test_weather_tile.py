@@ -96,9 +96,9 @@ class WeatherTileTests(unittest.TestCase):
         self.run_js(r"""
           const tile = weatherTile(now({feels_like: 66, hours: hours({wet: [2, 3]})}), {place: 'Home <1>'});
           assert.match(tile, /class="w-fill w-weather has-hours" data-weather-status="ready"><fx data-scene="clear">/);
-          assert.match(tile, /<span class="w-label">Home &lt;1><\/span>/);
-          assert.match(tile, /<span class="w-wx"><b>72°<\/b><\/span>/);
-          assert.match(tile, /<span class="w-sub"><svg data-wx="clear" data-day="true"><\/svg><span>Clear<\/span><span class="wx-feels">, feels like 66°<\/span>/);
+          assert.match(tile, /<span class="w-label widget-heading">Home &lt;1><\/span>/);
+          assert.match(tile, /<div class="wx-now"><span class="w-wx"><b>72°<\/b><\/span>\s*<div class="wx-facts"><span class="w-sub">/);   // now is one row
+          assert.match(tile, /<span class="w-sub"><svg data-wx="clear" data-day="true"><\/svg><span>Clear<\/span><\/span>\s*<span class="wx-feels">Feels like 66°<\/span>/);   // its own line
           assert.match(tile, /<span class="wx-range">H 76° L 61°<\/span>/);
           assert.match(tile, /<span class="wx-outlook">Rain around 11 PM<\/span>/);
           // Four hours spelled out: 2, 5, 8 and 11 hours from now.
@@ -113,7 +113,7 @@ class WeatherTileTests(unittest.TestCase):
           for (const few of [now({hours: []}), now({hours: hours({n: 11})}), now({hours: undefined})]) {
             const plain = weatherTile(few, {});
             assert.doesNotMatch(plain, /has-hours|wx-chart|wx-hours|wx-outlook/);
-            assert.match(plain, /<span class="w-label">Weather<\/span>/); assert.match(plain, /<b>72°<\/b>/); assert.match(plain, />Clear</);
+            assert.match(plain, /<span class="w-label widget-heading">Weather<\/span>/); assert.match(plain, /<b>72°<\/b>/); assert.match(plain, />Clear</);
           }
           assert.doesNotMatch(weatherTile(now({high: null, low: null})), /wx-range/);
           assert.doesNotMatch(weatherTile(now()), /wx-feels/);                // same as the temperature: not said

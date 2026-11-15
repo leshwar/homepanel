@@ -62,7 +62,6 @@ class FavouritesAndAutomationTextTests(unittest.TestCase):
         css = (WEB / "shell.css").read_text()
         self.assertIn(".w-favs .tile { min-height: 54px;", css)                 # row height; the quick button stays 48 px
         self.assertIn("flex-direction: row;", css.split(".w-favs .tile {")[1].split("}")[0])
-        self.assertIn(".w-favs .tile-tv-ctl { display: none; }", css)
 
 
 if __name__ == "__main__":

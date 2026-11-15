@@ -159,7 +159,11 @@
 
   <!-- resting clock shown when idle; the face is drawn by js/clockfaces.js -->
   <div class="ambient" id="ambient" aria-label="Clock. Touch to wake." hidden>
-    <div id="ambient-face"></div>
+    <div class="ambient-photos" data-idle-photo aria-hidden="true">
+      <img class="ambient-photo-layer" alt=""><img class="ambient-photo-layer" alt="">
+    </div>
+    <div class="ambient-photo-scrim" aria-hidden="true"></div>
+    <div id="ambient-content"><div id="ambient-face"></div><p class="ambient-photo-status" data-idle-photo-status role="status" hidden></p></div>
   </div>
 
   <!-- photo frame slideshow (js/photoframe.js) -->

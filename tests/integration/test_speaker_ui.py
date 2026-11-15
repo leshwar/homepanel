@@ -176,6 +176,49 @@ class SpeakerControlTests(unittest.TestCase):
         self.page.wait_for_selector("text=The speaker is busy. Try again.")
         self.page.wait_for_function("document.querySelector('[data-speaker-volume]').value === '12'")
 
+    def test_current_standby_and_unknown_replace_on_without_device_actions(self):
+        page = self.page
+        svc = self.server.app.state.service
+        for power, tile_text, panel_text in ((False,"Off","Off"),(None,"Power not reported","Connected; power not reported"),
+                                             (True,"TV (HDMI ARC)","TV (HDMI ARC)")):
+            with self.subTest(power=power):
+                svc.adapters["demo"]._state["lr-soundbar"]["on"] = power
+                page.evaluate("""async()=>{
+                  await (await import('/js/api.js')).api.refresh('lr-soundbar');
+                  await (await import('/js/store.js')).reload();
+                }""")
+                page.wait_for_function("text=>document.querySelector('#sheet .panel-head p').textContent===text",arg=panel_text)
+                self.assertIn(tile_text,page.locator('.tile[data-id="lr-soundbar"]').inner_text())
+                switch = page.locator("#sheet .panel-head [data-power]")
+                self.assertEqual(switch.get_attribute("aria-checked"),str(power is True).lower())
+                self.assertEqual(switch.is_disabled(),power is None)
+                self.assertEqual(page.locator("[data-speaker-volume]").is_disabled(),power is not True)
+        self.assertEqual(self.commands,[])
+
+    def test_tv_screen_off_standby_and_unknown_converge_without_remote_commands(self):
+        page = self.page
+        commands = []
+        page.on("request",lambda r:commands.append(r.post_data_json) if r.method=="POST" and r.url.endswith("/command") else None)
+        source = self.server.app.state.service.adapters["demo"]._state["lr-tv"]
+        original = dict(source)
+        try:
+            for power,screen,label in ((True,False,"Screen off"),(False,False,"Off"),(None,None,"Connected; power not reported")):
+                source.update(on=power,screen_on=screen)
+                page.evaluate("""async()=>{
+                  await (await import('/js/api.js')).api.refresh('lr-tv');
+                  await (await import('/js/store.js')).reload();
+                  (await import('/js/sheet.js')).openDevice('lr-tv');
+                }""")
+                page.wait_for_function("s=>document.querySelector('#sheet .panel-head p').textContent===s",arg=label)
+                switch = page.locator("#sheet .panel-head [data-power]")
+                self.assertEqual(switch.get_attribute("aria-checked"),str(power is True).lower())
+                if power is not True:
+                    self.assertEqual(page.locator("#sheet [data-key]").count(),0)
+            self.assertEqual(commands,[])
+        finally:
+            source.clear()
+            source.update(original)
+
     def test_panel_is_opaque_and_readable_at_all_sizes_and_glass_settings(self):
         from tests.integration.test_readability import ReadabilityTests
         page = self.page

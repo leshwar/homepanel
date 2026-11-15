@@ -62,16 +62,21 @@ export const needsAttention = (d) => {
 };
 
 // What a room's heading says: nothing to turn off is not the same as nothing there.
-export const roomStatus = (total, on) => !total ? "No devices yet" : on ? `${on} of ${total} on` : "Everything is off";
+export const powerUnknown = (d) => d.caps?.includes("power") &&
+  (d.state?.online !== true || d.state?.stale || d.state?.needs_pairing || typeof d.state?.on !== "boolean");
+export const roomStatus = (total, on, unknown = false) => !total ? "No devices yet" : on ? `${on} of ${total} on`
+  : unknown ? "Power status unavailable" : "Everything is off";
 
 // The line under the page title: what's on, plus anything that needs a person.
 // total = null on Home ("3 things are on"); a number on a room page ("2 of 5 on").
 export function headline(devices, total = null) {
   const list = [...devices];
-  const on = list.filter((d) => !!d.state?.on && d.state?.online !== false).length;
+  const on = list.filter((d) => d.state?.on === true && d.state?.online !== false && !d.state?.stale && !d.state?.needs_pairing).length;
+  const unknown = list.some(powerUnknown);
   const attention = list.filter(needsAttention).length;
-  const power = total == null ? (on ? `${on} ${on === 1 ? "thing is" : "things are"} on` : list.length ? "Everything is off" : "")
-    : !total ? "" : on ? `${on} of ${total} on` : "Everything is off";
+  const noneOn = unknown ? "Power status unavailable" : "Everything is off";
+  const power = total == null ? (on ? `${on} ${on === 1 ? "thing is" : "things are"} on` : list.length ? noneOn : "")
+    : !total ? "" : on ? `${on} of ${total} on` : noneOn;
   const note = attention ? `${attention} ${attention === 1 ? "needs" : "need"} attention` : "";
   return [power, note].filter(Boolean).join(" · ");
 }
@@ -95,7 +100,10 @@ export function statusText(d, apps = []) {
   if (s.online === false) return s.stale ? "Unavailable" : "Offline";
   if (s.online == null && s.on == null && s.activity == null) return "Connecting…";
   if (d.kind === "vacuum") return vacuumText(s);
+  if (s.stale) return "Unavailable";
+  if (d.caps?.includes("power") && typeof s.on !== "boolean") return "Power not reported";
   if (!s.on) return "Off";
+  if (d.kind === "tv" && s.screen_on === false) return "Screen off";
   if (d.kind === "purifier") {
     return (d.meta?.fan_modes || []).find(mode => mode.id === s.fan_mode)?.name || "On";
   }

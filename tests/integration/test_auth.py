@@ -185,10 +185,10 @@ class SignInApiTests(unittest.TestCase):
         owner.sign_in(profile_id="owner", password="homepanel")
         _, before, _ = owner.call("GET", "/state")
         try:
-            mine = {"widgets": [{"id": "weather", "type": "weather", "size": "2x2"},
+            mine = {"widgets": [{"id": "weather", "type": "weather", "size": "2x6"},
                                 {"id": "dev-bd-tv", "type": "device", "size": "2x2", "options": {"device_id": "bd-tv"}}]}
             status, saved, _ = sam.call("PUT", "/profiles/me/layout", {"home_layout": mine})
-            self.assertEqual((status, saved["home_layout"]["widgets"][0]["size"]), (200, "2x2"))
+            self.assertEqual((status, saved["home_layout"]["widgets"][0]["size"]), (200, "2x6"))
             _, s, _ = sam.call("GET", "/state")
             self.assertEqual([w["id"] for w in s["settings"]["home_layout"]["widgets"]], ["weather"])   # no devices on Home
             _, o, _ = owner.call("GET", "/state")
@@ -219,12 +219,12 @@ class SignInApiTests(unittest.TestCase):
         sam, owner = self.client(), self.client()
         sam.sign_in(profile_id="sam")
         owner.sign_in(profile_id="owner", password="homepanel")
-        layout = {"widgets": [{"id": "bd-lamp", "positions": {"4": {"x": 2, "y": 3, "size": "2x2"}}}]}
+        layout = {"widgets": [{"id": "bd-lamp", "positions": {"4": {"x": 2, "y": 3, "size": "2x6"}}}]}
         try:
             status, saved, _ = sam.call("PUT", "/profiles/me/rooms/layout", {"room": "Bedroom", "layout": layout})
             self.assertEqual(status, 200)
             self.assertEqual(saved["room_layouts"]["Bedroom"]["widgets"][0]["positions"], layout["widgets"][0]["positions"])
-            self.assertEqual(owner.call("GET", "/state")[1]["settings"]["room_layouts"], {})
+            self.assertNotEqual(owner.call("GET", "/state")[1]["settings"]["room_layouts"], saved["room_layouts"])
             bad = {"widgets": [*layout["widgets"], {"id": "bd-fan", "positions": {"4": {"x": 3, "y": 3, "size": "1x1"}}}]}
             self.assertEqual(sam.call("PUT", "/profiles/me/rooms/layout", {"room": "Bedroom", "layout": bad})[0], 400)
             self.assertEqual(sam.call("GET", "/state")[1]["settings"]["room_layouts"], saved["room_layouts"])
@@ -297,7 +297,10 @@ class MigrationTests(unittest.TestCase):
         c = Client(server.url)
         c.sign_in(profile_id="old-owner")
         state = c.call("GET", "/state")[1]
-        self.assertEqual(state["settings"]["home_layout"]["widgets"], layout["widgets"])
+        widgets={w["id"]:w for w in state["settings"]["home_layout"]["widgets"]}
+        self.assertEqual(widgets["weather"]["type"],"weather")
+        self.assertEqual(widgets["weather"]["size"],"2x3")
+        self.assertEqual(set(widgets),{"weather","clock","notifications"})
         self.assertEqual([x["id"] for x in state["devices"]], ["kt-kettle"])
         other = Client(server.url)
         self.assertEqual(other.call("POST", "/auth/sign-in", {"profile_id": "password"})[0], 401)

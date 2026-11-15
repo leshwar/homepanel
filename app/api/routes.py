@@ -357,13 +357,13 @@ async def photo_library_source(request):
 @handle_errors
 async def photo_library_next(request):
     svc = _svc(request)
-    image, token, generation = await svc.photo_library.next()
+    image, token, generation, link = await svc.photo_library.next()
     cookie = read_cookie(request.scope)
     if cookie and not svc.profiles.viewer_for(cookie):
         return JSONResponse({"error": "Sign in again to view photos.", "signin": True}, status_code=401)
     return Response(image, media_type="image/jpeg", headers={
         "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
-        "X-Photo-Token": token, "X-Photo-Generation": generation,
+        "X-Photo-Token": token, "X-Photo-Generation": generation, "X-Photo-Link": link,
     })
 
 async def _image_body(request) -> bytes:
@@ -561,7 +561,8 @@ async def update_me(request):
 
 @handle_errors
 async def put_my_layout(request):
-    return _svc(request).save_my_layout((await _body(request)).get("home_layout"))
+    body = await _body(request)
+    return _svc(request).save_my_layout(body.get("home_layout"), body.get("expected", ...))
 
 
 @handle_errors
@@ -569,7 +570,7 @@ async def put_my_room_layout(request):
     body = await _body(request)
     if "room" not in body or "layout" not in body:
         raise AdapterError("Choose a room and include its layout.")
-    return _svc(request).save_my_room_layout(body["room"], body["layout"])
+    return _svc(request).save_my_room_layout(body["room"], body["layout"], body.get("expected", ...))
 
 
 routes = [

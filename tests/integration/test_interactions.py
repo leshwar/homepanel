@@ -3,6 +3,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from app.core.adapter import Cap, Device, Kind
 from tests.helpers import DemoServer
@@ -140,12 +141,16 @@ class InteractionTests(unittest.TestCase):
         page.wait_for_selector("text=The device is busy. Try again.")
         page.wait_for_selector('.tile[data-id="kt-kettle"][aria-busy="false"]')
         self.assertTrue(page.locator("#sheet").is_hidden())
-        page.evaluate("""async()=>{const {store,upsertDevice}=await import('/js/store.js'),d=store.devices.get('kt-kettle');
-          upsertDevice({...d,state:{...d.state,online:false}});}""")
-        self.assertTrue(button.is_disabled())
-        page.locator('.tile[data-id="kt-kettle"] [data-more]').click()
-        page.wait_for_selector("#sheet [data-refresh]")
-        self.assertEqual(len(self.commands), 1)
+        # Make the fake source unavailable too: a real snapshot must not undo a
+        # client-only offline override while the test opens the recovery panel.
+        adapter = self.server.app.state.service.adapters["demo"]
+        with patch.dict(adapter._state["kt-kettle"], {"online": False}):
+            page.request.post(self.server.url + "/api/v1/devices/kt-kettle/refresh")
+            page.wait_for_selector('.tile[data-id="kt-kettle"].offline')
+            self.assertTrue(button.is_disabled())
+            page.locator('.tile[data-id="kt-kettle"] [data-more]').click()
+            page.wait_for_selector("#sheet [data-refresh]")
+            self.assertEqual(len(self.commands), 1)
 
     def test_member_has_the_same_picker_and_open_logic_without_admin_or_hidden_devices(self):
         page = self.page

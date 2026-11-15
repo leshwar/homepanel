@@ -1,9 +1,12 @@
 // The Home page's weather tile: what it's like now, and what the next hours bring.
+// Tiles can be any width and height, so the tile lays itself out from the room it has
+// (container queries in shell.css), not from a named size:
 //
-//   small (1x1)   place, temperature, condition, today's high and low
-//   wide  (2x1)   the same, plus four coming hours beside it
-//   large (2x2)   the same, plus a line of the next 12 hours' temperature with the chance
-//                 of rain under it, the four hours below, and one plain sentence about rain
+//   always           place, temperature, condition, today's high and low
+//   wide enough      plus four coming hours beside it
+//   tall enough      the hours go underneath instead; taller still adds a line of the next
+//                    12 hours' temperature with the chance of rain under it, "feels like",
+//                    and one plain sentence about rain
 //
 // The moving sky behind it is weather-effects.js. Everything here is drawn from the neutral
 // weather shape of GET /api/v1/weather; a reading without hours gives the small layout.
@@ -83,11 +86,11 @@ export function weatherTile(wx, { place = "", h24 = false } = {}) {
   const feels = feelsLike(wx);
   const more = forecast(wx, h24);
   return `<div class="w-fill w-weather${more ? " has-hours" : ""}" data-weather-status="ready">${weatherBackdrop(wx)}
-      <span class="w-label">${esc(place || "Weather")}</span>
-      <span class="w-wx"><b>${esc(wx.temperature)}°</b></span>
-      <span class="w-sub">${weatherIcon(wx.condition, wx.is_day)}<span>${esc(wx.label)}</span>${
-        feels == null ? "" : `<span class="wx-feels">, feels like ${esc(feels)}°</span>`}</span>
-      ${wx.high != null ? `<span class="wx-range">H ${esc(wx.high)}° L ${esc(wx.low)}°</span>` : ""}
+      <span class="w-label widget-heading">${esc(place || "Weather")}</span>
+      <div class="wx-now"><span class="w-wx"><b>${esc(wx.temperature)}°</b></span>
+        <div class="wx-facts"><span class="w-sub">${weatherIcon(wx.condition, wx.is_day)}<span>${esc(wx.label)}</span></span>
+          ${feels == null ? "" : `<span class="wx-feels">Feels like ${esc(feels)}°</span>`}
+          ${wx.high != null ? `<span class="wx-range">H ${esc(wx.high)}° L ${esc(wx.low)}°</span>` : ""}</div></div>
       ${more}
     </div>`;
 }

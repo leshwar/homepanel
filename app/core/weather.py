@@ -1,4 +1,4 @@
-"""Current weather for the resting clock.
+"""Current weather and the next hours, for the resting clock and the weather tile.
 
 Off unless the user turns it on (Settings → Location and presence), because it is
 the panel's only call to the internet that isn't for a device: it sends the saved
@@ -25,6 +25,7 @@ SOURCE_URL = "https://api.open-meteo.com/v1/forecast"
 CACHE_SECONDS = 20 * 60          # fresh weather at most every 20 minutes
 RETRY_SECONDS = 5 * 60           # after a failure, wait before asking again
 STALE_SECONDS = 3 * 60 * 60      # keep showing the last good reading this long if the source is down
+HOURS_AHEAD = 12                 # how many coming hours the tile gets
 
 # WMO weather codes → (condition, label). Conditions are what the UI draws icons for.
 _CODES: list[tuple[tuple[int, ...], str, str]] = [
@@ -52,24 +53,62 @@ def describe(code: Any) -> tuple[str, str]:
     return "cloudy", "Cloudy"
 
 
+def _num(v: Any) -> int | None:
+    return None if v is None else round(float(v))
+
+
+def parse_hours(data: Any) -> list[dict]:
+    """The hourly part of the forecast → [{at, hour, temperature, rain, condition, label, is_day}].
+
+    `at` is when the hour starts (seconds since 1970), `hour` its hour of the day where the
+    weather is (0–23), `rain` the chance of rain or snow in percent, or None if not given.
+    Hours the source left incomplete are skipped; a forecast without hours gives []."""
+    hourly = data.get("hourly") if isinstance(data, dict) else None
+    if not isinstance(hourly, dict):
+        return []
+    try:
+        offset = int(data.get("utc_offset_seconds") or 0)
+    except (TypeError, ValueError):
+        offset = 0
+    times = hourly.get("time") or []
+    def column(name):
+        values = hourly.get(name) or []
+        return lambda i: values[i] if i < len(values) else None
+    temp, rain, code, day = (column(n) for n in ("temperature_2m", "precipitation_probability", "weather_code", "is_day"))
+    hours = []
+    for i, t in enumerate(times):
+        try:
+            at = int(t)
+            if temp(i) is None:
+                continue
+            cond, label = describe(code(i))
+            chance = _num(rain(i))
+            hours.append({"at": at, "hour": ((at + offset) // 3600) % 24, "temperature": _num(temp(i)),
+                          "rain": None if chance is None else max(0, min(100, chance)),
+                          "condition": cond, "label": label, "is_day": bool(1 if day(i) is None else day(i))})
+        except (TypeError, ValueError):
+            continue                # times not given as seconds, or a broken hour: leave it out
+    return hours
+
+
 def parse(data: Any, unit: str) -> dict:
     """Open-Meteo forecast JSON → the panel's neutral weather shape. Raises ValueError if malformed."""
     try:
         cur = data["current"]
         daily = data.get("daily") or {}
         cond, label = describe(cur.get("weather_code"))
-        def num(v):
-            return None if v is None else round(float(v))
         highs, lows = daily.get("temperature_2m_max") or [None], daily.get("temperature_2m_min") or [None]
         return {
             "available": True,
-            "temperature": num(cur["temperature_2m"]),
-            "high": num(highs[0]),
-            "low": num(lows[0]),
+            "temperature": _num(cur["temperature_2m"]),
+            "feels_like": _num(cur.get("apparent_temperature")),
+            "high": _num(highs[0]),
+            "low": _num(lows[0]),
             "unit": unit,
             "condition": cond,
             "label": label,
             "is_day": bool(cur.get("is_day", 1)),
+            "hours": parse_hours(data),
         }
     except (KeyError, TypeError, ValueError, IndexError) as e:
         raise ValueError(f"unexpected weather data: {e}") from None
@@ -103,10 +142,12 @@ class Weather:
         base = os.environ.get("HOMEPANEL_WEATHER_URL", SOURCE_URL)
         query = urlencode({
             "latitude": lat, "longitude": lon,
-            "current": "temperature_2m,weather_code,is_day",
+            "current": "temperature_2m,apparent_temperature,weather_code,is_day",
+            "hourly": "temperature_2m,precipitation_probability,weather_code,is_day",
             "daily": "temperature_2m_max,temperature_2m_min",
             "temperature_unit": "celsius" if unit == "C" else "fahrenheit",
-            "timezone": "auto", "forecast_days": 1,
+            "timezone": "auto", "timeformat": "unixtime",
+            "forecast_days": 2,             # the next hours can run past midnight; "daily" [0] is still today
         })
         return (lat, lon, unit, base), f"{base}?{query}"
 
@@ -128,5 +169,6 @@ class Weather:
                 except Exception as e:  # offline, DNS, HTTP error, bad JSON: just hide the weather
                     log.info("Weather unavailable: %s", e)
         if self._data is not None and now - self._fetched_at < STALE_SECONDS:
-            return {**self._data, "updated": self._fetched_at}
+            ahead = [h for h in self._data.get("hours", []) if h["at"] > now][:HOURS_AHEAD]   # never an hour that has begun
+            return {**self._data, "hours": ahead, "updated": self._fetched_at}
         return {"available": False, "reason": "unavailable"}

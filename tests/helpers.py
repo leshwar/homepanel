@@ -42,12 +42,22 @@ class FakeWeatherSource:
     """A tiny local stand-in for the weather source (Open-Meteo's response shape).
     Point the server at it with the HOMEPANEL_WEATHER_URL environment variable."""
 
-    def __init__(self, temperature=53.6, code=61, high=58.2, low=44.9):
+    def __init__(self, temperature=53.6, code=61, high=58.2, low=44.9, hours=0, feels_like=None):
         import json
         from http.server import BaseHTTPRequestHandler, HTTPServer
 
-        body = json.dumps({"current": {"temperature_2m": temperature, "weather_code": code, "is_day": 1},
-                           "daily": {"temperature_2m_max": [high], "temperature_2m_min": [low]}}).encode()
+        data = {"current": {"temperature_2m": temperature, "weather_code": code, "is_day": 1},
+                "daily": {"temperature_2m_max": [high], "temperature_2m_min": [low]}}
+        if feels_like is not None:
+            data["current"]["apparent_temperature"] = feels_like
+        if hours:                         # the hour under way, then `hours` more, each a degree cooler
+            start = int(time.time()) // 3600 * 3600
+            data["utc_offset_seconds"] = 0
+            data["hourly"] = {"time": [start + i * 3600 for i in range(hours + 1)],
+                              "temperature_2m": [temperature - i for i in range(hours + 1)],
+                              "precipitation_probability": [min(100, i * 10) for i in range(hours + 1)],
+                              "weather_code": [code] * (hours + 1), "is_day": [1] * (hours + 1)}
+        body = json.dumps(data).encode()
         source = self
 
         class Handler(BaseHTTPRequestHandler):

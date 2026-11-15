@@ -34,6 +34,7 @@ web/
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
     ├── sky.js      weather from the server → html[data-sky] / [data-period] for the Sky background
     ├── weather-effects.js shared weather scenes and tile-only animation visibility
+    ├── weather-tile.js the Home weather tile: now, the coming hours, one sentence about rain
     ├── typography.js shared Small/Medium/Large display preference and cancelable preview
     ├── sheet.js    the device panel: opening, redrawing without disturbing a touch, clicks
     ├── panel.js    the shape every panel shares: header with a switch, stage, tabs
@@ -61,7 +62,14 @@ web/
   slow drifting clouds, rain, snow or stars. Weather is opt-in (Settings → Location and
   presence) and comes from the panel's own server; without it the sky follows the clock.
   Motion is transform-only and stops for "reduce motion".
-- **Weather tile.** Soft sun rays or a moon/stars, clouds, rain, snow, fog and a gentle
+- **Weather tile** (`weather-tile.js`). What it's like now and what's coming. Small: place,
+  temperature, condition, today's high and low. Wide: the same with four coming hours
+  beside it (2, 5, 8 and 11 hours from now). Large: also "feels like" when it differs by 3°
+  or more, a line of the next 12 hours' temperature with the chance of rain as bars under
+  it, the four hours under their own points on the line, and one plain sentence about rain
+  or snow ("Rain around 9 PM", "Rain until about 11 PM", "Dry for the next 12 hours";
+  nothing when there's nothing sure to say). Hours follow the 12/24-hour clock setting. A
+  reading without hours is the small layout at every size. Behind it: soft sun rays or a moon/stars, clouds, rain, snow, fog and a gentle
   storm glow fill the tile behind text drawn directly in the scene, independently of the
   chosen page background. Effects clip to the rounded tile at every size and
   never intercept touches. Scene-aware text colors and restrained shadows keep

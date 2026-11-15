@@ -62,9 +62,13 @@ class WeatherTileTests(unittest.TestCase):
         self.assertEqual(self.errors, [])
 
     @staticmethod
-    def weather(condition, is_day=True):
-        return {"available": True, "temperature": 72, "high": 76, "low": 61, "unit": "F",
-                "condition": condition, "label": condition.title(), "is_day": is_day}
+    def weather(condition, is_day=True, hours=0, wet=()):
+        """A reading; hours=12 adds the coming hours from 9 PM, cooling a degree an hour, raining in the `wet` ones."""
+        return {"available": True, "temperature": 72, "feels_like": 66, "high": 76, "low": 61, "unit": "F",
+                "condition": condition, "label": condition.title(), "is_day": is_day,
+                "hours": [{"at": 2_000_000_000 + i * 3600, "hour": (21 + i) % 24, "temperature": 71 - i,
+                           "rain": 80 if i in wet else 5, "condition": "rain" if i in wet else "partly-cloudy",
+                           "label": "Rain" if i in wet else "Partly cloudy", "is_day": False} for i in range(hours)]}
 
     def respond(self, route):
         if self.response is None:
@@ -84,20 +88,24 @@ class WeatherTileTests(unittest.TestCase):
     def assert_scene_text_is_readable_without_backdrops(self):
         tile = self.page.locator(".w-weather")
         info = tile.evaluate("""root => {
-          const selectors = ['.w-label', '.w-wx b', '.w-sub'];
-          const regions = selectors.map(selector => {
-            const el = root.querySelector(selector), range = document.createRange();
+          const selectors = ['.w-label', '.w-wx b', '.w-sub', '.wx-range', '.wx-feels', '.wx-outlook', '.wx-hour b', '.wx-hour small'];
+          const shown = selectors.flatMap(selector => [...root.querySelectorAll(selector)].map(el => [selector, el]))
+            .filter(([, el]) => el.getClientRects().length);                       // what this size of tile shows
+          for (const needed of ['.w-label', '.w-wx b', '.w-sub']) if (!shown.some(([s]) => s === needed)) throw new Error('Missing ' + needed);
+          const regions = shown.map(([selector, el]) => {
+            const range = document.createRange();
             range.selectNodeContents(el);
             const r = range.getBoundingClientRect(), box = el.getBoundingClientRect();
             return {selector, x:Math.max(r.x,box.x), y:r.y, right:Math.min(r.right,box.right), bottom:r.bottom,
               color:getComputedStyle(el).color.match(/[\\d.]+/g).map(Number)};
           });
-          for (const el of [root, ...root.querySelectorAll(':scope > span')]) {
+          const parts = [...root.querySelectorAll(':scope > :not(.w-weather-fx)')];  // everything drawn over the sky
+          for (const el of [root, ...parts, ...root.querySelectorAll('.wx-hour, .wx-hour *')]) {
             if (getComputedStyle(el).backgroundColor !== 'rgba(0, 0, 0, 0)') throw new Error('Text has a backdrop');
           }
           root._moving = root.getAnimations({subtree:true}).filter(a => a.playState === 'running');
           root._moving.forEach(a => a.pause());
-          root.querySelectorAll(':scope > span').forEach(el => {el.style.opacity = '0';});
+          parts.forEach(el => {el.style.opacity = '0';});
           return regions;
         }""")
         box = tile.bounding_box()
@@ -105,7 +113,7 @@ class WeatherTileTests(unittest.TestCase):
             image = Image.open(io.BytesIO(tile.screenshot())).convert("RGB")
         finally:
             tile.evaluate("""root => {
-              root.querySelectorAll(':scope > span').forEach(el => {el.style.opacity = '';});
+              root.querySelectorAll(':scope > :not(.w-weather-fx)').forEach(el => {el.style.opacity = '';});
               root._moving.forEach(a => a.play()); delete root._moving;
             }""")
 
@@ -154,6 +162,93 @@ class WeatherTileTests(unittest.TestCase):
               await (await import('/js/store.js')).reload();
             }""", style)
             self.assert_scene_text_is_readable_without_backdrops()
+
+    def resize(self, size):
+        self.page.evaluate("""async size => {
+            await (await import('/js/api.js')).api.saveLayout({widgets:[{id:'weather',type:'weather',size}]});
+            await (await import('/js/store.js')).reload();
+        }""", size)
+        self.page.wait_for_selector(f'.widget.s-{size} .w-weather[data-weather-status="ready"]')
+
+    def clipped(self):
+        """Text in the tile that doesn't fit its line or spills out of the tile (a long place name may be shortened)."""
+        return self.page.locator(".w-weather").evaluate("""root => {
+          const tile = root.getBoundingClientRect();
+          return [...root.querySelectorAll('.w-wx b, .w-sub > span, .wx-range, .wx-outlook, .wx-hour b, .wx-hour small')]
+            .filter(el => el.getClientRects().length).filter(el => {
+              const r = el.getBoundingClientRect();
+              return el.scrollWidth > el.clientWidth + 1 || r.right > tile.right + 1 || r.bottom > tile.bottom + 1 || r.left < tile.left - 1;
+            }).map(el => el.className + ': ' + el.textContent);
+        }""")
+
+    def test_coming_hours_grow_with_the_tile_and_stay_readable(self):
+        self.response = self.weather("partly-cloudy", hours=12, wet=(2, 3, 4))
+        self.enable()
+        self.page.wait_for_selector(".w-weather.has-hours")
+        shown = lambda sel: self.page.locator(f".w-weather {sel}").first.is_visible()
+        # Large: now, one sentence about rain, the line of the next 12 hours, and four hours spelled out.
+        self.assertEqual(self.page.inner_text(".w-wx b"), "72°")
+        self.assertEqual(self.page.locator(".w-sub").inner_text().replace("\n", ""), "Partly-Cloudy, feels like 66°")
+        self.assertEqual(self.page.inner_text(".wx-range"), "H 76° L 61°")
+        self.assertEqual(self.page.inner_text(".wx-outlook"), "Rain around 11 PM")
+        self.assertEqual(self.page.locator(".wx-hour").count(), 4)
+        self.assertEqual(self.page.locator(".wx-hour small").all_inner_texts(), ["10 PM", "1 AM", "4 AM", "7 AM"])
+        self.assertEqual(self.page.locator(".wx-hour b").all_inner_texts(), ["70°", "67°", "64°", "61°"])
+        self.assertIn("80% chance of rain", self.page.locator(".wx-hour").nth(1).get_attribute("aria-label") or "")
+        self.assertEqual(self.page.locator(".wx-rain rect").count(), 3)            # only the hours with a real chance
+        self.assertTrue(shown(".wx-chart") and shown(".wx-hours") and shown(".wx-outlook"))
+        # Each spelled-out hour sits under its own point on the line.
+        offsets = self.page.locator(".w-weather").evaluate("""root => [...root.querySelectorAll('.wx-chart i')].map((dot, i) => {
+          const d = dot.getBoundingClientRect(), c = root.querySelectorAll('.wx-hour')[i].getBoundingClientRect();
+          return Math.abs((d.left + d.width / 2) - (c.left + c.width / 2));
+        })""")
+        self.assertEqual(len(offsets), 4)
+        self.assertLessEqual(max(offsets), 1.5, offsets)
+        self.assertEqual(self.clipped(), [])
+        self.assert_scene_text_is_readable_without_backdrops()
+        # Wide: the hours sit beside now; no line, no sentence. Small: now only.
+        self.resize("2x1")
+        self.assertTrue(shown(".wx-hours"))
+        self.assertFalse(shown(".wx-chart") or shown(".wx-outlook") or shown(".wx-feels"))
+        self.assertEqual(self.clipped(), [])
+        self.assert_scene_text_is_readable_without_backdrops()
+        now, hours = self.page.locator(".w-wx b").bounding_box(), self.page.locator(".wx-hours").bounding_box()
+        self.assertLessEqual(now["x"] + now["width"], hours["x"])                  # side by side, not on top of each other
+        self.resize("1x1")
+        self.assertFalse(shown(".wx-hours") or shown(".wx-chart") or shown(".wx-outlook"))
+        self.assertTrue(shown(".wx-range"))
+        self.assertEqual(self.clipped(), [])
+        # Night, with the moon out: the hours stay clear of it and readable, in every size.
+        self.response = self.weather("clear", False, hours=12)
+        self.refresh()
+        self.page.wait_for_selector(".w-fx-moon")
+        for size in ("2x1", "2x2"):
+            with self.subTest(size=size, night=True):
+                self.resize(size)
+                self.assertEqual(self.clipped(), [])
+                self.assert_scene_text_is_readable_without_backdrops()
+        self.assertEqual(self.page.inner_text(".wx-outlook"), "Dry for the next 12 hours")
+        # 24-hour clocks get 24-hour hours; larger text still fits.
+        self.page.evaluate("""async () => {
+          await (await import('/js/api.js')).api.saveSettings({clock_24h:true, font_size:'large'});
+          await (await import('/js/store.js')).reload();
+        }""")
+        self.page.wait_for_function("document.querySelector('.wx-hour small')?.textContent === '22:00'")
+        for size in ("2x2", "2x1", "1x1"):
+            with self.subTest(size=size, large_text=True):
+                self.resize(size)
+                self.assertEqual(self.clipped(), [])
+        # A reading without hours is the small layout at every size.
+        self.response = self.weather("rain")
+        self.refresh()
+        self.page.wait_for_function("!document.querySelector('.w-weather.has-hours')")
+        self.resize("2x2")
+        self.assertEqual(self.page.locator(".wx-hours, .wx-chart, .wx-outlook").count(), 0)
+        self.assertEqual(self.clipped(), [])
+        self.page.evaluate("""async () => {
+          await (await import('/js/api.js')).api.saveSettings({clock_24h:false, font_size:'medium'});
+          await (await import('/js/store.js')).reload();
+        }""")
 
     def test_resizing_reduced_motion_and_hidden_tiles(self):
         self.response = self.weather("rain")

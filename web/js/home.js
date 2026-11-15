@@ -20,9 +20,9 @@ import { openSettings } from "./settings.js";
 import { svg, roomIcon } from "./icons.js";
 import { haptic, tileHtml } from "./tiles.js";
 import { currentWeather, weatherStatus, refreshWeather } from "./sky.js";
-import { weatherBackdrop, watchWeatherEffects } from "./weather-effects.js";
+import { watchWeatherEffects } from "./weather-effects.js";
+import { weatherTile } from "./weather-tile.js";
 import { photoTile, watchPhotoTiles } from "./photo-tile.js";
-import { weatherIcon } from "./clockfaces.js";
 import { SIZES, SIZE_NAMES, columnsFor, arrange, remember, place, fits, placementStyle, gridStyle, bindGridEditor, watchGridWidth } from "./grid.js";
 
 const SCENE_ICONS = ["sun", "moon", "film", "sparkle", "coffee", "door"];
@@ -129,12 +129,7 @@ function weatherWidget() {
           : `<button class="btn small" data-setup-weather>${store.settings.weather_enabled ? "Set location" : "Turn on weather"}</button>`}
       </div>`;
   }
-  const place = store.settings.place_name || "";
-  return `<div class="w-fill w-weather" data-weather-status="ready">${weatherBackdrop(wx)}
-      <span class="w-label">${esc(place || "Weather")}</span>
-      <span class="w-wx">${weatherIcon(wx.condition, wx.is_day)}<b>${esc(wx.temperature)}°</b></span>
-      <span class="w-sub">${esc(wx.label)}${wx.high != null ? ` · H ${esc(wx.high)}° L ${esc(wx.low)}°` : ""}</span>
-    </div>`;
+  return weatherTile(wx, { place: store.settings.place_name || "", h24: !!store.settings.clock_24h });
 }
 
 function scenesWidget() {

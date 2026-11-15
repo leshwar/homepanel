@@ -169,12 +169,49 @@ html[data-view="home"] #clock[hidden] { display: none; }
 .w-zone .w-time { font-size: calc(min(32cqh, 23cqw) * var(--readout-scale)); font-weight: 300; }
 .s-2x1 .w-zone .w-time, .s-2x2 .w-zone .w-time { font-size: calc(min(40cqh, 16cqw) * var(--readout-scale)); }
 
-/* weather */
-.w-weather { justify-content: space-between; }
-.w-wx { display: flex; align-items: center; gap: 8px; }
-.w-wx .cf-wx-icon { width: min(36cqh, 30cqw); height: min(36cqh, 30cqw); flex: none; fill: none; stroke: currentColor;
-                    stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.w-wx b { font-size: calc(min(36cqh, 24cqw) * var(--readout-scale)); font-weight: 300; letter-spacing: -0.03em; line-height: 1; }
+/* weather (js/weather-tile.js): now at the top left; the coming hours beside it (wide) or below it (large) */
+.w-weather { justify-content: flex-start; }
+.w-weather .cf-wx-icon { flex: none; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.w-wx { display: flex; align-items: center; margin-top: auto; }
+.w-wx b { font-size: calc(min(40cqh, 30cqw) * var(--readout-scale)); font-weight: 300; letter-spacing: -0.04em; line-height: 1; }
+.w-weather .w-sub { display: flex; align-items: center; gap: .35em; flex: none; margin-top: 2px; font-weight: 600; }
+.w-weather .w-sub > span { overflow: hidden; text-overflow: ellipsis; }
+.w-weather .w-sub .cf-wx-icon { width: 1.3em; height: 1.3em; }
+.wx-feels { font-weight: 500; margin-left: -.35em; }
+.wx-range, .wx-outlook { flex: none; font-size: calc(clamp(12px, 8cqmin, 15px) * var(--text-scale)); color: var(--haze);
+                         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.wx-outlook { font-weight: 600; }
+.wx-chart, .wx-hours, .wx-outlook, .wx-feels { display: none; }
+.wx-hours { font-variant-numeric: tabular-nums; }
+.wx-hour { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.wx-hour b { font-size: calc(clamp(13px, 5.2cqw, 17px) * var(--text-scale)); font-weight: 650; line-height: 1.1; }
+.wx-hour .cf-wx-icon { width: clamp(18px, 7cqw, 24px); height: clamp(18px, 7cqw, 24px); }
+.wx-hour small { font-size: max(11px, calc(clamp(11px, 4.2cqw, 13px) * var(--text-scale))); color: var(--haze); white-space: nowrap; line-height: 1.2; }
+
+/* wide: now on the left, four coming hours on the right */
+.s-2x1 .w-weather.has-hours { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); grid-template-rows: auto 1fr auto auto;
+                              column-gap: 4cqw; align-content: stretch; }
+.s-2x1 .w-weather.has-hours > :is(.w-label, .w-wx, .w-sub, .wx-range, .wx-outlook) { grid-column: 1; }
+.s-2x1 .w-weather.has-hours .w-wx { align-self: center; margin-top: 0; }
+.s-2x1 .w-weather.has-hours .w-wx b { font-size: calc(min(40cqh, 17cqw) * var(--readout-scale)); }
+.s-2x1 .w-weather.has-hours .wx-hours { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-column: 2; grid-row: 1 / -1; align-self: end; }
+.s-2x1 .w-weather.has-hours .wx-hour { flex-direction: column-reverse; gap: 3px; }      /* time, picture, temperature */
+.s-2x1 .w-weather.has-hours .wx-hour small { font-size: max(11px, calc(11px * var(--text-scale))); letter-spacing: -.01em; }
+.s-2x1 .w-weather.has-hours .w-fx-moon { width: 13%; right: 5%; top: 8%; }          /* clear of the hours below it */
+
+/* large: now on top, then the sentence, the line of the next 12 hours and the four hours under it */
+.s-2x2 .w-weather.has-hours .w-wx { margin-top: 2cqh; }
+.s-2x2 .w-weather.has-hours .w-wx b { font-size: calc(min(24cqh, 26cqw) * var(--readout-scale)); }
+.s-2x2 .w-weather.has-hours :is(.wx-feels, .wx-outlook) { display: inline; }
+.s-2x2 .w-weather.has-hours .wx-outlook { display: block; margin-top: auto; padding-top: 2cqh; }
+.s-2x2 .w-weather.has-hours .wx-chart { display: block; position: relative; flex: 0 1 19cqh; min-height: 36px; margin-top: 1.5cqh; }
+.s-2x2 .w-weather.has-hours .wx-outlook + .wx-chart { margin-top: 1.5cqh; }
+.s-2x2 .w-weather.has-hours:not(:has(.wx-outlook)) .wx-chart { margin-top: auto; }
+.s-2x2 .w-weather.has-hours .wx-hours { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); flex: none; margin-top: 1cqh; }
+.wx-chart svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.wx-line { fill: none; stroke: currentColor; stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; opacity: .85; }
+.wx-rain { fill: currentColor; opacity: .42; }
+.wx-chart i { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: currentColor; }
 .w-weather.off p { margin: 4px 0 0; font-size: calc(clamp(12px, 8cqmin, 15px) * var(--text-scale)); color: var(--haze); flex: 1; overflow: hidden; }
 .w-weather.off .btn { align-self: flex-start; min-height: 48px; height: auto; max-width: 100%;
   padding: 6px 10px; white-space: normal; line-height: 1.2; }

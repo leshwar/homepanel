@@ -274,7 +274,7 @@ class ApiTests(unittest.TestCase):
     def test_weather_from_source_and_hidden_without_it(self):
         status, w = self.call("GET", "/weather")
         self.assertEqual((status, w["available"]), (200, False))      # off until the user opts in
-        source = FakeWeatherSource(temperature=21.4, code=0)
+        source = FakeWeatherSource(temperature=21.4, code=0, hours=30, feels_like=17.6)
         os.environ["HOMEPANEL_WEATHER_URL"] = source.url
         try:
             self.call("PUT", "/settings", {"latitude": 47.61, "longitude": -122.33, "weather_enabled": True,
@@ -282,7 +282,17 @@ class ApiTests(unittest.TestCase):
             status, w = self.call("GET", "/weather")
             self.assertEqual((status, w["available"], w["temperature"], w["unit"], w["condition"]),
                              (200, True, 21, "C", "clear"))
+            self.assertEqual(w["feels_like"], 18)
+            # The coming 12 hours, never the one under way: when each starts, its hour of the day,
+            # temperature, chance of rain and what it will be like.
+            import time
+            self.assertEqual(len(w["hours"]), 12)
+            self.assertGreater(w["hours"][0]["at"], time.time())
+            self.assertEqual([h["at"] - w["hours"][0]["at"] for h in w["hours"]], [i * 3600 for i in range(12)])
+            self.assertEqual(sorted(w["hours"][0]), ["at", "condition", "hour", "is_day", "label", "rain", "temperature"])
+            self.assertEqual((w["hours"][0]["temperature"], w["hours"][0]["rain"], w["hours"][0]["condition"]), (20, 10, "clear"))
             self.assertIn("latitude=47.61", source.requests[0])
+            self.assertIn("hourly=", source.requests[0])
             self.call("GET", "/weather")
             self.assertEqual(len(source.requests), 1)                  # cached
             source.stop()

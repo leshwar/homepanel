@@ -7,7 +7,8 @@ from urllib.parse import parse_qs, urlsplit
 
 from app.core.adapter import AdapterError
 from app.core.service import HomeService
-from app.core.weather import CACHE_SECONDS, RETRY_SECONDS, STALE_SECONDS, Weather, describe, parse
+from app.core.weather import (CACHE_SECONDS, HOURS_AHEAD, RETRY_SECONDS, STALE_SECONDS, Weather, describe, parse,
+                              parse_hours)
 
 SAMPLE = {"current": {"temperature_2m": 53.6, "weather_code": 61, "is_day": 0},
           "daily": {"temperature_2m_max": [58.2], "temperature_2m_min": [44.9]}}
@@ -44,6 +45,45 @@ class WeatherTests(unittest.TestCase):
         self.assertEqual(describe(1234)[0], "cloudy")   # unknown codes don't break the clock
         with self.assertRaises(ValueError):
             parse({"nope": 1}, "F")
+
+    def test_next_hours_and_feels_like(self):
+        self.assertEqual(parse(SAMPLE, "F")["hours"], [])                 # an answer without hours still works
+        self.assertIsNone(parse(SAMPLE, "F")["feels_like"])
+        start = int(self.now) // 3600 * 3600                              # the hour that is under way
+        data = {**SAMPLE, "utc_offset_seconds": -8 * 3600,
+                "current": {**SAMPLE["current"], "apparent_temperature": 50.4},
+                "hourly": {"time": [start + i * 3600 for i in range(30)],
+                           "temperature_2m": [50 + i * .5 for i in range(30)],
+                           "precipitation_probability": [None, 0, 35, 140, -3] + [10] * 25,
+                           "weather_code": [61, 0, 3, 95, 71] + [1] * 25,
+                           "is_day": [0, 0, 1] + [1] * 27}}
+        hours = parse_hours(data)
+        self.assertEqual(len(hours), 30)
+        self.assertEqual(hours[0], {"at": start, "hour": ((start - 8 * 3600) // 3600) % 24, "temperature": 50, "rain": None,
+                                    "condition": "rain", "label": "Rain", "is_day": False})
+        self.assertEqual([h["rain"] for h in hours[1:5]], [0, 35, 100, 0])       # kept within 0 to 100
+        self.assertEqual([h["condition"] for h in hours[1:5]], ["clear", "cloudy", "storm", "snow"])
+        self.assertEqual(hours[2]["is_day"], True)
+        self.assertEqual((hours[1]["hour"] - hours[0]["hour"]) % 24, 1)          # hours of the day where the weather is
+        # Incomplete or oddly shaped hours are left out rather than guessed.
+        self.assertEqual(parse_hours({"hourly": {"time": ["2026-11-14T19:00", start], "temperature_2m": [50, None]}}), [])
+        self.assertEqual(parse_hours({"hourly": {"time": [start], "temperature_2m": [50]}})[0]["condition"], "cloudy")
+        for odd in ({}, {"hourly": None}, {"hourly": []}, None, {"hourly": {"time": None}}):
+            self.assertEqual(parse_hours(odd), [])
+        # The tile gets the coming hours only: never one that has already begun, at most HOURS_AHEAD.
+        self.source.reply = data
+        out = self.get()
+        self.assertEqual(out["feels_like"], 50)
+        self.assertEqual(len(out["hours"]), HOURS_AHEAD)
+        self.assertEqual(out["hours"][0]["at"], start + 3600)
+        self.now += 2 * 3600 + 60                                         # two hours on (the source is asked again)
+        self.assertEqual(self.get()["hours"][0]["at"], start + 3 * 3600)
+        q = parse_qs(urlsplit(self.source.urls[0]).query)
+        self.assertEqual(q["timeformat"], ["unixtime"])
+        self.assertIn("precipitation_probability", q["hourly"][0])
+        self.assertIn("apparent_temperature", q["current"][0])
+        self.assertEqual(sorted(q), ["current", "daily", "forecast_days", "hourly", "latitude", "longitude",
+                                     "temperature_unit", "timeformat", "timezone"])   # the place and nothing else about the home
 
     def test_off_without_opt_in_or_location(self):
         self.settings["weather_enabled"] = False

@@ -206,7 +206,7 @@ const widgetName = (w) => {
 
 function chrome(w) {
   const name = esc(widgetName(w));
-  return `${grip(name)}<button class="w-resize" data-resize aria-label="Resize ${name} (now ${sizeName(w.size)}); use arrow keys" ${saving ? "disabled" : ""}>${svg("resize")}</button>`;
+  return `${grip(name,saving)}<button class="w-resize" data-resize aria-label="Resize ${name} (now ${sizeName(w.size)}); use arrow keys" ${saving ? "disabled" : ""}>${svg("resize")}</button>`;
 }
 
 function widgetHtml(w, i, now) {
@@ -256,7 +256,6 @@ export function renderHome({ enter = false } = {}) {
   refreshAttention(el);
   if (isEditing()) {
     el.querySelectorAll(".widget > .w-fill").forEach(content=>{content.inert=true;content.setAttribute("aria-disabled","true");});
-    el.querySelectorAll("[data-grip]").forEach(button=>{button.disabled=saving;});
     selectWidget(selected);
     if (focusId) {
       const box=el.querySelector(`.widget[data-wid="${CSS.escape(focusId)}"]`);

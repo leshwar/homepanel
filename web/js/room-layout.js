@@ -7,7 +7,7 @@ import { tileHtml } from "./tiles.js";
 import { sizeChoices, sizeName, grip, columnsFor, arrange, remember, place, placementStyle, gridStyle, bindGridEditor, watchGridWidth } from "./grid.js";
 
 let draft = null, editingRoom = null, redraw = () => {}, cancelGesture = () => {}, saving = false;
-let editingProfile = null, entryLayout = null;
+let editingProfile = null, entryLayout = null, selected = null;
 export const isRoomEditing = () => draft !== null;
 const columns = () => columnsFor($("#grid").clientWidth);
 const label = (r) => r || "Other";
@@ -28,6 +28,7 @@ export function syncRoomEditor() {
 function toolbar() {
   return `<div class="editbar" role="toolbar" aria-label="Edit room tiles">
     <span class="editbar-hint">Drag a grip to move; drag a corner to resize</span>
+    <button class="btn small" data-room-options ${!selected || saving ? "disabled" : ""}>Options</button>
     <button class="btn small" data-room-cancel ${saving ? "disabled" : ""}>Cancel</button>
     <button class="btn small primary" data-room-done ${saving ? "disabled" : ""}>${saving ? "Saving..." : "Done"}</button>
   </div>`;
@@ -48,11 +49,11 @@ export function roomTiles(room) {
     items.map((w) => {
       const d = store.devices.get(w.id), p = positions.get(w.id);
       if (!d) return "";
-      return `<div class="room-tile room-card layout-item" data-wid="${esc(w.id)}"
+      return `<div class="room-tile room-card layout-item${editing && selected===w.id ? " edit-selected" : ""}" data-wid="${esc(w.id)}"
         ${editing ? `tabindex="0" aria-label="Move ${esc(d.name)} with arrow keys"` : ""}
         style="${placementStyle(p)}">${tileHtml(d, { editing })}
-        ${editing ? `${grip(esc(d.name))}<button class="w-badge w-menu" data-room-options="${esc(w.id)}" aria-label="${esc(d.name)} layout options">${svg("dots")}</button>
-          <button class="w-resize" data-resize aria-label="Resize ${esc(d.name)} (now ${sizeName(p.size)}); use arrow keys">${svg("resize")}</button>` : ""}</div>`;
+        ${editing ? `${grip(esc(d.name),saving)}
+          <button class="w-resize" data-resize aria-label="Resize ${esc(d.name)} (now ${sizeName(p.size)}); use arrow keys" ${saving ? "disabled" : ""}>${svg("resize")}</button>` : ""}</div>`;
     }).join("")}</div>${editing ? toolbar() : ""}`;
 }
 
@@ -60,6 +61,7 @@ export function startRoomEditing(room) {
   if (isRoomEditing()) return;
   editingProfile = store.me?.id;
   editingRoom = room;
+  selected=null;
   entryLayout=JSON.parse(JSON.stringify(store.settings.room_layouts?.[room] ?? null));
   draft = { version: 4, widgets: JSON.parse(JSON.stringify(roomWidgets(room))) };
   remember(draft.widgets, columns());
@@ -75,6 +77,7 @@ export function stopRoomEditing(render = true) {
   editingRoom = null;
   editingProfile = null;
   entryLayout=null;
+  selected=null;
   delete document.documentElement.dataset.layoutEditing;
   closeOptions();
   if (render) redraw();
@@ -122,11 +125,27 @@ export function setupRoomEditor(root, render) {
   watchGridWidth(root, () => { cancelGesture(); render(); });
   addEventListener("resize", () => { cancelGesture(); render(); });
   addEventListener("blur", () => { cancelGesture(); render(); });
+  const select = id => {
+    if (!draft || saving) return;
+    selected=draft.widgets.some(w=>w.id===id) ? id : null;
+    root.querySelectorAll(".layout-item").forEach(box=>box.classList.toggle("edit-selected",box.dataset.wid===selected));
+    const button=root.querySelector("[data-room-options]");
+    if (button) {
+      button.disabled=!selected;
+      button.setAttribute("aria-label",selected ? `${store.devices.get(selected)?.name} layout options` : "Select a tile for options");
+    }
+  };
+  for (const name of ["focusin","pointerdown"]) root.addEventListener(name,e=>select(e.target.closest(".room-tile")?.dataset.wid || selected));
+  root.addEventListener("keydown",e=>{
+    if (draft && !saving && e.target.matches(".room-tile") && ["Enter"," "].includes(e.key)) {
+      e.preventDefault();select(e.target.dataset.wid);options(selected);
+    }
+  });
   root.addEventListener("click", (e) => {
     if (e.target.closest("[data-room-done]")) return save();
     if (e.target.closest("[data-room-cancel]")) return stopRoomEditing();
     const button = e.target.closest("[data-room-options]");
-    if (button) options(button.dataset.roomOptions);
+    if (button && selected) options(selected);
   });
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".room-layout-menu") || !isRoomEditing()) return;

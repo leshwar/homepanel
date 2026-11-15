@@ -146,7 +146,7 @@ html[data-view="home"] #clock[hidden] { display: none; }
           overflow: hidden; border-radius: inherit; }
 .w-label { font-size: calc(clamp(13px, 9cqmin, 16px) * var(--text-scale)); font-weight: 600; color: var(--haze); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 40px; }
 .w-label em { font-style: normal; font-weight: 500; opacity: .75; }
-.w-sub { font-size: calc(clamp(12px, 8cqmin, 15px) * var(--text-scale)); color: var(--haze); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.w-sub { font-size: calc(clamp(12px, 8cqmin, 15px) * var(--text-scale)); color: var(--haze); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 32px; }
 .w-time { display: flex; align-items: baseline; font-weight: 250; letter-spacing: -0.035em; line-height: .95;
           font-variant-numeric: tabular-nums; white-space: nowrap; }
 .w-wx, .cf-time, .frame-clock .t { font-variant-numeric: tabular-nums; }
@@ -266,7 +266,7 @@ body:has(#sheet:not([hidden]), #settings:not([hidden]), #ambient:not([hidden]), 
 .tiles.editing .tile, .tiles.editing .tile * { pointer-events: none; }
 .home.editing .layout-grid, .tiles.editing { background-image: radial-gradient(circle, rgb(180 190 210 / .45) 1px, transparent 1px);
   background-size: calc((100% + var(--g)) / var(--cols)) calc(var(--cell) + var(--g)); }
-.home.editing .edit-selected { outline: 2px solid var(--indigo); }
+.editing .layout-item.edit-selected { outline: 2px solid var(--indigo); }
 .layout-grip { position: absolute; top: 8px; right: 8px; z-index: 3; width: 48px; height: 48px; display: grid; place-items: center;
   background: var(--dusk); color: var(--paper); border: 1px solid var(--line); border-radius: 12px; touch-action: none; cursor: grab; }
 .room-tile .layout-grip { top: 12px; left: 14px; right: auto; }
@@ -283,12 +283,10 @@ body:has(#sheet:not([hidden]), #settings:not([hidden]), #ambient:not([hidden]), 
 .widget.dropped { animation: drop .26s var(--ease) !important; }
 @keyframes drop { from { transform: scale(1.04); } }
 
-.w-badge, .w-resize { position: absolute; z-index: 3; width: 48px; height: 48px; display: grid; place-items: center; }
-.w-badge::before, .w-resize::before { content: ""; position: absolute; inset: 9px; border-radius: 50%;
+.w-resize { position: absolute; z-index: 3; width: 48px; height: 48px; display: grid; place-items: center; }
+.w-resize::before { content: ""; position: absolute; inset: 9px; border-radius: 50%;
   background: rgb(235 238 245 / .92); box-shadow: 0 2px 8px rgb(0 0 0 / .3); }
-.w-badge .i, .w-resize .i { position: relative; width: 18px; height: 18px; color: #1a1d22; stroke-width: 2.6; }
-.w-hide { top: -6px; left: -6px; }
-.w-menu { bottom: -4px; left: -4px; }
+.w-resize .i { position: relative; width: 18px; height: 18px; color: #1a1d22; stroke-width: 2.6; }
 .w-resize { right: -4px; bottom: -4px; cursor: nwse-resize; touch-action: none; }
 .w-resize::before { border-radius: 10px 4px 14px 4px; }
 
@@ -567,7 +565,7 @@ html[data-bg="sky"] .w-wx .cf-wx-icon { color: var(--paper); }
 .w-photos.empty .photo-caption { color: var(--haze); text-shadow: none; top: clamp(12px, 8cqmin, 20px); left: clamp(12px, 8cqmin, 20px); }
 .w-photos.empty .photo-placeholder { padding: calc(clamp(12px, 8cqmin, 20px) + 30px) clamp(12px, 8cqmin, 20px) clamp(12px, 8cqmin, 20px); justify-content: flex-start; }
 /* Scenes with nothing saved yet. */
-.w-hint { margin: 0; color: var(--haze); font-size: calc(14px * var(--text-scale)); line-height: 1.35; flex: none; }
+.w-hint { margin: 0; color: var(--haze); font-size: calc(14px * var(--text-scale)); line-height: 1.35; flex: none; padding-right: 32px; }
 /* Phones: the room heading keeps its status readable; its button shrinks to the icon (the label stays for screen readers). */
 @media (max-width: 480px) {
   .room-head .btn.small > span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }

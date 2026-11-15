@@ -8,7 +8,7 @@ const dimensions = (p) => p.size.split("x").map(Number);
 export const sizeName = size => `${size.split("x")[0]} columns by ${size.split("x")[1]} rows`;
 export const minimumSize = item => [item?.type === "zone" ? 1 : 2, 3];
 export const sizeChoices = (item, cols) => [...new Set([`${minimumSize(item)[0]}x3`,`${Math.min(cols,3)}x4`,`${cols}x6`])];
-export const grip = name => `<button class="layout-grip" data-grip aria-label="Move ${name}"
+export const grip = (name, disabled=false) => `<button class="layout-grip" data-grip aria-label="Move ${name}" ${disabled ? "disabled" : ""}
   title="Drag to move; arrow keys move one cell" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight">
   <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>`;
 const overlaps = (a, b) => {

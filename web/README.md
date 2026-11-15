@@ -204,8 +204,8 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   with old rows mapped to three fine rows. Minimum widths may expand formerly tiny
   cards. Hidden widgets and options remain intact. The previous store is backed up
   privately before the one-way conversion; alternate layouts are not runtime paths.
-  Select a Home widget and use Options in the editor footer to hide/configure/resize
-  it; no hide buttons cover widget headings. Existing resize corners and grid
+  Select a tile and use Options in the editor footer to resize it (or hide/configure
+  a Home widget); no menu buttons cover tile text. Existing resize corners and grid
   keyboard controls remain available. Tile geometry and card content keep their
   geometry in Edit; device/scene/photo/weather actions are inert until editing ends.
   Done saves the actual edited geometry, Cancel leaves saved data untouched,

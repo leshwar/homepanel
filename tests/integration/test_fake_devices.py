@@ -6,6 +6,7 @@ Each test starts a tiny local server that behaves like the device or service
 import asyncio
 import json
 import os
+import shutil
 import tempfile
 import unittest
 
@@ -62,6 +63,68 @@ class HttpClientAgainstLocalServer(unittest.IsolatedAsyncioTestCase):
             await a.command(dev, Action.POWER, True)
             st = await a.refresh(dev)
             self.assertEqual(st, {"on": True, "power_w": 12.3})
+
+
+class AppPicturesFromAFakeTV(unittest.IsolatedAsyncioTestCase):
+    """The LG adapter fetching app pictures from a tiny local stand-in for the TV's picture server."""
+
+    PNG = b"\x89PNG\r\n\x1a\n" + b"\x01" * 64
+
+    async def asyncSetUp(self):
+        self.paths = []
+
+        async def handle(reader, writer):
+            req = await reader.readuntil(b"\r\n\r\n")
+            path = req.split(b" ")[1].decode()
+            self.paths.append(path)
+            body, kind = {"/resources/a/icon.png": (self.PNG, "image/png"),
+                          "/resources/svg/icon.png": (b"<svg xmlns='http://www.w3.org/2000/svg'><script>1</script></svg>", "image/png"),
+                          "/resources/huge/icon.png": (self.PNG + b"\x00" * 1_200_000, "image/png")}.get(path, (b"", ""))
+            status = b"200 OK" if body else b"404 Not Found"
+            writer.write(b"HTTP/1.1 " + status + b"\r\nContent-Type: " + kind.encode() + b"\r\nContent-Length: "
+                         + str(len(body)).encode() + b"\r\n\r\n" + body)
+            try:
+                await writer.drain()
+            except ConnectionError:
+                pass                                      # the client hung up on the oversized answer
+            writer.close()
+
+        self.server = await asyncio.start_server(handle, "127.0.0.1", 0)
+        self.port = self.server.sockets[0].getsockname()[1]
+        self.dir = tempfile.mkdtemp()
+
+    async def asyncTearDown(self):
+        self.server.close()
+        await self.server.wait_closed()
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    async def test_fetches_from_the_tv_only_and_only_bitmaps(self):
+        from types import SimpleNamespace
+
+        from app.adapters.lg_tv import LGTVAdapter
+        adapter = LGTVAdapter({}, self.dir)
+        tv = Device(id="tv1", adapter="lg_tv", name="LG TV", kind="tv", caps=["power", "apps"], config={"ip": "127.0.0.1"})
+        port = self.port
+        client = SimpleNamespace(tv_state=SimpleNamespace(inputs={}, apps={
+            "netflix": {"title": "Netflix", "icon": f"http://lgsmarttv.lan:{port}/resources/a/icon.png"},      # the TV's own host name
+            "odd": {"title": "Odd", "icon": f"http://elsewhere.example:{port}/resources/svg/icon.png"},
+            "huge": {"title": "Huge", "largeIcon": f"http://tv:{port}/resources/huge/icon.png"},
+            "gone": {"title": "Gone", "icon": f"http://tv:{port}/resources/gone/icon.png"},
+            "local": {"title": "Local file", "icon": "/usr/palm/applications/local/icon.png"},
+            "sys": {"title": "System", "systemApp": True, "icon": f"http://tv:{port}/resources/a/icon.png"}}))
+        adapter._update_meta(tv, client)
+        apps = {a["id"]: a for a in tv.meta["apps"]}
+        self.assertEqual(sorted(apps), ["gone", "huge", "local", "netflix", "odd"])
+        self.assertTrue(apps["netflix"]["icon"])
+        self.assertNotIn("icon", apps["local"])                    # a file on the TV: nothing to fetch
+        self.assertNotIn(str(port), str(tv.meta))                  # the address stays inside the adapter
+        self.assertEqual(await adapter.app_icon(tv, "netflix"), ("image/png", self.PNG))
+        self.assertIsNone(await adapter.app_icon(tv, "odd"))       # not a bitmap, whatever it claims
+        self.assertIsNone(await adapter.app_icon(tv, "huge"))      # too large
+        self.assertIsNone(await adapter.app_icon(tv, "gone"))      # the TV says 404
+        self.assertIsNone(await adapter.app_icon(tv, "local"))
+        self.assertIsNone(await adapter.app_icon(tv, "sys"))
+        self.assertEqual(self.paths[:2], ["/resources/a/icon.png", "/resources/svg/icon.png"])   # both asked of 127.0.0.1
 
 
 class ScanFallbackOverRealSockets(unittest.IsolatedAsyncioTestCase):

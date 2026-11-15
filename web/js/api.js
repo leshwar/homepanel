@@ -67,6 +67,7 @@ export const api = {
   voice: (text, confirm = false) => call("POST", "/voice", { text, confirm }),
   allOff: (room = null) => call("POST", "/all-off", room == null ? {} : { room }),   // "" = devices with no room
 
+  appIconUrl: (id, app, token) => `${BASE}/devices/${encodeURIComponent(id)}/app-icon?app=${encodeURIComponent(app)}&v=${encodeURIComponent(token)}`,
   mapUrl: (id, rev = 0) => `${BASE}/devices/${encodeURIComponent(id)}/map?v=${encodeURIComponent(rev)}`,
   discoverAll: () => call("POST", "/discover"),
   discover: (adapter) => call("POST", `/adapters/${adapter}/discover`),

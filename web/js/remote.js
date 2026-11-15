@@ -60,7 +60,7 @@ export function remotePanel(d) {
   const sound = has(d, "sound_mode") ? d.meta?.sound_modes || [] : [];
   const tabs = [
     apps.length && { id: "apps", label: "Apps", html: `<div class="app-grid">${apps.map((a) =>
-      `<button class="app-btn" data-app="${esc(a.id)}" aria-pressed="${s.app === a.id}"><span>${esc(a.name)}</span></button>`).join("")}</div>` },
+      `<button class="app-btn" data-app="${esc(a.id)}" aria-pressed="${s.app === a.id}">${appPicture(d, a)}<span class="app-name">${esc(a.name)}</span></button>`).join("")}</div>` },
     inputs.length && { id: "inputs", label: "Inputs", html: chipChoices(inputs, s.input, "data-input", { glyph: "input", label: "Input" }) },
     sound.length && { id: "sound", label: "Sound", html: chipChoices(sound, s.sound_mode, "data-sound-mode", { label: "Sound mode" }) },
     has(d, "remote") && { id: "keys", label: "Keys", html: `<div class="key-grid">${EXTRA_KEYS.map(([key, label, glyph]) =>
@@ -128,6 +128,31 @@ function keyRow(d, s) {
   return keys.length ? `<div class="remote-keys">${keys.join("")}</div>` : "";
 }
 
+// An app's picture. The TV's own picture when it has one (a.icon is a token from the server,
+// which fetches it from the TV); underneath, and whenever there is none or it fails to load,
+// the app's initials on a colour of its own. We never ship or draw anyone's logo.
+const failedIcons = new Map();          // picture address -> when it last failed (retried after a minute)
+function appPicture(d, a) {
+  const url = a.icon ? api.appIconUrl(d.id, a.id, a.icon) : "";
+  const show = url && !(Date.now() - (failedIcons.get(url) ?? -Infinity) < 60000);
+  return `<span class="app-ic" style="--hue:${appHue(a.name)}" aria-hidden="true">${esc(monogram(a.name))}${
+    show ? `<img src="${esc(url)}" alt="" loading="lazy" decoding="async">` : ""}</span>`;
+}
+
+// Up to two initials: "Prime Video" -> "PV", "YouTube" -> "Y", "Disney+" -> "D".
+export function monogram(name) {
+  const words = String(name ?? "").replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(" ").filter(Boolean);
+  if (!words.length) return "?";
+  return (words.length > 1 ? [...words[0]][0] + [...words[1]][0] : [...words[0]][0]).toUpperCase();
+}
+
+// A steady colour for a name (0-359 on the colour wheel), so an app keeps its colour.
+export function appHue(name) {
+  let h = 0;
+  for (const ch of String(name ?? "")) h = (h * 31 + ch.codePointAt(0)) % 360;
+  return h;
+}
+
 // Well-known streaming apps first (by name), then the rest A–Z.
 const POPULAR = ["youtube", "netflix", "prime video", "disney", "apple tv", "max", "hulu", "spotify", "plex", "twitch"];
 const rank = (name) => {
@@ -144,6 +169,11 @@ export function attachRemote(root, d) {
   const pad = root.querySelector("#touchpad");
   if (pad) attachTouchpad(pad, d);
   for (const el of root.querySelectorAll("[data-glide]")) attachGlide(el, d, GLIDES[el.dataset.glide]);
+  for (const img of root.querySelectorAll(".app-ic img")) {       // no picture after all: the initials show
+    const drop = () => { failedIcons.set(img.getAttribute("src"), Date.now()); img.remove(); };
+    if (img.complete && !img.naturalWidth && img.getAttribute("src")) drop();
+    else img.addEventListener("error", drop, { once: true });
+  }
 }
 
 // Clicks inside the remote. Returns true when handled.

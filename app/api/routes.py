@@ -240,6 +240,16 @@ async def device_map(request):
 
 
 @handle_errors
+async def device_app_icon(request):
+    content_type, body = await _svc(request).app_icon(request.path_params["id"], request.query_params.get("app", ""))
+    # The picture comes from the device: never let it run scripts or load anything.
+    # The address carries a token that changes with the picture, so it can be kept a long time.
+    return Response(body, media_type=content_type, headers={
+        "Cache-Control": "private, max-age=604800", "X-Content-Type-Options": "nosniff",
+        "Content-Security-Policy": "default-src 'none'"})
+
+
+@handle_errors
 async def device_energy(request):
     days = int(request.query_params.get("days", 7))
     return await _svc(request).energy(request.path_params["id"], days)
@@ -608,6 +618,7 @@ routes = [
     Route("/api/v1/settings", put_settings, methods=["PUT"]),
     Route("/api/v1/devices/{id}/energy", device_energy),
     Route("/api/v1/devices/{id}/map", device_map),
+    Route("/api/v1/devices/{id}/app-icon", device_app_icon),
     Route("/api/v1/automations", list_automations, methods=["GET"]),
     Route("/api/v1/automations", save_automation, methods=["POST"]),
     Route("/api/v1/automations/{id}", delete_automation, methods=["DELETE"]),

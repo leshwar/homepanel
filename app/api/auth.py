@@ -33,7 +33,7 @@ PUBLIC = {"/api/v1/auth/session", "/api/v1/auth/sign-in", "/api/v1/auth/sign-out
 MEMBER_OK = [
     ("GET", re.compile(r"^/api/v1/photo-library/next$")),
     ("GET", re.compile(r"^/api/v1/(state|events|weather|sun|photos|photos/[^/]+/image|wallpapers|wallpapers/[^/]+/image)$")),
-    ("GET", re.compile(r"^/api/v1/devices/[^/]+/(energy|map|picture)$")),
+    ("GET", re.compile(r"^/api/v1/devices/[^/]+/(energy|map|picture|app-icon)$")),
     ("POST", re.compile(r"^/api/v1/devices/[^/]+/(command|refresh)$")),
     ("POST", re.compile(r"^/api/v1/(all-off|scenes/[^/]+/run)$")),
     ("PATCH", re.compile(r"^/api/v1/profiles/me$")),

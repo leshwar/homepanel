@@ -65,7 +65,7 @@ lists only their devices and the scenes made of them, and leaves out `adapters`,
 `automations`, `presence` and `settings.presence`.
 
 Members may: `GET /state`, `/events`, `/weather`, `/sun`, `/photos`, `/wallpapers`, the
-energy, map and picture of their devices; `POST` commands and refresh to their devices, `/all-off` (their
+energy, map, picture and app pictures of their devices; `POST` commands and refresh to their devices, `/all-off` (their
 devices only), `/scenes/{id}/run` (scenes made of their devices); and
 change their own profile, Home layout and room layouts. Everything else is for admins.
 
@@ -189,6 +189,13 @@ example after making a DIY scene in the brand's app). They are never polled.
 `GET /devices/{id}/map` returns the floor plan as an image (SVG for Ecovacs) for
 devices with the `map` capability. The state key `map_rev` changes when the map
 does, so add it to the URL to refresh the picture.
+
+`GET /devices/{id}/app-icon?app={app id}&v={token}` returns the picture the device
+itself shows for one of its apps (PNG, JPEG, WebP or GIF). An app in `meta.apps`
+that has one carries an `icon` token, which changes when the picture does; apps
+without a token have no picture (`404`), and the UI shows the app's initials. The
+server fetches the picture from the device, never from anywhere else, and never
+tells the UI where the device keeps it.
 
 Vacuum `state.cleaning` is optional (or `null`), not a new command capability.
 It can contain `run_id`, `status`, `elapsed_seconds`, `area_m2` and `stats_stale`.

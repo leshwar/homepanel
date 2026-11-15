@@ -294,6 +294,10 @@ Per kind:
   rail fills to the reported level. A press that starts on + / − stays a button press
   (dragging off it cancels). Below: Back / Home / Rewind / Play-pause / Forward / Mute.
   Tabs: Apps (well-known ones first), Inputs, Sound, Keys (Menu, Exit and the rarer ones).
+  Each app shows the TV's own picture when the TV has one (`api.appIconUrl`), over the app's
+  initials on a colour of its own (`monogram`, `appHue`), which stay when there is no picture
+  or it fails to load; we never ship or draw logos. Each input shows what it is
+  (`inputGlyph` in `panel.js`: HDMI, antenna, USB, wireless, games console).
   While the TV is off the stage is one big power button, so no key can be pressed by
   mistake. Slides are stepped by `glideDirection` and spaced at least 80 ms apart. The
   pointer pad sends moves batched (one request in flight, ~30 ms apart): drag to move, tap

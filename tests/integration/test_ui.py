@@ -905,6 +905,45 @@ class UITests(unittest.TestCase):
         width = self.page.evaluate("document.querySelector('#sheet').scrollWidth <= 393")
         self.assertTrue(width)
 
+    def test_apps_show_the_tvs_own_pictures_or_initials_and_inputs_show_what_they_are(self):
+        import base64
+        png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+        asked = []
+
+        def picture(route):
+            asked.append(route.request.url)
+            if "app=netflix" in route.request.url:
+                route.fulfill(status=200, content_type="image/png", body=png)
+            else:
+                route.fulfill(status=404, content_type="application/json", body='{"error":"Not found"}')
+        self.page.route("**/api/v1/devices/*/app-icon*", picture)
+        self.open_tv("lr-tv")
+        # The demo TV has no pictures of its own: every app shows its initials, and nothing is fetched.
+        self.assertEqual(self.page.locator("#sheet .app-btn .app-ic").count(), self.page.locator("#sheet .app-btn").count())
+        self.assertEqual(self.page.locator("#sheet .app-ic img").count(), 0)
+        self.assertEqual(self.page.locator('#sheet [data-app="prime"] .app-ic').inner_text(), "PV")
+        self.assertEqual(asked, [])
+        # A TV that has pictures: its picture covers the initials; one that fails falls back to them.
+        self.page.evaluate("""async () => {
+          const {store, upsertDevice} = await import('/js/store.js'), d = store.devices.get('lr-tv');
+          upsertDevice({...d, meta: {...d.meta, apps: d.meta.apps.map(a => ({...a, icon: 'tok'}))}});
+        }""")
+        self.page.wait_for_function("""(() => { const i = document.querySelector('#sheet [data-app="netflix"] .app-ic img');
+          return i && i.complete && i.naturalWidth > 0; })()""")
+        self.page.wait_for_function("""!document.querySelector('#sheet [data-app="youtube"] .app-ic img')""")
+        self.assertEqual(self.page.locator('#sheet [data-app="youtube"] .app-ic').inner_text(), "Y")
+        self.assertTrue(any("app=netflix&v=tok" in u for u in asked))
+        box = self.page.locator('#sheet [data-app="netflix"]').bounding_box()
+        self.assertGreaterEqual(min(box["width"], box["height"]), 48)
+        self.assertLessEqual(self.page.evaluate("document.documentElement.scrollWidth - innerWidth"), 0)
+        # Inputs: a picture of what each one is.
+        self.page.click('#sheet [data-tab="inputs"]')
+        glyph = lambda i: self.page.locator(f'#sheet [data-input="{i}"] use').get_attribute("href")
+        self.assertEqual(glyph("hdmi1"), "#i-hdmi")
+        self.assertEqual(glyph("tv"), "#i-antenna")
+        for name in ("hdmi", "antenna", "usb", "wireless", "game"):          # the pictures exist in the page
+            self.assertEqual(self.page.locator(f"symbol#i-{name}").count(), 1, name)
+
     def slide(self, x, y, dx, dy, steps=12):
         """Press at (x, y), slide by (dx, dy) in small moves, lift."""
         self.page.mouse.move(x, y)

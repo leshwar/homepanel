@@ -342,6 +342,12 @@ class DeviceAdapter(abc.ABC):
         """For Cap.MAP: (content type, image bytes) of the device's floor plan, or None if not ready."""
         return None
 
+    async def app_icon(self, device: Device, app_id: str) -> tuple[str, bytes] | None:
+        """(content type, image bytes) of the picture the device itself shows for one of its
+        apps, or None. An app in meta["apps"] with an "icon" token has one; the token changes
+        when the picture does. Never return a web address: fetch it here, from the device."""
+        return None
+
     def from_manual(self, values: dict) -> Found:
         """Build a device from the manual-add form."""
         raise AdapterError("This brand can't be added by hand. Use Search.")

@@ -34,6 +34,48 @@ class ApiTests(unittest.TestCase):
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"null")
 
+    def test_app_picture_comes_from_the_device_as_a_safe_bitmap(self):
+        png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 40
+        svc = self.server.app.state.service
+        tv = svc.get("lr-tv")
+        adapter, asked = svc._adapter_for(tv), []
+
+        async def app_icon(device, app_id):
+            asked.append(app_id)
+            return ("image/png", png) if app_id == "netflix" else None
+        adapter.app_icon = app_icon
+        saved = [dict(a) for a in tv.meta["apps"]]
+        try:
+            url = f"http://127.0.0.1:{self.port}/api/v1/devices/lr-tv/app-icon?app="
+            with self.assertRaises(urllib.error.HTTPError) as none:          # the device marked no picture for it
+                urllib.request.urlopen(url + "netflix&v=1", timeout=5)
+            self.assertEqual(none.exception.code, 404)
+            self.assertEqual(asked, [])
+            for a in tv.meta["apps"]:
+                a["icon"] = "tok"
+            # The panel is told there is a picture (a token), never where the device keeps it.
+            apps = next(d for d in self.call("GET", "/state")[1]["devices"] if d["id"] == "lr-tv")["meta"]["apps"]
+            self.assertEqual({a["icon"] for a in apps}, {"tok"})
+            for _ in range(2):
+                with urllib.request.urlopen(url + "netflix&v=tok", timeout=5) as r:
+                    self.assertEqual(r.status, 200)
+                    self.assertEqual(r.read(), png)
+                    self.assertEqual(r.headers["Content-Type"], "image/png")
+                    self.assertEqual(r.headers["X-Content-Type-Options"], "nosniff")
+                    self.assertEqual(r.headers["Content-Security-Policy"], "default-src 'none'")
+                    self.assertIn("max-age=", r.headers["Cache-Control"])
+            self.assertEqual(asked, ["netflix"])                              # fetched from the device once
+            for missing in ("youtube&v=tok", "nope", ""):                     # unavailable, unknown, not given
+                with self.assertRaises(urllib.error.HTTPError) as err:
+                    urllib.request.urlopen(url + missing, timeout=5)
+                self.assertEqual(err.exception.code, 404, missing)
+            with self.assertRaises(urllib.error.HTTPError) as err:
+                urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/v1/devices/nope/app-icon?app=netflix", timeout=5)
+            self.assertEqual(err.exception.code, 404)
+        finally:
+            tv.meta["apps"] = saved
+            del adapter.app_icon
+
     def test_quick_commands_to_one_device_end_on_the_last_one(self):
         # Two colors sent 10 ms apart over HTTP (like the color wheel and then a preset). The demo
         # light answers each after a random 30-120 ms, so without ordering the first could land last.

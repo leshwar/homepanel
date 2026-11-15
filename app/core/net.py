@@ -77,6 +77,71 @@ async def http(method: str, url: str, *, json_body: Any = None, headers: dict | 
         return text
 
 
+def image_type(data: bytes) -> str | None:
+    """The kind of picture these bytes are, judged by the bytes themselves (never by what
+    the sender says). Only plain bitmap formats: nothing that can carry a script."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    return None
+
+
+async def http_image(url: str, *, timeout: float = 4.0, verify_tls: bool = True,
+                     max_bytes: int = 1_000_000) -> tuple[str, bytes]:
+    """GET a small picture: (content type, bytes). Raises HttpError if the answer isn't
+    a PNG, JPEG, WebP or GIF, or is larger than max_bytes."""
+    parts = urlsplit(url)
+    secure = parts.scheme == "https"
+    host, port = parts.hostname, parts.port or (443 if secure else 80)
+    path = (parts.path or "/") + ("?" + parts.query if parts.query else "")
+    ctx = None
+    if secure:
+        ctx = ssl.create_default_context()
+        if not verify_tls:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+    async def _do() -> bytes:
+        reader, writer = await asyncio.open_connection(host, port, ssl=ctx, server_hostname=host if secure else None)
+        try:
+            writer.write((f"GET {path} HTTP/1.1\r\nHost: {host}:{port}\r\nConnection: close\r\n"
+                          "Accept: image/*\r\nUser-Agent: HomePanel/1.0\r\n\r\n").encode())
+            await writer.drain()
+            raw = b""
+            while len(raw) <= max_bytes + 16_384:                 # the picture plus room for headers
+                chunk = await reader.read(65_536)
+                if not chunk:
+                    break
+                raw += chunk
+            else:
+                raise HttpError(413, "That picture is too large.")
+        finally:
+            writer.close()
+        return raw
+
+    raw = await asyncio.wait_for(_do(), timeout)
+    head, _, payload = raw.partition(b"\r\n\r\n")
+    lines = head.decode(errors="replace").split("\r\n")
+    try:
+        status = int(lines[0].split()[1])
+    except (IndexError, ValueError):
+        raise HttpError(502, "Not an HTTP answer.")
+    headers = {ln.split(":", 1)[0].lower(): ln.split(":", 1)[1].strip() for ln in lines[1:] if ":" in ln}
+    if status >= 400:
+        raise HttpError(status, "No picture.")
+    if headers.get("transfer-encoding", "").lower() == "chunked":
+        payload = _dechunk(payload)
+    kind = image_type(payload)
+    if not kind or len(payload) > max_bytes:
+        raise HttpError(415, "Not a picture this panel shows.")
+    return kind, payload
+
+
 def _dechunk(data: bytes) -> bytes:
     out = b""
     while data:

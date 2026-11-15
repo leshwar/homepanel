@@ -264,9 +264,14 @@ html[data-tiles="light"] .sheet {
 .num.small { font-size: calc(14px * var(--text-scale)); color: var(--haze); }
 
 .app-grid, .key-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 8px; }
-.app-btn { min-height: 56px; border-radius: 18px; padding: 6px 12px; font-weight: 600; font-size: calc(15px * var(--text-scale));
-           display: flex; align-items: center; justify-content: center; min-width: 0; text-align: center; line-height: 1.2; }
-.app-btn span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.app-grid { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
+.app-btn { min-height: 60px; border-radius: 18px; padding: 8px 12px 8px 8px; font-weight: 600; font-size: calc(15px * var(--text-scale));
+           display: flex; align-items: center; gap: 10px; min-width: 0; text-align: left; line-height: 1.2; }
+.app-name { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+/* The app's picture: its initials on its own colour, covered by the TV's picture when there is one. */
+.app-ic { position: relative; flex: none; width: 44px; height: 44px; border-radius: 12px; overflow: hidden; display: grid; place-items: center;
+          background: hsl(var(--hue, 220) 36% 30%); color: #fff; font-size: 16px; font-weight: 700; letter-spacing: .02em; }
+.app-ic img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #151515; }
 .app-btn[aria-pressed="true"] { background: var(--selected); color: var(--indigo); border-color: var(--indigo); }
 .key-grid .btn { min-height: 56px; height: auto; justify-content: flex-start; gap: 10px; padding: 6px 14px; border-radius: 18px;
                  border: 1px solid var(--key-edge); box-shadow: var(--raise); background: var(--key); }

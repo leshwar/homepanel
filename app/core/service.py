@@ -256,6 +256,7 @@ class HomeService:
         self.unsupported: dict[str, str] = {}         # adapter id -> why it can't run on this Python
         self._subscribers: dict[asyncio.Queue, Callable[[dict], bool] | None] = {}
         self.closing = False                          # the server is shutting down: live streams end
+        self._app_icons: dict[tuple, tuple[str, bytes]] = {}   # (device, app, token) -> picture from the device
         self._pollers: dict[str, asyncio.Task] = {}
         self._soon: dict[str, asyncio.TimerHandle] = {}   # pushed changes waiting to refresh
         self._failures: dict[str, int] = {}
@@ -755,6 +756,23 @@ class HomeService:
         if not img:
             raise AdapterError("The map isn't ready yet. Try again in a minute.")
         return img
+
+    async def app_icon(self, device_id: str, app_id: str) -> tuple[str, bytes]:
+        """The picture the device shows for one of its apps. KeyError if it has none (or it
+        can't be fetched right now); the panel then shows the app's initials instead."""
+        d = self.get(device_id)
+        token = next((a.get("icon") for a in d.meta.get("apps", []) if a.get("id") == app_id), None)
+        if not token:
+            raise KeyError(app_id)
+        key = (d.id, app_id, token)
+        if key not in self._app_icons:
+            img = await asyncio.wait_for(self._adapter_for(d).app_icon(d, app_id), REFRESH_TIMEOUT)
+            if not img:
+                raise KeyError(app_id)
+            if len(self._app_icons) >= 300:                      # a household's TVs have far fewer
+                self._app_icons.pop(next(iter(self._app_icons)))
+            self._app_icons[key] = img
+        return self._app_icons[key]
 
     async def energy(self, device_id: str, days: int = 7) -> dict:
         self.get(device_id)

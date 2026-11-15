@@ -103,6 +103,21 @@ export function powerHero(d, hint = "") {
 // Choices as chips: one tap, the current one highlighted.
 export function chipChoices(options, current, attr, { glyph = "", label = "" } = {}) {
   if (!options.length) return "";
+  const pic = (o) => (glyph === "input" ? inputGlyph(o) : glyph);      // inputs get a picture of what they are
   return `<div class="chips" role="group" ${label ? `aria-label="${esc(label)}"` : ""}>${options.map((o) =>
-    `<button class="chip" ${attr}="${esc(o.id)}" aria-pressed="${String(o.id) === String(current)}">${glyph ? icon(glyph) : ""}<span>${esc(o.name)}</span></button>`).join("")}</div>`;
+    `<button class="chip" ${attr}="${esc(o.id)}" aria-pressed="${String(o.id) === String(current)}">${pic(o) ? icon(pic(o)) : ""}<span>${esc(o.name)}</span></button>`).join("")}</div>`;
+}
+
+// The picture for an input, from its name and id. What's plugged in ("PlayStation") says more
+// than the socket ("HDMI 2"), so that is checked first. Anything unrecognised keeps the plain plug.
+const INPUT_GLYPHS = [
+  ["game", /playstation|\bps[345]\b|xbox|nintendo|game|console/],
+  ["wireless", /bluetooth|wi-?fi|airplay|chromecast/],
+  ["usb", /usb/],
+  ["hdmi", /hdmi|\be?arc\b/],
+  ["antenna", /antenna|aerial|live tv|tuner|cable|satellite|\b[ad]?tv\b/],
+];
+export function inputGlyph(o) {
+  const text = `${o?.name ?? ""} ${o?.id ?? ""}`.toLowerCase();
+  return (INPUT_GLYPHS.find(([, rx]) => rx.test(text)) || ["input"])[0];
 }

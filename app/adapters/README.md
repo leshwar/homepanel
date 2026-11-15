@@ -117,7 +117,10 @@ Media players without a full remote can declare `Cap.MEDIA` instead of
 `Cap.REMOTE`: the UI then shows play/pause but no D-pad. TVs with an on-screen pointer
 (like LG's Magic Remote) can declare `Cap.POINTER` and handle `Action.POINTER`
 (`{"dx","dy"}`, `{"click": True}` or `{"scroll": n}`); the remote then gets a touchpad. Put lists of TV apps/inputs in `device.meta["apps"]` /
-`["inputs"]` as `[{id, name}]`. Sound bars and speakers use `Kind.SPEAKER`: they get the same volume,
+`["inputs"]` as `[{id, name}]`. If the device serves its own picture for an app, add an `icon` token to that
+app (any short string that changes when the picture does) and implement `app_icon(device, app_id) ->
+(content_type, bytes)`: fetch it from the device's own address with `net.http_image` (bitmaps only, size-capped)
+and keep the address out of `meta`. Apps without a token show their initials. Don't ship logos with an adapter. Sound bars and speakers use `Kind.SPEAKER`: they get the same volume,
 mute and input controls as a TV without the remote, plus sound mode chips from `Cap.SOUND_MODE` and
 `device.meta["sound_modes"]` (the service rejects ids that aren't in that list).
 

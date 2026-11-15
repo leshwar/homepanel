@@ -20,7 +20,7 @@ const statusText = d => d.state?.online === false ? 'Offline' : d.state?.on ? (d
 const needsAttention = d => !!d.state?.problem;
 const kelvinToRgb = () => [255, 200, 150], WORN_PERCENT = 10, toast = () => {};
 const store = {devices: new Map()}, command = () => {}, bindRelativeRange = () => {};
-const api = {mapUrl: (id, rev) => `/map/${id}?v=${rev}`}, storage = {get: (k, d) => d, set() {}};
+const api = {mapUrl: (id, rev) => `/map/${id}?v=${rev}`, appIconUrl: (id, app, token) => `/icon/${id}/${app}?v=${token}`}, storage = {get: (k, d) => d, set() {}};
 globalThis.addEventListener ??= () => {}; globalThis.document ??= {addEventListener() {}, hidden: false};
 """
 PANEL_STUBS = """
@@ -114,7 +114,7 @@ class PanelTests(unittest.TestCase):
 
     def test_power_button_and_chips(self):
         self.run_js("panel.js", """
-          const {powerHero, chipChoices} = await import(process.argv[1]);
+          const {powerHero, chipChoices, inputGlyph} = await import(process.argv[1]);
           const plug = {name:'Kettle', caps:['power'], state:{online:true, on:true}};
           assert.match(powerHero(plug), /class="power-orb" data-power aria-pressed="true"[\\s\\S]*aria-label="Turn off Kettle"[\\s\\S]*<b>On<\\/b>/);
           assert.match(powerHero({...plug, state:{online:true, on:false}}, 'Turn it on to use the remote.'), /<b>Off<\\/b>[\\s\\S]*Turn it on to use the remote/);
@@ -123,7 +123,15 @@ class PanelTests(unittest.TestCase):
           const chips = chipChoices([{id:'arc', name:'TV <ARC>'}, {id:1, name:'Optical'}], '1', 'data-input', {glyph:'input', label:'Input'});
           assert.match(chips, /role="group" aria-label="Input"/);
           assert.match(chips, /data-input="arc" aria-pressed="false"/); assert.match(chips, /data-input="1" aria-pressed="true"/);
-          assert.match(chips, /TV &lt;ARC>/); assert.equal(count(chips, /data-i="input"/g), 2);
+          assert.match(chips, /TV &lt;ARC>/);
+          assert.equal(count(chips, /data-i="hdmi"/g), 1); assert.equal(count(chips, /data-i="input"/g), 1);   // each input gets its own picture
+          // What's plugged in says more than the socket; unknown inputs keep the plain plug.
+          for (const [name, id, glyph] of [['HDMI 1', 'HDMI_1', 'hdmi'], ['PlayStation 5', 'HDMI_2', 'game'], ['Xbox', 'hdmi3', 'game'],
+            ['TV', 'tv', 'antenna'], ['Live TV', 'com.webos.app.livetv', 'antenna'], ['Antenna', 'ANT', 'antenna'], ['Bluetooth', 'bt', 'wireless'],
+            ['Wi-Fi', 'wifi', 'wireless'], ['USB 1', 'usb1', 'usb'], ['TV (HDMI ARC)', 'arc', 'hdmi'], ['Optical', 'optical', 'input'],
+            ['AV', 'AV_1', 'input']]) assert.equal(inputGlyph({name, id}), glyph, name);
+          assert.equal(inputGlyph({}), 'input'); assert.equal(inputGlyph(null), 'input');
+          assert.equal(chipChoices([{id:'ai', name:'AI Sound Pro'}], 'ai', 'data-sound-mode', {label:'Sound mode'}).includes('data-i='), false);
           assert.equal(chipChoices([], null, 'data-input'), '');
         """, STUBS)
 
@@ -161,7 +169,7 @@ class PanelTests(unittest.TestCase):
 
     def test_tv_stage_and_tabs_follow_capabilities(self):
         self.run_js("remote.js", """
-          const {remotePanel, glideDirection} = await import(process.argv[1]);
+          const {remotePanel, glideDirection, monogram, appHue} = await import(process.argv[1]);
           const tv = (caps, state = {}, meta = {}) => ({id:'t', name:'TV', kind:'tv', caps, meta, state:{online:true, on:true, ...state}});
           const full = ['power','volume','mute','channel','remote','media','apps','inputs','sound_mode'];
           const meta = {apps:[{id:'z', name:'Zebra'}, {id:'n', name:'Netflix'}, {id:'y', name:'YouTube'}], inputs:[{id:'hdmi1', name:'HDMI 1'}],
@@ -182,6 +190,16 @@ class PanelTests(unittest.TestCase):
           const apps = p.tabs[0].html;                                             // well-known apps first, then A to Z
           assert.ok(apps.indexOf('YouTube') < apps.indexOf('Netflix') && apps.indexOf('Netflix') < apps.indexOf('Zebra'));
           assert.match(apps, /data-app="n" aria-pressed="true"/);
+          // App pictures: initials on the app's own colour; the TV's picture on top when it has one.
+          assert.equal(monogram('Prime Video'), 'PV'); assert.equal(monogram('YouTube'), 'Y'); assert.equal(monogram('Disney+'), 'D');
+          assert.equal(monogram('  apple tv+ '), 'AT'); assert.equal(monogram('3-2-1 Go'), '32'); assert.equal(monogram('++'), '?'); assert.equal(monogram(null), '?');
+          assert.equal(appHue('Netflix'), appHue('Netflix')); assert.notEqual(appHue('Netflix'), appHue('Hulu'));
+          assert.ok(Number.isInteger(appHue('Ünïcödé 📺')) && appHue('Ünïcödé 📺') >= 0 && appHue('Ünïcödé 📺') < 360);
+          assert.equal(count(apps, /class="app-ic"/g), 3); assert.doesNotMatch(apps, /<img/);        // no token: initials only
+          const pics = remotePanel(tv(full, {app:'n'}, {...meta, apps:[{id:'n', name:'Netflix', icon:'t0k3n'}, {id:'x"y', name:'<b>', icon:'t'}]})).tabs[0].html;
+          assert.match(pics, /<img src="\\/icon\\/[^"\\/]+\\/n\\?v=t0k3n" alt=""/);
+          assert.match(pics, /aria-hidden="true">N<img/);                                              // initials stay underneath
+          assert.doesNotMatch(pics, /<b>/); assert.match(pics, /class="app-name">&lt;b>/);
           assert.match(p.tabs[3].html, /data-key="MENU"/); assert.match(p.tabs[3].html, /data-key="EXIT"/);
           assert.doesNotMatch(p.tabs[3].html, /REWIND|FORWARD/);                               // those sit under the pad now
           assert.equal(remotePanel(tv(full, {input:'hdmi1'}, meta)).prefer, 'inputs');

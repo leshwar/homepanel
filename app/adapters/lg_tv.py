@@ -10,16 +10,17 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
+import hashlib
 import ipaddress
 import logging
 import time
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 import uuid
 import xml.etree.ElementTree as ET
 
 from ..core.adapter import (Action, AdapterError, Cap, Device, DeviceAdapter, Field, Found, Key,
                             Kind, PairingRequired, register)
-from ..core.net import (http, local_subnet_hosts, mac_from_arp, normalize_mac, port_open, scan_ports,
+from ..core.net import (HttpError, http, http_image, local_subnet_hosts, mac_from_arp, normalize_mac, port_open, scan_ports,
                         ssdp_search, wake_on_lan)
 
 WEBOS_PORTS = (3001, 3000)   # webOS remote control: secure, then plain (older TVs)
@@ -91,6 +92,29 @@ CAPS = [Cap.POWER, Cap.VOLUME, Cap.VOLUME_LEVEL, Cap.MUTE, Cap.CHANNEL, Cap.REMO
         Cap.POINTER]
 
 
+def icon_url(app: dict, ip: str) -> str | None:
+    """Where the TV serves the picture for one of its apps, pinned to the TV's own address.
+
+    The TV reports a web address per app (sometimes under its own host name, sometimes a file
+    path on the TV, which we can't fetch). Whatever host it names, we only ever ask the TV."""
+    if not ip:
+        return None
+    for key in ("largeIcon", "icon"):
+        raw = app.get(key)
+        if not isinstance(raw, str) or not raw.startswith(("http://", "https://")):
+            continue
+        try:
+            parts = urlsplit(raw)
+            port = parts.port
+        except ValueError:
+            continue
+        if not parts.path.startswith("/"):
+            continue
+        host = f"[{ip}]" if ":" in ip else ip
+        return urlunsplit((parts.scheme, f"{host}:{port}" if port else host, parts.path, parts.query, ""))
+    return None
+
+
 def _tv(client, name, default=None):
     """aiowebostv moved state into client.tv_state in newer versions; support both."""
     st = getattr(client, "tv_state", None)
@@ -127,6 +151,7 @@ class LGTVAdapter(DeviceAdapter):
         self._operations: dict[str, set[asyncio.Task]] = {}
         self._recover_after: dict[str, float] = {}
         self._forgotten: set[str] = set()
+        self._icon_urls: dict[str, dict[str, str]] = {}      # device id -> app id -> where the TV serves its picture
         self._stopped = False
 
     @asynccontextmanager
@@ -265,11 +290,26 @@ class LGTVAdapter(DeviceAdapter):
         apps = _tv(c, "apps") or {}
         inputs = _tv(c, "inputs") or {}
         if apps:
-            device.meta["apps"] = sorted(({"id": k, "name": v.get("title", k)} for k, v in apps.items()
-                                          if not v.get("systemApp")), key=lambda a: a["name"].lower())
+            shown = {k: v for k, v in apps.items() if not v.get("systemApp")}
+            # The TV serves a picture for each app. Keep where it is to ourselves; the panel
+            # only learns that there is one (a token that changes when the picture does).
+            urls = {k: u for k, v in shown.items() if (u := icon_url(v, device.config.get("ip") or ""))}
+            self._icon_urls[device.id] = urls
+            device.meta["apps"] = sorted(({"id": k, "name": v.get("title", k),
+                                           **({"icon": hashlib.sha1(urls[k].encode()).hexdigest()[:10]} if k in urls else {})}
+                                          for k, v in shown.items()), key=lambda a: a["name"].lower())
         if inputs:
             device.meta["inputs"] = [{"id": v.get("id", k), "name": v.get("label", k), "app_id": v.get("appId")}
                                      for k, v in inputs.items()]
+
+    async def app_icon(self, device: Device, app_id: str) -> tuple[str, bytes] | None:
+        url = self._icon_urls.get(device.id, {}).get(app_id)
+        if not url:
+            return None                      # not seen since this panel started, or the app has no picture
+        try:
+            return await http_image(url, verify_tls=False)    # the TV signs its own certificate
+        except (HttpError, OSError, asyncio.TimeoutError, ValueError):
+            return None
 
     async def forget(self, device):
         self._forgotten.add(device.id)

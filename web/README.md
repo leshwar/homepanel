@@ -48,7 +48,7 @@ web/
     ├── effects.js  light effects in the light sheet: searchable scenes (Scenes / DIY / Snapshots),
     │               music mode + sensitivity, strip parts (tap parts, then a color), toggles
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
-    ├── photo-tile.js private album tile: decoded crossfade, visibility lifecycle and object-URL cleanup
+    ├── photo-tile.js shared private photo stream: tile links, idle backdrop, decoded crossfade and URL cleanup
     ├── clockfaces.js  resting clock faces (digital, analog, words, date, night) + burn-in drift
     ├── locate.js   "Use my location": device location, else approximate from the server
     └── settings.js settings pages: add devices, edit, rooms, scenes, display, diagnostics
@@ -196,6 +196,8 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   There are no separate Compact, Free or Overview modes.
   Header space is reserved in both normal and Edit views so grips never replace
   device icons or cover labels; entering Edit does not shift tile geometry.
+  Home headings share one text size, baseline and inset; room name/status groups
+  align from the top even when a name wraps.
   Home starts with time/date on the left and actionable device
   notifications on the right (stacked on phones), but both are ordinary editable
   widgets. Alerts are real offline/pairing,
@@ -238,21 +240,35 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   existing typography without zooming the UI or reducing touch targets.
 - **Resting clock.** The selected face is preserved. Date and day keeps its calendar
   identity but makes time primary, with smaller weekday/date and compact weather.
+  The group is centered with moderately bolder type and at most eight pixels of
+  burn-in drift around center. Already-shared Photo library albums fill the backdrop
+  with aspect-preserving cover; a full-screen scrim keeps text readable. The same
+  decoded stream supplies the tile and idle backdrop without competing pollers.
   The 12-hour faces include AM/PM; the 24-hour preference still applies. Daytime is
   readable warm text on charcoal. With the existing night-clock preference, 10 PM–7 AM
   dims the face on black and hides secondary weather/location details; Dim night stays
   dim at any hour. A single non-interactive vacuum line shows relevant activity or
   attention, selected deterministically from the current profile's visible devices.
   Battery and previous jobs never become progress. Weather uses the existing shared
-  cache, unchanged face markup retains its DOM nodes, and burn-in drift remains bounded.
+  cache and unchanged face markup retains its DOM nodes. Dim night and the configured
+  10 PM–7 AM night window suppress photo backgrounds and their requests. Missing
+  photos leave a neutral fallback with a setup/error message, not sample pictures.
   Reduced motion removes transitions. The complete wake gesture, including its
   generated click or key release, is swallowed before the underlying controls can act.
 - **Photos tile.** Add Photos from the Home editor after an admin configures
   Settings → Photo library. Only explicitly selected albums and profiles are used.
+  The whole oriented photo fits centered inside the tile below its header and above
+  the resize corner, preserving aspect ratio with neutral letterboxing rather than
+  cropping. Wallpaper and the uploaded fullscreen frame keep their own sizing.
   One bounded stream supplies decoded images to the screen's tiles, without
   replacing the current image while the next loads or fading to the same image.
-  Requests/timers pause offscreen, behind panels/idle screens, and during editing.
-  Profile/source changes, removal and errors clear private images/object URLs;
+  Clicking the displayed image opens its exact Immich web page in a new tab,
+  without API credentials or a referrer; normal Immich browser sign-in may be needed.
+  Rotation pauses for a photo gesture so its destination cannot change under a tap.
+  Headers/grips and idle wake gestures never open that link.
+  Requests/timers pause when neither tile nor daytime idle background is visible,
+  behind other panels, and during editing. Profile/source changes and errors clear
+  private images, links and object URLs;
   reduced motion disables crossfade. Existing local photo-frame uploads are untouched.
 
 Manrope is by The Manrope Project Authors, licensed under SIL OFL 1.1.

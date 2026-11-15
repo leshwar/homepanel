@@ -108,7 +108,7 @@ export const api = {
       throw new ApiError(data?.error || "Photo previews are unavailable.", response.status);
     }
     return { blob: await response.blob(), token: response.headers.get("X-Photo-Token"),
-      generation: response.headers.get("X-Photo-Generation") };
+      generation: response.headers.get("X-Photo-Generation"), link: response.headers.get("X-Photo-Link") };
   },
   deletePhoto: (id) => call("DELETE", `/photos/${encodeURIComponent(id)}`),
   uploadPhoto: (file) => sendFile("POST", `/photos?name=${encodeURIComponent(file.name || "photo")}`, file),

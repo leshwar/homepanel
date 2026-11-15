@@ -460,7 +460,7 @@ function setupChrome() {
   const editorChrome = () => { $(".topbar-actions").inert = editing(); clearance(); };
   new MutationObserver(editorChrome).observe(document.documentElement, {attributes:true,attributeFilter:["data-layout-editing"]});
   for (const type of ["pointerdown","click","keydown","input","change"]) document.addEventListener(type,e=>{
-    if (editing() && e.target.closest(".topbar-actions, .tile, [data-room-off], [data-scene], [data-new-scene], [data-attention], [data-ambient], [data-retry-weather], [data-photo-settings], [data-setup-weather]")) {
+    if (editing() && e.target.closest(".topbar-actions, .tile, [data-room-off], [data-scene], [data-new-scene], [data-attention], [data-ambient], [data-retry-weather], [data-photo-settings], [data-photo-link], [data-setup-weather]")) {
       e.preventDefault();e.stopImmediatePropagation();
     }
   },true);

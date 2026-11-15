@@ -17,7 +17,8 @@ Typing keys is easiest from a phone or laptop: open `http://homepanel.local:8080
 
 ## Immich photo library
 
-This is a Home **Photos tile**, separate from the uploaded full-screen photo frame.
+This supplies the Home **Photos tile** and daytime resting-clock backgrounds,
+separate from the uploaded full-screen photo frame.
 In **Settings → Photo library**, enter the existing server's base URL and a
 read-only API key with **`album.read`, `asset.read`, `asset.view`**. Do not enter
 an Immich account password. Use a direct URL on a trusted LAN/private network or
@@ -30,6 +31,11 @@ to those permitted panel viewers; never select a private album unintentionally.
 An unprotected one-tap profile is not a security boundary: use optional profile
 passwords and trusted-network access when the selected photos are private.
 Add the tile with **Home → Edit → Add → Photos**, and move/resize it normally.
+The tile fits the complete image without cropping. Click a loaded photo to open
+that asset in Immich in a new tab; your browser may ask you to sign in there.
+No API key is placed in that link. Resting backgrounds use the same permitted
+albums, fill the screen, and stay dark during Dim night or the configured night
+window. The first touch on the resting clock only wakes the panel.
 Only timeline images from the selected albums are eligible; no entire-library
 shuffle, original downloads, EXIF display or face metadata is requested.
 

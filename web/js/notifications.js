@@ -24,7 +24,7 @@ export function attentionItems(devices) {
 
 export function notificationsWidget() {
   return `<section class="w-fill home-attention" aria-label="Device notifications">
-      <header><h2>Notifications</h2><span class="attention-count" role="status"></span></header>
+      <header><h2 class="widget-heading">Notifications</h2><span class="attention-count" role="status"></span></header>
       <div class="attention-list"></div><p class="attention-clear" hidden>${icon("check")}All clear · No devices need attention</p>
     </section>`;
 }

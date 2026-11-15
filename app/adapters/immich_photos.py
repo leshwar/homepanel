@@ -177,3 +177,6 @@ class PhotoSource:
 
     def preview(self, photo: str, deadline) -> bytes:
         return self.request(f"/assets/{asset_id(photo)}/thumbnail?size=preview", image=True, deadline=deadline)
+
+    def page_url(self, photo: str) -> str:
+        return f"{self.url}/photos/{asset_id(photo)}"

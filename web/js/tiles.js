@@ -125,7 +125,7 @@ export function bindTiles(root, { enabled = () => true, onLongPress = null } = {
   root.addEventListener("pointerdown", (e) => {
     release();
     long = false;
-    if (!enabled() || e.button > 0 || e.target.closest("input, select, label, .wmenu-wrap")) return;
+    if (!enabled() || e.button > 0 || e.target.closest("input, select, label, .wmenu-wrap, [data-photo-link]")) return;
     const tile = e.target.closest(".tile");
     if (e.target.closest("button:disabled")) return;
     start = { x: e.clientX, y: e.clientY, pointer: e.pointerId, tile, moved: false };

@@ -18,9 +18,13 @@ profile grant; an unpermitted profile receives 404.
 | GET | `/photo-library/albums` | Available album IDs/names; admin-only |
 | PUT | `/photo-library/source` | `{albums:[id],profiles:[id],seconds:30..300}`; one to eight explicit albums, no whole-library fallback |
 | DELETE | `/photo-library` | Disconnect and invalidate private caches |
-| GET | `/photo-library/next` | Authorized, metadata-free JPEG preview with `X-Photo-Token` and `X-Photo-Generation`; `private, no-store` |
+| GET | `/photo-library/next` | Authorized, metadata-free JPEG preview with `X-Photo-Token`, `X-Photo-Generation` and `X-Photo-Link`; `private, no-store` |
 
 `next` accepts no source URL or asset ID: it is not an arbitrary image proxy.
+`X-Photo-Link` is the exact displayed asset's normal web page, built from the
+configured trusted server/base path and validated asset ID after authorization.
+It contains no API key or share token. Opening it does not grant an Immich browser
+session; standard browser sign-in may be required.
 The backend requests only timeline images, excludes trash/offline/archive/hidden/
 locked content, independently verifies album membership and rechecks privacy
 before fetching a bounded preview. Redirects and environment HTTP proxies are

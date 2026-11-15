@@ -102,6 +102,13 @@ class UnifiedGridTests(unittest.TestCase):
             self.assertAlmostEqual(grip["y"],8,delta=1)
             self.assertEqual(grip["covered"],[],grip)
 
+    def heading_positions(self, where):
+        return self.page.locator(("#home" if where=="home" else "#grid")+" .layout-item").evaluate_all("""tiles=>tiles.map(t=>{
+          const h=t.querySelector('.widget-heading,.tile-name'),r=t.getBoundingClientRect(),range=document.createRange();
+          range.selectNodeContents(h);const q=range.getClientRects()[0],s=getComputedStyle(h);
+          return {x:q.x-r.x,y:q.y-r.y,font:s.fontSize,lineHeight:s.lineHeight};
+        })""")
+
     def test_normal_edit_cancel_geometry_and_safe_controls_all_sizes_themes_fonts(self):
         page=self.page
         for where,theme,font,(width,height) in itertools.product(("home","rooms"),("dark","light"),("small","medium","large"),
@@ -111,8 +118,14 @@ class UnifiedGridTests(unittest.TestCase):
                 page.evaluate("async p=>{const s=await import('/js/store.js');Object.assign(s.store.settings,p);s.emit('all');}",
                               {"font_size":font,"tile_style":theme})
                 self.show(where);before=self.geometry(where)
+                headings=self.heading_positions(where)
+                for field in ("x","y"):
+                    self.assertLessEqual(max(h[field] for h in headings)-min(h[field] for h in headings),1,headings)
+                self.assertEqual(len({h["font"] for h in headings}),1)
+                self.assertEqual(len({h["lineHeight"] for h in headings}),1)
                 self.edit(where)
                 self.assertEqual(self.geometry(where),before)
+                self.assertEqual(self.heading_positions(where),headings)
                 root=page.locator("#home" if where=="home" else "#grid")
                 count=root.locator(".layout-item").count()
                 self.assertEqual(root.locator("[data-grip]").count(),count)
@@ -134,6 +147,7 @@ class UnifiedGridTests(unittest.TestCase):
                 self.assertTrue(page.locator("#settings").is_hidden())
                 self.cancel(where)
                 self.assertEqual(self.geometry(where),before)
+                self.assertEqual(self.heading_positions(where),headings)
                 self.assertEqual(root.locator("[data-grip]").count(),0)
 
     def test_minimum_home_sizes_keep_top_left_grips_clear_of_content(self):
@@ -148,6 +162,20 @@ class UnifiedGridTests(unittest.TestCase):
                 self.edit("home");self.assert_grips_clear(self.page.locator("#home"))
                 self.assertEqual(self.geometry("home"),before)
                 self.cancel("home");self.assertEqual(self.geometry("home"),before)
+
+    def test_long_headers_wrap_without_shifting_neighbor_titles_or_hiding_grips(self):
+        self.seed("home",{"version":4,"widgets":[
+            {"id":"clock","type":"clock","size":"2x3"},
+            {"id":"long","type":"zone","size":"2x3","options":{"tz":"America/Los_Angeles","label":"Pacific coast local time"}},
+            {"id":"photos","type":"photos","size":"2x3"},
+        ]})
+        for font in ("small","medium","large"):
+            self.page.set_viewport_size({"width":390,"height":844})
+            self.page.evaluate("async font=>{const s=await import('/js/store.js');s.store.settings.font_size=font;s.emit('all');}",font)
+            self.show("home")
+            headings=self.heading_positions("home")
+            self.assertLessEqual(max(h["y"] for h in headings)-min(h["y"] for h in headings),1)
+            self.edit("home");self.assert_grips_clear(self.page.locator("#home"));self.cancel("home")
 
     def test_every_home_type_moves_and_resizes_with_persistent_exact_geometry(self):
         page=self.page

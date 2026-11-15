@@ -95,7 +95,7 @@ const updateCounts = (el) => updateRoomCounts(el, (r) => devicesIn(r).filter(isO
 function clockWidget(w, now) {
   const [t, ampm] = splitTime(fmt(now));
   return `<button class="w-fill w-clock" data-ambient aria-label="Show the resting clock">
-      <span class="w-greet" data-greet>${esc(greeting(now))}</span>
+      <span class="w-greet widget-heading" data-greet>${esc(greeting(now))}</span>
       <span class="w-time"><span data-time>${esc(t)}</span><small data-ampm>${esc(ampm)}</small></span>
       <span class="w-date" data-date>${esc(now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }))}</span>
     </button>`;
@@ -109,7 +109,7 @@ function zoneWidget(w, now) {
   const label = w.options?.label || zoneName(tz);
   const region = zoneName(tz);
   return `<div class="w-fill w-zone" data-zone="${esc(tz)}">
-      <span class="w-label">${esc(label)}${region !== label ? ` <em>${esc(region)}</em>` : ""}</span>
+      <span class="w-label widget-heading">${esc(label)}${region !== label ? ` <em>${esc(region)}</em>` : ""}</span>
       <span class="w-time small"><span data-time>${esc(t)}</span><small data-ampm>${esc(ampm)}</small></span>
       <span class="w-sub" data-zone-line>${esc(zoneLine(tz, now))}</span>
     </div>`;
@@ -123,7 +123,7 @@ function weatherWidget() {
       ? "Weather is unavailable. Check the connection and try again."
       : "Show the weather here and let the background follow the sky.";
     return `<div class="w-fill w-weather off" data-weather-status="${state}">
-        <span class="w-label">Weather</span>
+        <span class="w-label widget-heading">Weather</span>
         <p role="status">${message}</p>
         ${state === "loading" ? "" : state === "unavailable"
           ? `<button class="btn small" data-retry-weather>Retry weather</button>`
@@ -132,7 +132,7 @@ function weatherWidget() {
   }
   const place = store.settings.place_name || "";
   return `<div class="w-fill w-weather" data-weather-status="ready">${weatherBackdrop(wx)}
-      <span class="w-label">${esc(place || "Weather")}</span>
+      <span class="w-label widget-heading">${esc(place || "Weather")}</span>
       <span class="w-wx">${weatherIcon(wx.condition, wx.is_day)}<b>${esc(wx.temperature)}°</b></span>
       <span class="w-sub">${esc(wx.label)}${wx.high != null ? ` · H ${esc(wx.high)}° L ${esc(wx.low)}°` : ""}</span>
     </div>`;
@@ -145,7 +145,7 @@ function scenesWidget() {
   // Nothing saved yet: say what a scene is, so the tile isn't a lone button.
   const hint = !store.scenes.length && store.devices.size
     ? `<p class="w-hint">Save device settings as a scene.</p>` : "";
-  return `<div class="w-fill w-scenes"><span class="w-label">Scenes</span><div class="w-scene-list">${items.join("")}</div>${hint}</div>`;
+  return `<div class="w-fill w-scenes"><span class="w-label widget-heading">Scenes</span><div class="w-scene-list">${items.join("")}</div>${hint}</div>`;
 }
 
 function roomsWidget() {
@@ -153,7 +153,7 @@ function roomsWidget() {
   const rows = groups.map((r) =>
     `<button class="w-room" data-go-room="${esc(r)}">${roomIcon(r)}<span>${esc(r === OTHER ? "Other" : r)}</span>
       <b class="count" data-room-count="${esc(r)}" hidden></b></button>`);
-  return `<div class="w-fill w-rooms"><span class="w-label">Rooms</span><div class="w-room-list">${
+  return `<div class="w-fill w-rooms"><span class="w-label widget-heading">Rooms</span><div class="w-room-list">${
     rows.join("") || `<p>Add devices and rooms to see them here.</p>`}</div></div>`;
 }
 
@@ -181,7 +181,7 @@ export function favouritesStale() {
 function favouritesWidget(w) {
   const list = favouriteDevices(w.options, store.devices.values());
   const rows = list.map((d) => tileHtml(d, { ctx: "home", sub: roomIfAmbiguous(d, list) }));
-  return `<div class="w-fill w-favs"><span class="w-label">Favourites</span><div class="w-fav-list">${
+  return `<div class="w-fill w-favs"><span class="w-label widget-heading">Favourites</span><div class="w-fav-list">${
     rows.join("") || `<p>Add a device to see it here.</p>`}</div></div>`;
 }
 

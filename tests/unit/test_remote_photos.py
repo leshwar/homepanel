@@ -29,7 +29,8 @@ class PhotoPolicyTests(unittest.IsolatedAsyncioTestCase):
         self.fake = SimpleNamespace(url="http://photo.local:2283", verify=lambda: {"major": 2, "minor": 0, "patch": 0},
             albums=lambda: [{"id": ALBUM, "name": "Display"}],
             candidates=lambda albums, deadline: [{"id": PHOTO, "updated": "one"}, {"id": OTHER, "updated": "one"}],
-            validate=lambda *args: "one", preview=lambda *args: out.getvalue())
+            validate=lambda *args: "one", preview=lambda *args: out.getvalue(),
+            page_url=lambda photo: f"http://photo.local:2283/photos/{photo}")
         self.patch = patch("app.core.remote_photos.photo_source", return_value=self.fake)
         self.patch.start()
 
@@ -54,6 +55,8 @@ class PhotoPolicyTests(unittest.IsolatedAsyncioTestCase):
         second = await self.source.next()
         self.assertNotEqual(first[1], second[1])
         self.assertTrue(first[0].startswith(b"\xff\xd8"))
+        self.assertTrue(first[3].startswith(self.fake.url+"/photos/"))
+        self.assertNotIn("fixture-key",first[3])
         with self.assertRaises(PhotoError):
             await self.source.next()
         self.source.disconnect()
@@ -90,6 +93,12 @@ class PhotoPolicyTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PhotoTransportPolicyTests(unittest.TestCase):
+    def test_photo_page_links_keep_trusted_base_path_without_credentials(self):
+        source=PhotoSource("https://photos.example/immich/api","fixture-key")
+        self.assertEqual(source.page_url(PHOTO),f"https://photos.example/immich/photos/{PHOTO}")
+        for value in ("../private","https://elsewhere.example/a","javascript:alert(1)"):
+            with self.assertRaises(PhotoError):
+                source.page_url(value)
     def test_album_union_is_bounded_and_revalidation_remains_album_confined(self):
         source = PhotoSource("http://photo.local", "fixture-key")
         photo = {"id": PHOTO, "type": "IMAGE", "visibility": "timeline", "isTrashed": False,
@@ -145,3 +154,19 @@ class PhotoTransportPolicyTests(unittest.TestCase):
         self.assertNotIn(b"private fixture metadata", result)
         with self.assertRaises(PhotoError):
             screen_preview(b"not an image")
+
+    def test_preview_preserves_full_oriented_frame_and_aspect_ratio(self):
+        from PIL import ImageDraw
+        for dimensions, orientation, expected in (((1800,900),1,(1280,640)),((900,1800),1,(640,1280)),
+                                                  ((600,600),1,(600,600)),((1800,900),6,(640,1280))):
+            with self.subTest(dimensions=dimensions,orientation=orientation):
+                image=Image.new("RGB",dimensions,"black")
+                ImageDraw.Draw(image).rectangle((0,0,dimensions[0]-1,dimensions[1]-1),outline="red",width=60)
+                exif=Image.Exif();exif[274]=orientation
+                out=io.BytesIO();image.save(out,"JPEG",exif=exif)
+                with Image.open(io.BytesIO(screen_preview(out.getvalue()))) as preview:
+                    self.assertEqual(preview.size,expected)
+                    self.assertEqual(dict(preview.getexif()),{})
+                    for x,y in ((4,4),(expected[0]-5,4),(4,expected[1]-5),(expected[0]-5,expected[1]-5)):
+                        red,green,blue=preview.getpixel((x,y))
+                        self.assertGreater(red,200);self.assertLess(max(green,blue),40)

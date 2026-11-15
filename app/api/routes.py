@@ -357,13 +357,13 @@ async def photo_library_source(request):
 @handle_errors
 async def photo_library_next(request):
     svc = _svc(request)
-    image, token, generation = await svc.photo_library.next()
+    image, token, generation, link = await svc.photo_library.next()
     cookie = read_cookie(request.scope)
     if cookie and not svc.profiles.viewer_for(cookie):
         return JSONResponse({"error": "Sign in again to view photos.", "signin": True}, status_code=401)
     return Response(image, media_type="image/jpeg", headers={
         "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
-        "X-Photo-Token": token, "X-Photo-Generation": generation,
+        "X-Photo-Token": token, "X-Photo-Generation": generation, "X-Photo-Link": link,
     })
 
 async def _image_body(request) -> bytes:

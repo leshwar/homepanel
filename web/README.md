@@ -241,7 +241,8 @@ keyboard behavior and guarded persistence; the library only handles dragging.
 - **Resting clock.** The selected face is preserved. Date and day keeps its calendar
   identity but makes time primary, with smaller weekday/date and compact weather.
   The group is centered with moderately bolder type and at most eight pixels of
-  burn-in drift around center. Already-shared Photo library albums fill the backdrop
+  burn-in drift around center, including on screens with a reserved scrollbar gutter.
+  Already-shared Photo library albums fill the backdrop
   with aspect-preserving cover; light full-screen shading preserves photo visibility,
   while soft localized shading behind the clock keeps text readable without a card. The same
   decoded stream supplies the tile and idle backdrop without competing pollers.

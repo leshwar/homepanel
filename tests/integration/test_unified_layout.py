@@ -179,13 +179,16 @@ class UnifiedGridTests(unittest.TestCase):
 
     def test_every_home_type_moves_and_resizes_with_persistent_exact_geometry(self):
         page=self.page
-        for kind in ("clock","notifications","zone","weather","photos","scenes","rooms","favourites"):
-            with self.subTest(kind=kind):
+        for kind,width in itertools.product(("clock","notifications","zone","weather","photos","scenes","rooms","favourites"),(1080,1440)):
+            with self.subTest(kind=kind,width=width):
+                page.set_viewport_size({"width":width,"height":720})
                 layout={"version":4,"widgets":[
                     {"id":"subject","type":kind,"size":"2x3","positions":{"6":{"x":0,"y":0,"size":"2x3"}}},
                     {"id":"neighbor","type":"zone","size":"1x3","positions":{"6":{"x":5,"y":0,"size":"1x3"}}},
                 ]}
                 self.seed("home",layout);self.show("home");before=self.geometry("home")
+                columns=page.locator(".home-grid").evaluate("e=>e.style.getPropertyValue('--cols')")
+                self.assertEqual(columns,"4" if width==1080 else "6")
                 self.edit("home");self.assertEqual(self.geometry("home"),before)
                 tile=page.locator('[data-wid="subject"]')
                 handle=tile.locator("[data-grip]");handle.focus();handle.press("ArrowDown")
@@ -198,7 +201,9 @@ class UnifiedGridTests(unittest.TestCase):
                 page.reload();page.wait_for_selector('[data-wid="subject"]')
                 self.assertEqual(self.geometry("home"),edited)
                 saved=page.request.get(self.server.url+"/api/v1/state").json()["settings"]["home_layout"]["widgets"][0]
-                self.assertEqual(saved["positions"]["6"],{"x":0,"y":1,"size":"3x4"})
+                self.assertEqual(saved["positions"][columns],{"x":0,"y":1,"size":"3x4"})
+                if columns!="6":
+                    self.assertEqual(saved["positions"]["6"],layout["widgets"][0]["positions"]["6"])
 
     def test_every_room_card_moves_and_resizes_without_neighbor_jumps(self):
         page=self.page

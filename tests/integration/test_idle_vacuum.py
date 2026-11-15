@@ -125,6 +125,33 @@ class IdleVacuumBrowserTests(unittest.TestCase):
         self.assertTrue(page.locator(".ambient-activity").is_hidden())
         self.assertNotIn("vacuum", page.locator("#ambient").inner_text().lower())
 
+    def test_resting_overlay_covers_classic_scrollbar_gutter_without_shifting_center(self):
+        browser=self.pw.chromium.launch(ignore_default_args=["--hide-scrollbars"],
+                                        args=["--disable-features=OverlayScrollbar"])
+        try:
+            page=browser.new_page(viewport={"width":1280,"height":720},reduced_motion="reduce")
+            page.clock.set_fixed_time(datetime(2026,11,15,13))
+            page.goto(self.server.url);page.wait_for_selector(".widget,.tile")
+            page.add_style_tag(content="html{overflow-y:scroll}::-webkit-scrollbar{width:15px}")
+            for width,height in ((1280,720),(720,1280),(390,844)):
+                with self.subTest(width=width):
+                    page.set_viewport_size({"width":width,"height":height})
+                    page.evaluate("""async()=>{
+                      document.querySelector('#ambient').hidden=false;
+                      (await import('/js/clockfaces.js')).renderAmbient();
+                    }""")
+                    metrics=page.evaluate("""()=>{
+                      const r=document.querySelector('#ambient').getBoundingClientRect();
+                      const g=document.querySelector('#ambient-content').getBoundingClientRect();
+                      return {gutter:innerWidth-document.documentElement.clientWidth,left:r.left,width:r.width,height:r.height,
+                        dx:g.x+g.width/2-innerWidth/2,dy:g.y+g.height/2-innerHeight/2};
+                    }""")
+                    self.assertEqual(metrics["gutter"],15)
+                    self.assertEqual((metrics["left"],metrics["width"],metrics["height"]),(0,width,height))
+                    self.assertLessEqual(max(abs(metrics["dx"]),abs(metrics["dy"])),9)
+        finally:
+            browser.close()
+
     def test_idle_and_home_share_one_weather_request(self):
         requests = []
         def weather(route):

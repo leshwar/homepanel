@@ -3,7 +3,7 @@
    Daytime stays readable on charcoal; the supported night window is deliberately dim. */
 
 .ambient, .face-preview { --clock-bg: #191919; --clock-ink: #f0efec; --clock-muted: #c3c2b8; --clock-detail: #aaa79f; }
-.ambient { container-type: size; --min-text: 15px; background: var(--clock-bg); isolation: isolate; overflow: hidden;
+.ambient { container-type: size; --min-text: 15px; background: var(--clock-bg); isolation: isolate; overflow: hidden; width: 100vw;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 .ambient[data-night="true"] { --clock-bg: #000; --clock-ink: #756e65; --clock-muted: #625c54; --clock-detail: #514b43; }
 #ambient-content { transition: transform 2s ease; will-change: transform; max-width: 100%; text-align: center; }

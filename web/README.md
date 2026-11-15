@@ -27,9 +27,9 @@ web/
     ├── room-layout.js per-profile room tile layouts and their editor
     ├── room-sort.js three-line room grips, touch sorting, keyboard announcements and persistence
     ├── home.js     the Home page: widgets (clock, other places' clocks, weather, scenes, rooms)
-    ├── home-overview.js time-first overview and real permission-filtered device attention
+    ├── notifications.js ordinary movable widget with permission-filtered device attention
     ├── room-cards.js compact capability-driven cards and safe inline level controls
-    │               and edit mode (hold to move, drag a corner to resize, hide, Done)
+    │               and shared grid editing (grip to move, corner to resize, Options, Done)
     ├── tiles.js    open-first device tiles, explicit quick actions and stable in-place updates
     ├── icons.js    inline SVG device and room icons; picks one from the device's name or kind
     ├── sky.js      weather from the server → html[data-sky] / [data-period] for the Sky background
@@ -48,7 +48,7 @@ web/
     ├── effects.js  light effects in the light sheet: searchable scenes (Scenes / DIY / Snapshots),
     │               music mode + sensitivity, strip parts (tap parts, then a color), toggles
     ├── photoframe.js  full-screen photo slideshow (crossfade, slow drift, touch to exit)
-    ├── photo-tile.js private album tile: decoded crossfade, visibility lifecycle and object-URL cleanup
+    ├── photo-tile.js shared private photo stream: tile links, idle backdrop, decoded crossfade and URL cleanup
     ├── clockfaces.js  resting clock faces (digital, analog, words, date, night) + burn-in drift
     ├── locate.js   "Use my location": device location, else approximate from the server
     └── settings.js settings pages: add devices, edit, rooms, scenes, display, diagnostics
@@ -104,7 +104,7 @@ web/
 - **Two pages.** **Home**: a grid of widgets, each profile's own, the same on every screen
   that profile uses (saved with `PUT /profiles/me/layout`, checked by `app/core/layout.py`). Long-press it (or the
   pencil) to edit: hold and drag into an empty grid cell, drag a corner (or tap it) for
-  Small / Wide / Large, "…" for more (and the time zone of a clock), "−" to hide, **Add**
+  Small / Wide / Large, select a widget and use footer **Options** to configure or hide it, **Add**
   to bring widgets back, add a clock or add **Favourites**; Cancel or Done. Device tiles live on
   the Rooms pages (the Rooms widget opens each one). A Favourites widget lists up to 8 chosen
   devices ("…" → tick them; none ticked = the first few) as compact rows: the name opens the
@@ -157,7 +157,7 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   them on a wide TV or speaker tile that reports one) are explicit
   quick actions; they do not also open the panel. Unknown/offline actions are
   disabled, pending commands are visible, and failures show the standard error.
-  Long-press still opens controls; layout Edit hides/disables quick actions.
+  Long-press still opens controls outside Edit; layout Edit retains quick-action geometry but makes device content inert.
   A device that reports a `problem`, or a worn part (`parts` at 10% or less) while it
   rests, says "Needs attention" / "Maintenance due" in a highlighted status line.
 - **Device controls.** Opaque, theme-aware panels have a named status header, a
@@ -184,23 +184,37 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   scroll without shrinking their touch targets.
 - **Animations** are short (150–300 ms) and only move or fade: tile press and "pop" when
   something turns on, tab and page switches, and the sheet sliding in and out.
-- **Layout views.** Rooms default to **Compact**: content-sized cards, full-width on
-  phones and two columns above a 600px content width. Each keeps
+- **One editable grid.** Every Home widget and room card uses the same responsive
+  2/4/6-column grid with fine rows, normally 40px before font scaling. Room cards
+  start compact: full-width on phones, two cards across on larger screens. Each keeps
   name/status and an explicit quick action together; lights have release-to-apply
   brightness, speakers have reported volume and mute, and vacuums show real
   activity/problem with battery labeled separately. Faulted vacuums do not offer a
   blind Start shortcut. Unknown/offline controls are disabled rather than guessed.
-  The **Free layout** choice restores the existing per-breakpoint placement and
-  sizes; Edit tiles still opens that editor, even from Compact. No saved geometry
-  is deleted or rewritten by viewing or switching modes.
-  Home defaults to **Overview**, with time/date on the left and actionable device
-  notifications on the right (stacked on phones). Alerts are real offline/pairing,
+  Consistent top-left three-line grips move any top-level tile into empty grid space; corner handles
+  resize it. Arrow keys on a grip move one cell; on a corner they change width/height.
+  There are no separate Compact, Free or Overview modes.
+  Header space is reserved in both normal and Edit views so grips never replace
+  device icons or cover labels; entering Edit does not shift tile geometry.
+  Home headings share one text size, baseline and inset; room name/status groups
+  align from the top even when a name wraps.
+  Home starts with time/date on the left and actionable device
+  notifications on the right (stacked on phones), but both are ordinary editable
+  widgets. Alerts are real offline/pairing,
   problem or maintenance states, prioritized and deduplicated; they only open controls.
-  The main grid clock is shown in the overview instead, not duplicated. Existing
-  non-clock coordinates are retained; only automatic placements without saved
-  coordinates are derived normally. Home's **Free layout** and editor restore the
-  original clock and geometry. Both choices belong to the signed-in profile and
-  persist through the existing profile API, including for members.
+  Version 4 migrates each profile from its selected legacy presentation: compact
+  array order becomes compact coordinates; Overview coordinates become the single
+  grid below its now-movable clock/notifications; Free positions retain their gaps,
+  with old rows mapped to three fine rows. Minimum widths may expand formerly tiny
+  cards. Hidden widgets and options remain intact. The previous store is backed up
+  privately before the one-way conversion; alternate layouts are not runtime paths.
+  Select a tile and use Options in the editor footer to resize it (or hide/configure
+  a Home widget); no menu buttons cover tile text. Existing resize corners and grid
+  keyboard controls remain available. Tile geometry and card content keep their
+  geometry in Edit; device/scene/photo/weather actions are inert until editing ends.
+  Done saves the actual edited geometry, Cancel leaves saved data untouched,
+  and failed or concurrent saves retain the draft and show an error. Layouts remain
+  per-profile, including for members; looking at another width never rewrites them.
   The fixed dock's measured height and safe-area offset reserve bottom scroll
   clearance; the last card can be fully scrolled above navigation. Resize, view/profile
   changes, overlays and cancellation discard in-progress inline slider gestures.
@@ -226,21 +240,37 @@ keyboard behavior and guarded persistence; the library only handles dragging.
   existing typography without zooming the UI or reducing touch targets.
 - **Resting clock.** The selected face is preserved. Date and day keeps its calendar
   identity but makes time primary, with smaller weekday/date and compact weather.
+  The group is centered with moderately bolder type and at most eight pixels of
+  burn-in drift around center, including on screens with a reserved scrollbar gutter.
+  Already-shared Photo library albums fill the backdrop
+  with aspect-preserving cover; light full-screen shading preserves photo visibility,
+  while soft localized shading behind the clock keeps text readable without a card. The same
+  decoded stream supplies the tile and idle backdrop without competing pollers.
   The 12-hour faces include AM/PM; the 24-hour preference still applies. Daytime is
   readable warm text on charcoal. With the existing night-clock preference, 10 PM–7 AM
   dims the face on black and hides secondary weather/location details; Dim night stays
   dim at any hour. A single non-interactive vacuum line shows relevant activity or
   attention, selected deterministically from the current profile's visible devices.
   Battery and previous jobs never become progress. Weather uses the existing shared
-  cache, unchanged face markup retains its DOM nodes, and burn-in drift remains bounded.
+  cache and unchanged face markup retains its DOM nodes. Dim night and the configured
+  10 PM–7 AM night window suppress photo backgrounds and their requests. Missing
+  photos leave a neutral fallback with a setup/error message, not sample pictures.
   Reduced motion removes transitions. The complete wake gesture, including its
   generated click or key release, is swallowed before the underlying controls can act.
 - **Photos tile.** Add Photos from the Home editor after an admin configures
   Settings → Photo library. Only explicitly selected albums and profiles are used.
+  The whole oriented photo fits centered inside the tile below its header and above
+  the resize corner, preserving aspect ratio with neutral letterboxing rather than
+  cropping. Wallpaper and the uploaded fullscreen frame keep their own sizing.
   One bounded stream supplies decoded images to the screen's tiles, without
   replacing the current image while the next loads or fading to the same image.
-  Requests/timers pause offscreen, behind panels/idle screens, and during editing.
-  Profile/source changes, removal and errors clear private images/object URLs;
+  Clicking the displayed image opens its exact Immich web page in a new tab,
+  without API credentials or a referrer; normal Immich browser sign-in may be needed.
+  Rotation pauses for a photo gesture so its destination cannot change under a tap.
+  Headers/grips and idle wake gestures never open that link.
+  Requests/timers pause when neither tile nor daytime idle background is visible,
+  behind other panels, and during editing. Profile/source changes and errors clear
+  private images, links and object URLs;
   reduced motion disables crossfade. Existing local photo-frame uploads are untouched.
 
 Manrope is by The Manrope Project Authors, licensed under SIL OFL 1.1.

@@ -400,8 +400,8 @@ class UITests(unittest.TestCase):
         page.set_viewport_size({"width": 1280, "height": 720})
         original = page.request.get(self.server.url + "/api/v1/state").json()
         layout_before = original["settings"].get("room_layouts", {}).get("Bedroom")
-        layout = {"widgets": [{"id": "bd-lamp", "size": "2x2",
-                               "positions": {"4": {"x": 2, "y": 2, "size": "2x2"}}}]}
+        layout = {"widgets": [{"id": "bd-lamp", "size": "2x6",
+                               "positions": {"4": {"x": 2, "y": 2, "size": "2x6"}}}]}
         try:
             page.request.put(self.server.url + "/api/v1/profiles/me/rooms/layout", data={"room": "Bedroom", "layout": layout})
             page.reload()
@@ -1316,6 +1316,13 @@ class UITests(unittest.TestCase):
                     self.assertTrue(page.locator('[data-room-off="Kitchen"]').is_visible())
                     page.click(nav)
                     page.wait_for_function("document.documentElement.dataset.view === 'home'")
+            page.evaluate("""async()=>{
+              const {store,emit}=await import('/js/store.js');
+              store.settings.home_layout.widgets.find(w=>w.type==='clock').hidden=true;
+              emit('all');
+            }""")
+            self.assertEqual(page.locator(".home-grid > .t-clock").count(),0)
+            self.assertTrue(page.locator("#clock").is_visible())
         finally:
             page.close()
 
@@ -1323,17 +1330,18 @@ class UITests(unittest.TestCase):
         box = page.locator(selector)
         box.scroll_into_view_if_needed()
         metrics = box.evaluate("""el => {
-            const r = el.getBoundingClientRect(), grid = el.parentElement, g = grid.getBoundingClientRect();
+            const r = el.getBoundingClientRect(), grip=el.querySelector('[data-grip]').getBoundingClientRect(),
+              grid = el.parentElement, g = grid.getBoundingClientRect();
             const cs = getComputedStyle(grid);
-            return {left:r.left, top:r.top, x:g.left, y:g.top,
+            return {left:r.left, top:r.top, grabX:grip.x+24-r.x,grabY:grip.y+24-r.y,x:g.left, y:g.top,
               stepX:parseFloat(cs.gridTemplateColumns) + parseFloat(cs.columnGap),
               stepY:parseFloat(cs.gridAutoRows) + parseFloat(cs.rowGap)};
         }""")
-        page.mouse.move(metrics["left"] + 55, metrics["top"] + 55)
+        page.mouse.move(metrics["left"] + metrics["grabX"], metrics["top"] + metrics["grabY"])
         page.mouse.down()
         page.wait_for_timeout(250)
-        page.mouse.move(metrics["x"] + x * metrics["stepX"] + 55,
-                        metrics["y"] + y * metrics["stepY"] + 55, steps=6)
+        page.mouse.move(metrics["x"] + x * metrics["stepX"] + metrics["grabX"],
+                        metrics["y"] + y * metrics["stepY"] + metrics["grabY"], steps=6)
         self.assertEqual(page.locator(".grid-drop-target").count(), 1)
         self.assertTrue(box.evaluate("""async el => {
             await (await import('/js/store.js')).reload();
@@ -1347,7 +1355,7 @@ class UITests(unittest.TestCase):
     def placements(self, page, selector=".home-grid > .widget"):
         return page.eval_on_selector_all(selector, """els => Object.fromEntries(els.map(el =>
           [el.dataset.wid, {column:el.style.gridColumnStart, row:el.style.gridRowStart,
-                           size:[...el.classList].find(c => c.startsWith('s-'))}]))""")
+                           size:el.style.gridColumnEnd.replace('span ','')+'x'+el.style.gridRowEnd.replace('span ','')}]))""")
 
     def assert_grid_fits(self, page, selector):
         self.assertTrue(page.evaluate("document.documentElement.scrollWidth <= innerWidth"))
@@ -1362,7 +1370,7 @@ class UITests(unittest.TestCase):
     def test_home_page_has_clocks_and_rooms_but_no_devices(self):
         page = self.home(timezone_id="America/Denver")
         try:
-            page.wait_for_selector('.home-overview [data-time]')
+            page.wait_for_selector('.t-clock [data-time]')
             for wid, tz in (("zone-in", "Asia/Kolkata"), ("zone-us", "America/Denver")):   # US = this screen's zone
                 zone = page.locator(f'.widget[data-wid="{wid}"] .w-zone')
                 self.assertEqual(zone.get_attribute("data-zone"), tz)
@@ -1382,7 +1390,7 @@ class UITests(unittest.TestCase):
             ids = set(page.eval_on_selector_all("#grid .tile", "els => els.map(e => e.dataset.id)"))
             self.assertEqual(ids, {"kt-pendant", "kt-kettle", "kt-fridge"})
             page.click('#dock [data-nav="home"]')
-            page.wait_for_selector('.home-overview [data-time]')
+            page.wait_for_selector('.t-clock [data-time]')
         finally:
             page.close()
 
@@ -1417,7 +1425,7 @@ class UITests(unittest.TestCase):
                         self.assertGreaterEqual(dock["x"], 12)
                         self.assertLessEqual(add["x"] + add["width"], w - 12)
                     # Small clocks must not collapse when a sidebar is introduced.
-                    for widget in page.locator(".widget.s-1x1").all():
+                    for widget in page.locator(".widget.t-zone").all():
                         self.assertGreaterEqual(widget.bounding_box()["width"], 130)
                     if wide:
                         page.click('#rail [data-room="Kitchen"]')
@@ -1509,26 +1517,28 @@ class UITests(unittest.TestCase):
     def test_edit_home_page_hide_resize_move_and_save_for_every_screen(self):
         page = self.home()
         try:
-            page.click('[data-layout-view="home_view"][data-layout-value="free"]')
             page.wait_for_selector('.widget[data-wid="clock"]')
             self.long_press(page, '.widget[data-wid="clock"]')                 # long press the page = edit
             page.wait_for_selector(".home.editing .editbar")
-            page.click('.widget[data-wid="scenes"] [data-hide]')
+            page.locator('.widget[data-wid="scenes"]').focus()
+            page.click('[data-widget-options]')
+            page.click('[data-hide-id="scenes"]')
             before = self.placements(page)
-            self.drag_to_cell(page, '.widget[data-wid="weather"]', 2, 2)
-            page.click('.widget[data-wid="weather"] [data-resize]')            # a tap on the corner: next size
-            self.assertIn("s-2x2", page.get_attribute('.widget[data-wid="weather"]', "class"))
-            page.click('.widget[data-wid="zone-us"] [data-menu]')
+            self.drag_to_cell(page, '.widget[data-wid="weather"]', 2, 7)
+            page.locator('.widget[data-wid="weather"] [data-resize]').press("ArrowDown")
+            self.assertEqual(self.placements(page)["weather"]["size"],"2x4")
+            page.locator('.widget[data-wid="zone-us"]').focus()
+            page.click('[data-widget-options]')
             page.select_option("[data-zone-pick]", "America/Chicago")
-            page.click('[data-size-pick="1x1"]')
+            page.click('[data-size-pick="1x3"]')
             page.click(".wmenu button.btn[data-menu-close]")
-            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 2)         # occupied: don't displace Rooms
+            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 7)         # occupied: don't displace Rooms
             self.assertEqual(self.placements(page)["clock"], before["clock"])
-            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 4, cancel=True)
+            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 14, cancel=True)
             self.assertEqual(self.placements(page)["clock"], before["clock"])
-            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 4)         # empty space, not another tile
+            self.drag_to_cell(page, '.widget[data-wid="clock"]', 0, 14)         # empty space, not another tile
             moved = self.placements(page)
-            self.assertEqual(moved["clock"]["row"], "5")
+            self.assertEqual(moved["clock"]["row"], "15")
             self.assertEqual(moved["rooms"], before["rooms"])                 # the other tiles stay put
             self.assert_grid_fits(page, ".home-grid > .widget")
             page.click("[data-edit-done]")
@@ -1538,14 +1548,16 @@ class UITests(unittest.TestCase):
             try:
                 self.assertEqual(self.placements(other), moved)
                 self.assertEqual(other.locator('.widget[data-wid="scenes"]').count(), 0)
-                self.assertIn("s-2x2", other.get_attribute('.widget[data-wid="weather"]', "class"))
-                self.assertIn("s-1x1", other.get_attribute('.widget[data-wid="zone-us"]', "class"))
+                self.assertEqual(self.placements(other)["weather"]["size"],"2x4")
+                self.assertEqual(self.placements(other)["zone-us"]["size"],"1x3")
                 self.assertEqual(other.get_attribute('.widget[data-wid="zone-us"] .w-zone', "data-zone"), "America/Chicago")
             finally:
                 other.close()
 
             page.click("#edit-home")                                           # Cancel puts it all back
-            page.click('.widget[data-wid="weather"] [data-hide]')
+            page.locator('.widget[data-wid="weather"]').focus()
+            page.click('[data-widget-options]')
+            page.click('[data-hide-id="weather"]')
             page.click("[data-add-widget]")                                    # hidden widgets can come back
             page.wait_for_selector('.wmenu [data-unhide="scenes"]')
             self.assertNotIn("Devices", page.inner_text(".wmenu"))            # devices aren't Home widgets any more
@@ -1563,7 +1575,6 @@ class UITests(unittest.TestCase):
             self.assertEqual(self.placements(page), moved)
         finally:
             page.evaluate("fetch('/api/v1/profiles/me/layout', {method: 'PUT', headers: {'Content-Type': 'application/json'}, body: '{\"home_layout\": null}'})")
-            page.evaluate("async ()=>(await import('/js/api.js')).api.updateMe({home_view:'overview'})")
             page.close()
 
     def test_room_settings_edit_tiles_resize_save_cancel_and_live_updates(self):
@@ -1582,12 +1593,12 @@ class UITests(unittest.TestCase):
         before = self.placements(page, ".room-tile")
         state_before = page.locator('.tile[data-id="kt-pendant"]').get_attribute("data-on")
         try:
-            self.drag_to_cell(page, selector, 2, 2)
-            page.click(selector + " [data-resize]")
-            page.click(selector + " [data-resize]")
-            self.assertIn("s-2x2", page.get_attribute(selector, "class"))
+            self.drag_to_cell(page, selector, 2, 6)
+            page.locator(selector + " [data-resize]").press("ArrowDown")
+            page.locator(selector + " [data-resize]").press("ArrowDown")
+            self.assertEqual(self.placements(page,".room-tile")["kt-pendant"]["size"],"2x5")
             moved = self.placements(page, ".room-tile")
-            self.assertEqual(moved["kt-pendant"]["row"], "3")
+            self.assertEqual(moved["kt-pendant"]["row"], "7")
             self.assertEqual(moved["kt-kettle"], before["kt-kettle"])
             self.assertEqual(page.locator('.tile[data-id="kt-pendant"]').get_attribute("data-on"), state_before)
             page.evaluate("""async () => {
@@ -1601,12 +1612,12 @@ class UITests(unittest.TestCase):
             page.click("[data-room-done]")
             page.wait_for_selector("text=Kitchen layout saved")
             page.reload()
-            page.click('[data-layout-view="room_view"][data-layout-value="free"]')
             page.wait_for_selector(selector)
             self.assertEqual(self.placements(page, ".room-tile"), moved)
             page.click('[data-edit-room="Kitchen"]')
-            page.click(selector + " [data-room-options]")
-            page.click('[data-room-size="1x1"]')
+            page.locator(selector).focus()
+            page.click("[data-room-options]")
+            page.click('[data-room-size="2x3"]')
             page.click("[data-room-options-close].btn")
             page.click("[data-room-cancel]")
             self.assertEqual(self.placements(page, ".room-tile"), moved)
@@ -1619,7 +1630,6 @@ class UITests(unittest.TestCase):
             self.assertEqual(page.evaluate("async () => (await (await import('/js/api.js')).api.state()).settings.room_layouts"), saved)
         finally:
             page.evaluate("async () => (await import('/js/api.js')).api.saveRoomLayout('Kitchen', null)")
-            page.evaluate("async ()=>(await import('/js/api.js')).api.updateMe({room_view:'compact'})")
 
     def test_sky_background_follows_the_weather(self):
         source = FakeWeatherSource(temperature=28.4, code=71)                 # snow

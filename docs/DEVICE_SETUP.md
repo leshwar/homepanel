@@ -17,7 +17,8 @@ Typing keys is easiest from a phone or laptop: open `http://homepanel.local:8080
 
 ## Immich photo library
 
-This is a Home **Photos tile**, separate from the uploaded full-screen photo frame.
+This supplies the Home **Photos tile** and daytime resting-clock backgrounds,
+separate from the uploaded full-screen photo frame.
 In **Settings → Photo library**, enter the existing server's base URL and a
 read-only API key with **`album.read`, `asset.read`, `asset.view`**. Do not enter
 an Immich account password. Use a direct URL on a trusted LAN/private network or
@@ -30,8 +31,19 @@ to those permitted panel viewers; never select a private album unintentionally.
 An unprotected one-tap profile is not a security boundary: use optional profile
 passwords and trusted-network access when the selected photos are private.
 Add the tile with **Home → Edit → Add → Photos**, and move/resize it normally.
+The tile fits the complete image without cropping. Click a loaded photo to open
+that asset in Immich in a new tab; your browser may ask you to sign in there.
+No API key is placed in that link. Resting backgrounds use the same permitted
+albums, fill the screen, and stay dark during Dim night or the configured night
+window. The first touch on the resting clock only wakes the panel.
 Only timeline images from the selected albums are eligible; no entire-library
 shuffle, original downloads, EXIF display or face metadata is requested.
+
+Multiple selected albums form a pool: a photo needs to belong to **any one** of
+them, not every album. Selection searches one chosen album at a time, with bounded
+fallbacks for empty albums. Membership and current privacy are independently
+rechecked before each preview, including cached ones. Album choices and profile
+sharing are never broadened to recover an empty result.
 
 The adapter verifies the Immich 2.x/3.x contract and rejects incompatible versions/
 privacy responses rather than retrying a broad search. It uses the official
@@ -241,6 +253,11 @@ which router event caused it. HomePanel now treats an unreachable address as
 The last reported power is labeled as stale. A verified standby/power-off report
 still appears as Off.
 
+A fresh webOS **Screen Off** report means the TV remains powered on with its
+screen disabled, not standby. HomePanel labels this **Screen off** without
+changing the power switch or sending a screen/wake command. A reachable socket
+or remembered app is never used as proof of power.
+
 For an already paired TV with a saved SSDP UUID, the adapter checks that exact
 identity at most once per minute after connection failure. It accepts only one
 matching candidate in the panel's local IPv4 /24, validates its non-redirected local
@@ -282,6 +299,17 @@ It works while the TV is off, and alongside the TV: volume changed with the TV
 remote shows up on the panel within about 10 seconds. The power button puts the
 sound bar in standby and wakes it, as long as its network stays on in standby
 (the default after it has been set up with the app).
+
+Power comes from the protocol's explicit boolean `b_powerstatus`, not the socket,
+input name or remembered volume. Missing/invalid power is **Power not reported**;
+failed reads are **Unavailable**, with any previous power kept only as stale data.
+A power-command acknowledgement is followed by a status read rather than assumed
+to mean the request took effect. An uncertain command is not automatically replayed.
+
+Some model/firmware reports can disagree with the physical standby indication.
+If a fresh report explicitly says On while the soundbar appears off, HomePanel
+cannot infer a different state from silence or the selected input. Check the
+LG app's status and the physical indicator; do not treat On as proof of playback.
 
 **Spotify on S95TR:** start a track in the Spotify mobile app, tap its device
 icon, and select the soundbar. Use the same Wi-Fi for the first connection; on

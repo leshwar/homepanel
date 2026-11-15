@@ -136,8 +136,8 @@ class TypographyTests(unittest.TestCase):
                     page.evaluate("""async () => {
                       const {store,setView} = await import('/js/store.js');
                       store.settings.home_layout = {widgets:[
-                        {id:'clock',type:'clock',size:'1x1'},
-                        {id:'weather',type:'weather',size:'1x1'}]};
+                        {id:'clock',type:'clock',size:'2x3'},
+                        {id:'weather',type:'weather',size:'2x3'}]};
                       setView('home');
                     }""")
                     for button in page.locator(".w-weather button:visible").all():

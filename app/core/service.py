@@ -24,6 +24,7 @@ import os
 import time
 import uuid
 from collections import Counter
+from copy import deepcopy
 from dataclasses import asdict
 from typing import Any, Awaitable, Callable
 
@@ -31,7 +32,7 @@ from .adapter import (ADAPTERS, Action, AdapterBackoff, AdapterError, Cap, Clean
                       Key, PairingRequired, Pointer, missing_requirements, unsupported_reason)
 from .automations import Automations
 from .history import History
-from .layout import LayoutError, clean_layout, clean_room_layout, default_layout, migrate_layout
+from .layout import LayoutError, clean_layout, clean_room_layout, default_layout, legacy_default_layout, migrate_layout, migrate_room_layout
 from .net import normalize_mac, parse_color
 from .photos import DevicePictures, PhotoLibrary
 from .wallpapers import WallpaperLibrary
@@ -555,35 +556,51 @@ class HomeService:
             s.pop("presence", None)          # phones' addresses: admins only
         s["home_layout"] = self.layout_for(viewer)
         s["room_layouts"] = self.room_layouts_for(viewer)
-        s["room_view"] = viewer.profile.get("room_view", "compact") if viewer else "compact"
-        s["home_view"] = viewer.profile.get("home_view", "overview") if viewer else "overview"
         s["photo_library"] = self.photo_library.status()
         return s
 
     def layout_for(self, viewer: Viewer | None) -> dict:
         layout = (viewer.profile.get("home_layout") if viewer else None) or self.store.settings.get("home_layout")
-        return migrate_layout(layout) if layout else default_layout()
+        return layout if layout else default_layout()
 
     def _migrate_layouts(self) -> None:
-        """Home layouts saved before devices moved off the Home page: drop their device
-        widgets, in the shared default and in every profile, and save once."""
-        changed = False
-        holders = [self.store.settings, *self.store.profiles]
-        for h in holders:
-            old = h.get("home_layout")
-            new = migrate_layout(old)
-            if new != old:
-                h["home_layout"] = new
-                changed = True
-        if changed:
+        """Plan all conversions before changing anything; retain a private recovery copy."""
+        settings, profiles = deepcopy(self.store.settings), deepcopy(self.store.profiles)
+        shared = settings.get("home_layout")
+        settings["home_layout"] = migrate_layout(shared, settings.get("home_view", "overview")) if shared else default_layout()
+        settings.pop("home_view", None)
+        settings.pop("room_view", None)
+        for p in profiles:
+            source = p.get("home_layout")
+            if source is not None:
+                p["home_layout"] = migrate_layout(source, p.get("home_view", "overview"))
+            elif p.get("home_view") == "free":
+                p["home_layout"] = migrate_layout(shared or legacy_default_layout(), "free")
+            else:
+                p["home_layout"] = None  # keep profiles that inherit the shared default inheriting it
+            rooms = dict(p.get("room_layouts", {}))
+            viewer = Viewer(p)
+            for room in {*self.store.rooms, "", *rooms}:
+                devices = [d for d in self.store.devices.values() if viewer.sees(d.id)
+                           and (d.room if d.room in self.store.rooms else "") == room]
+                if devices or room in rooms:
+                    rooms[room] = migrate_room_layout(rooms.get(room), devices, p.get("room_view", "compact"))
+            p["room_layouts"] = rooms
+            p.pop("home_view", None)
+            p.pop("room_view", None)
+        if settings != self.store.settings or profiles != self.store.profiles:
+            self.store.backup_layout_upgrade()
+            self.store.settings, self.store.profiles = settings, profiles
             self.store.save()
-            log.info("Home pages updated: devices are on the Rooms pages now")
+            log.info("Layouts consolidated into one editable grid; previous data retained in a private backup")
 
-    def save_my_layout(self, layout: Any) -> dict:
+    def save_my_layout(self, layout: Any, expected: Any = ...) -> dict:
         """Save the signed-in person's own Home page (None = back to the default)."""
         viewer = current_viewer.get()
         if viewer is None:
             raise AdapterError("Sign in to save your Home page.")
+        if expected is not ... and expected != self.layout_for(viewer):
+            raise AdapterError("This Home layout changed on another screen. Cancel and reload before editing again.")
         try:
             clean = clean_layout(layout) if layout else None
         except LayoutError as e:
@@ -604,12 +621,14 @@ class HomeService:
                 out[room] = {**layout, "widgets": [w for w in layout["widgets"] if w["id"] in ids]}
         return out
 
-    def save_my_room_layout(self, room: str, layout: Any) -> dict:
+    def save_my_room_layout(self, room: str, layout: Any, expected: Any = ...) -> dict:
         viewer = current_viewer.get()
         if viewer is None:
             raise AdapterError("Choose your profile to arrange room tiles.")
         if not isinstance(room, str) or (room and room not in self.store.rooms):
             raise AdapterError("Choose an available room.")
+        if expected is not ... and expected != self.room_layouts_for(viewer).get(room):
+            raise AdapterError("This room layout changed on another screen. Cancel and reload before editing again.")
         try:
             clean = clean_room_layout(layout) if layout is not None else None
         except LayoutError as e:
@@ -1243,7 +1262,9 @@ class HomeService:
         viewer = current_viewer.get()
         if viewer is None:
             raise AdapterError("Sign in first.")
-        mine = {k: data[k] for k in ("name", "color", "email", "pin", "password", "room_view", "home_view") if k in data}
+        if "room_view" in data or "home_view" in data:
+            raise AdapterError("Layouts now use one editable grid. Reload this screen.")
+        mine = {k: data[k] for k in ("name", "color", "email", "pin", "password") if k in data}
         return await self.update_profile(viewer.id, mine)
 
     def delete_profile(self, profile_id: str) -> None:

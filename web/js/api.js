@@ -48,8 +48,8 @@ export const api = {
   updateProfile: (id, p) => call("PATCH", `/profiles/${encodeURIComponent(id)}`, p),
   deleteProfile: (id) => call("DELETE", `/profiles/${encodeURIComponent(id)}`),
   updateMe: (p) => call("PATCH", "/profiles/me", p),
-  saveLayout: (layout) => call("PUT", "/profiles/me/layout", { home_layout: layout }),   // null = back to the default
-  saveRoomLayout: (room, layout) => call("PUT", "/profiles/me/rooms/layout", { room, layout }),
+  saveLayout: (layout, expected) => call("PUT", "/profiles/me/layout", { home_layout: layout, expected }),
+  saveRoomLayout: (room, layout, expected) => call("PUT", "/profiles/me/rooms/layout", { room, layout, expected }),
 
   state: () => call("GET", "/state"),
   health: () => call("GET", "/health"),
@@ -109,7 +109,7 @@ export const api = {
       throw new ApiError(data?.error || "Photo previews are unavailable.", response.status);
     }
     return { blob: await response.blob(), token: response.headers.get("X-Photo-Token"),
-      generation: response.headers.get("X-Photo-Generation") };
+      generation: response.headers.get("X-Photo-Generation"), link: response.headers.get("X-Photo-Link") };
   },
   deletePhoto: (id) => call("DELETE", `/photos/${encodeURIComponent(id)}`),
   uploadPhoto: (file) => sendFile("POST", `/photos?name=${encodeURIComponent(file.name || "photo")}`, file),

@@ -3,7 +3,7 @@ import io
 import json
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from PIL import Image
 
@@ -13,6 +13,7 @@ from app.core.profiles import Viewer, current_viewer
 from app.core.remote_photos import RemotePhotos, screen_preview
 
 ALBUM = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+SECOND_ALBUM = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
 PHOTO = "11111111-1111-4111-8111-111111111111"
 OTHER = "22222222-2222-4222-8222-222222222222"
 
@@ -28,7 +29,8 @@ class PhotoPolicyTests(unittest.IsolatedAsyncioTestCase):
         self.fake = SimpleNamespace(url="http://photo.local:2283", verify=lambda: {"major": 2, "minor": 0, "patch": 0},
             albums=lambda: [{"id": ALBUM, "name": "Display"}],
             candidates=lambda albums, deadline: [{"id": PHOTO, "updated": "one"}, {"id": OTHER, "updated": "one"}],
-            validate=lambda *args: "one", preview=lambda *args: out.getvalue())
+            validate=lambda *args: "one", preview=lambda *args: out.getvalue(),
+            page_url=lambda photo: f"http://photo.local:2283/photos/{photo}")
         self.patch = patch("app.core.remote_photos.photo_source", return_value=self.fake)
         self.patch.start()
 
@@ -53,6 +55,8 @@ class PhotoPolicyTests(unittest.IsolatedAsyncioTestCase):
         second = await self.source.next()
         self.assertNotEqual(first[1], second[1])
         self.assertTrue(first[0].startswith(b"\xff\xd8"))
+        self.assertTrue(first[3].startswith(self.fake.url+"/photos/"))
+        self.assertNotIn("fixture-key",first[3])
         with self.assertRaises(PhotoError):
             await self.source.next()
         self.source.disconnect()
@@ -89,6 +93,40 @@ class PhotoPolicyTests(unittest.IsolatedAsyncioTestCase):
 
 
 class PhotoTransportPolicyTests(unittest.TestCase):
+    def test_photo_page_links_keep_trusted_base_path_without_credentials(self):
+        source=PhotoSource("https://photos.example/immich/api","fixture-key")
+        self.assertEqual(source.page_url(PHOTO),f"https://photos.example/immich/photos/{PHOTO}")
+        for value in ("../private","https://elsewhere.example/a","javascript:alert(1)"):
+            with self.assertRaises(PhotoError):
+                source.page_url(value)
+    def test_album_union_is_bounded_and_revalidation_remains_album_confined(self):
+        source = PhotoSource("http://photo.local", "fixture-key")
+        photo = {"id": PHOTO, "type": "IMAGE", "visibility": "timeline", "isTrashed": False,
+                 "isOffline": False, "updatedAt": "one"}
+        requests = []
+        def request(path, body=None, **kw):
+            requests.append((path, body, kw))
+            if path == "/search/random":
+                return [photo] if body["albumIds"] == [SECOND_ALBUM] else []
+            if path.startswith("/albums?"):
+                return [{"id": SECOND_ALBUM, "albumName": "Selected"}]
+            return {"assets": {"items": [photo] if body["albumIds"] == [SECOND_ALBUM] else []}}
+        source.request = request
+        with patch("app.adapters.immich_photos.secrets.choice", side_effect=lambda values: values[0]):
+            self.assertEqual(source.candidates([ALBUM, SECOND_ALBUM], 99), [{"id": PHOTO}])
+        self.assertEqual(source.validate(PHOTO, [ALBUM, SECOND_ALBUM], 99), "one")
+        searches = [body for path, body, _ in requests if path.startswith("/search/")]
+        self.assertEqual([body["albumIds"] for body in searches], [[ALBUM], [SECOND_ALBUM], [SECOND_ALBUM]])
+        self.assertTrue(all(body["visibility"] == "timeline" and body["withDeleted"] is False
+                            and body["isOffline"] is False and body["withExif"] is False for body in searches))
+        self.assertTrue(all(kw["deadline"] == 99 for _, _, kw in requests))
+        source.request = Mock(return_value=[])
+        self.assertEqual(source.candidates([ALBUM, SECOND_ALBUM, ALBUM], 99), [])
+        self.assertEqual(source.request.call_count, 2)
+        with self.assertRaisesRegex(PhotoError, "no longer in a selected"):
+            source.validate(PHOTO, [ALBUM], 99)
+        self.assertFalse(any(c.args[0] == "/search/metadata" for c in source.request.call_args_list))
+
     def test_urls_and_privacy_contract(self):
         self.assertEqual(server_url("http://laptop.local:2283/api/"), "http://laptop.local:2283")
         self.assertEqual(server_url("https://photos.example/immich"), "https://photos.example/immich")
@@ -116,3 +154,19 @@ class PhotoTransportPolicyTests(unittest.TestCase):
         self.assertNotIn(b"private fixture metadata", result)
         with self.assertRaises(PhotoError):
             screen_preview(b"not an image")
+
+    def test_preview_preserves_full_oriented_frame_and_aspect_ratio(self):
+        from PIL import ImageDraw
+        for dimensions, orientation, expected in (((1800,900),1,(1280,640)),((900,1800),1,(640,1280)),
+                                                  ((600,600),1,(600,600)),((1800,900),6,(640,1280))):
+            with self.subTest(dimensions=dimensions,orientation=orientation):
+                image=Image.new("RGB",dimensions,"black")
+                ImageDraw.Draw(image).rectangle((0,0,dimensions[0]-1,dimensions[1]-1),outline="red",width=60)
+                exif=Image.Exif();exif[274]=orientation
+                out=io.BytesIO();image.save(out,"JPEG",exif=exif)
+                with Image.open(io.BytesIO(screen_preview(out.getvalue()))) as preview:
+                    self.assertEqual(preview.size,expected)
+                    self.assertEqual(dict(preview.getexif()),{})
+                    for x,y in ((4,4),(expected[0]-5,4),(4,expected[1]-5),(expected[0]-5,expected[1]-5)):
+                        red,green,blue=preview.getpixel((x,y))
+                        self.assertGreater(red,200);self.assertLess(max(green,blue),40)

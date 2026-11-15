@@ -60,7 +60,9 @@ class AttentionTests(unittest.TestCase):
           assert.equal(headline([dev(true), dev(true), stuck]), '2 things are on · 1 needs attention');
           assert.equal(headline([stuck, stuck]), 'Everything is off · 2 need attention');
           assert.equal(headline([]), '');
-          assert.equal(headline([dev(true, {online: false})]), 'Everything is off');      // offline is not "on"
+          assert.equal(headline([dev(true, {online: false})]), 'Power status unavailable');
+          assert.equal(headline([dev(null)]), 'Power status unavailable');
+          assert.equal(headline([dev(true, {stale:true})]), 'Power status unavailable');
           // A room page: "x of y on", and nothing at all for an empty room.
           assert.equal(headline([dev(true), stuck], 2), '1 of 2 on · 1 needs attention');
           assert.equal(headline([dev(false)], 1), 'Everything is off');
@@ -73,6 +75,18 @@ class AttentionTests(unittest.TestCase):
           assert.equal(roomIfAmbiguous({id: 'd', name: 'Lamp'}, list), '');               // no room to show
         """)
 
+    def test_media_power_unknown_off_and_screen_off_are_distinct(self):
+        self.run_js("""
+          const {statusText, roomStatus, powerUnknown} = await import(process.argv[1]);
+          const dev = state => ({kind:'tv',caps:['power'],state:{online:true,app:'old-app',...state}});
+          assert.equal(statusText(dev({on:false})), 'Off');
+          assert.equal(statusText(dev({on:null})), 'Power not reported');
+          assert.equal(statusText(dev({on:true,screen_on:false})), 'Screen off');
+          assert.equal(statusText(dev({online:false,on:null,stale:true})), 'Unavailable');
+          assert.equal(powerUnknown(dev({on:null})), true);
+          assert.equal(roomStatus(1,0,true), 'Power status unavailable');
+        """)
+
     def test_small_screen_and_empty_state_styles(self):
         css = (WEB / "shell.css").read_text()
         phone = css.split("/* Phones: the room heading keeps its status readable")[1]
@@ -81,7 +95,6 @@ class AttentionTests(unittest.TestCase):
         self.assertIn(".room-head:not(.single) .room-status { order: 9; flex: 0 0 100%;", phone)
         self.assertIn(".w-photos.empty, .w-photos.empty .photo-placeholder { background: none; }", css)
         self.assertIn("-webkit-line-clamp: 2", css.split(".w-favs .tile-name {")[1].split("}")[0])
-        self.assertIn(".s-1x1 .w-hint { display: none; }", css)
 
     def test_styles_mark_attention_and_an_idle_all_off(self):
         css = (WEB / "app.css").read_text()

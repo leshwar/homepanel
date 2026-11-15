@@ -13,6 +13,8 @@ NODE = shutil.which("node")
 class TileInteractionTests(unittest.TestCase):
     def run_js(self, filename, helpers, script):
         source = "\n".join(line for line in (WEB / filename).read_text().splitlines() if not line.startswith("import "))
+        if filename == "tiles.js":
+            source = "\n".join(line for line in (WEB / "room-cards.js").read_text().splitlines() if not line.startswith("import ")) + "\n" + source
         module = "data:text/javascript;base64," + base64.b64encode((helpers + source).encode()).decode()
         result = subprocess.run([NODE, "--input-type=module", "-e",
                                  "import assert from 'node:assert/strict';\n" + script, module],
@@ -44,16 +46,12 @@ class TileInteractionTests(unittest.TestCase):
           assert.equal(primaryAction({...vacuum,state:{online:true,activity:'returning'}}),null);
           const tv={id:'tv',name:'TV',kind:'tv',caps:['power'],state:{online:true,on:true}};
           assert.doesNotMatch(tileHtml(tv),/data-act=/);
-          assert.match(tileHtml({...tv,caps:['power','volume']}),/data-act="volume_up"/);
-          assert.match(tileHtml(tv,{editing:true}),/data-more tabindex="-1"/);
-          // A wide TV or speaker tile shows the level between its volume buttons, when one is reported.
-          const loud={...tv,caps:['power','volume'],state:{online:true,on:true,volume:17.6}};
-          const wide=tileHtml(loud,{size:'2x1'});
-          assert.match(wide,/<output class="tile-vol" aria-label="Volume 18%">18<.output>/);
-          assert.ok(wide.indexOf('volume_down')<wide.indexOf('tile-vol')&&wide.indexOf('tile-vol')<wide.indexOf('volume_up'));
-          assert.match(tileHtml({...loud,state:{...loud.state,muted:true}},{size:'2x1'}),/>Muted<.output>/);
-          assert.doesNotMatch(tileHtml({...loud,state:{online:true,on:true}},{size:'2x1'}),/tile-vol/);
-          assert.doesNotMatch(tileHtml({...loud,state:{...loud.state,on:false}},{size:'2x1'}),/tile-vol|volume_up/);
+          assert.doesNotMatch(tileHtml({...tv,caps:['power','volume']}),/data-act=/);
+          assert.match(tileHtml(tv,{editing:true}),/inert aria-disabled="true"/);
+          const speaker={...tv,kind:'speaker',caps:['power','volume_level'],state:{online:true,on:true,volume:17.6}};
+          assert.match(tileHtml(speaker),/aria-valuetext="18%"/);
+          assert.match(tileHtml({...speaker,state:{online:true,on:true}}),/Not reported/);
+          assert.match(tileHtml({...speaker,state:{...speaker.state,on:false}}),/data-card-range="volume"[^>]*disabled/);
         """)
 
     def test_scoped_art_is_stable_without_duplicate_gradient_ids(self):

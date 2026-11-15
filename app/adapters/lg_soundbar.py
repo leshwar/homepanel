@@ -142,7 +142,7 @@ class Link:
                 m = await asyncio.wait_for(self.read(), left)
             except asyncio.TimeoutError:
                 break
-            if m.get("msg") in names and isinstance(m.get("data"), dict):
+            if m.get("cmd") == "notibyget" and m.get("msg") in names and isinstance(m.get("data"), dict):
                 got[m["msg"]] = m["data"]
         return got
 
@@ -174,6 +174,7 @@ class LGSoundbarAdapter(DeviceAdapter):
     description = "Volume, inputs and sound modes over Wi-Fi. No account or pairing needed."
     requires = ("cryptography",)
     poll_interval = 10
+    retry_commands = False
     manual_fields = [
         Field("name", "Name", required=True, placeholder="Living room sound bar"),
         Field("ip", "IP address", required=True,
@@ -254,22 +255,27 @@ class LGSoundbarAdapter(DeviceAdapter):
     # --- state ----------------------------------------------------------------
     async def refresh(self, device: Device) -> dict:
         async with self._lock(device):
-            link = await self._open(device)
             try:
-                got = await link.ask(SPEAKER, INPUTS, SOUND)
-            except (OSError, ValueError, asyncio.IncompleteReadError) as e:
-                raise ConnectionError(f"The sound bar sent something unexpected: {e}")
-            finally:
-                await link.close()
-        if SPEAKER not in got:
-            raise ConnectionError("The sound bar didn't answer. Try again in a moment.")
-        return self._state(device, got)
+                link = await self._open(device)
+                try:
+                    got = await link.ask(SPEAKER, INPUTS, SOUND)
+                finally:
+                    await link.close()
+                if SPEAKER not in got:
+                    raise ConnectionError("No speaker status received")
+                return self._state(device, got)
+            except (OSError, asyncio.TimeoutError, ValueError, asyncio.IncompleteReadError):
+                last = device.state.get("last_known") if device.state.get("stale") else {
+                    k: device.state[k] for k in ("on", "volume", "muted", "input") if device.state.get(k) is not None}
+                return {"online": False, "on": None, "stale": True, "last_known": last or None,
+                        "error": "Sound bar connection unavailable; its power is unknown. Check its network connection."}
 
     def _state(self, device: Device, got: dict[str, dict]) -> dict:
         spk, func, eq = got[SPEAKER], got.get(INPUTS, {}), got.get(SOUND, {})
         lo, hi = int(spk.get("i_vol_min", 0)), int(spk.get("i_vol_max", 40) or 40)
         self._volume_range[device.id] = (lo, hi)
-        state: dict = {"on": bool(spk.get("b_powerstatus", True)), "muted": bool(spk.get("b_mute"))}
+        power = spk.get("b_powerstatus")
+        state: dict = {"on": power if isinstance(power, bool) else None, "muted": bool(spk.get("b_mute"))}
         if "i_vol" in spk:
             state["volume"] = to_percent(int(spk["i_vol"]), lo, hi)
 
@@ -312,7 +318,10 @@ class LGSoundbarAdapter(DeviceAdapter):
     async def _command(self, device: Device, link: Link, action: str, value):
         if action == Action.POWER:
             await link.set(SPEAKER, {"b_powerkey": bool(value)})
-            return {"on": bool(value)}
+            got = await link.ask(SPEAKER, timeout=2)
+            if SPEAKER not in got:
+                return {"on": None, "error": "Power command sent; power not reported. Refresh status."}
+            return {**self._state(device, got), "stale": False, "last_known": None, "error": None}
         if action == Action.MUTE:
             await link.set(SPEAKER, {"b_mute": bool(value)})
             return {"muted": bool(value)}
